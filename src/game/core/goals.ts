@@ -26,6 +26,14 @@ export function goalLabel(state: GameState): string {
       const alive = state.monsters.some((m) => m.isGoalTarget);
       return alive ? "Slay the guardian" : "Guardian slain!";
     }
+    case "killCount": {
+      const have = Math.min(state.levelKills, goal.count);
+      return `Cull the horde — ${have}/${goal.count}`;
+    }
+    case "survive": {
+      const left = Math.max(0, goal.turns - state.turnCount);
+      return left > 0 ? `Hold out — ${left} turns` : "You held the line!";
+    }
   }
 }
 
@@ -47,5 +55,9 @@ export function isGoalComplete(state: GameState): boolean {
     case "killTarget":
       // Target existed at generation; complete once it's no longer alive.
       return !state.monsters.some((m) => m.isGoalTarget);
+    case "killCount":
+      return state.levelKills >= goal.count;
+    case "survive":
+      return state.turnCount >= goal.turns;
   }
 }

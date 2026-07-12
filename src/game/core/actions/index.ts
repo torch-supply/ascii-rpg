@@ -21,6 +21,7 @@ import {
 import { stepToward } from "@/game/core/map/pathfinding";
 import { monsterDef } from "@/content/monsters";
 import { ITEMS } from "@/content/items";
+import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
 
 const DIRS = [
@@ -117,10 +118,45 @@ function pickUp(state: GameState, events: GameEvent[]) {
 }
 
 // ── combat ─────────────────────────────────────────────────────────────────
+/** Roll a monster's loot table and drop one item on its tile (if free). */
+function dropLoot(
+  state: GameState,
+  x: number,
+  y: number,
+  def: MonsterDef,
+  rng: Rng,
+  events: GameEvent[]
+) {
+  const loot = def.loot;
+  if (!loot || !rng.chance(loot.chance)) return;
+  if (itemAt(state, x, y)) return; // don't stack drops on a tile
+  const total = loot.table.reduce((s, e) => s + e.weight, 0);
+  if (total <= 0) return;
+  let roll = rng.int(1, total);
+  let itemId = loot.table[0].itemId;
+  for (const e of loot.table) {
+    roll -= e.weight;
+    if (roll <= 0) {
+      itemId = e.itemId;
+      break;
+    }
+  }
+  const idef = ITEMS[itemId];
+  const inst: ItemInstance = { id: `drop_${x}_${y}_${state.turnCount}`, defId: itemId, x, y };
+  if (idef.category === "coin") {
+    const rich = LEVELS[state.currentLevel].coinRichness;
+    const base = rng.int(CONFIG.coinPile.min, CONFIG.coinPile.max);
+    inst.value = Math.max(1, Math.round(base * rich));
+  }
+  state.items.push(inst);
+  msg(events, `The ${def.name} drops a ${idef.name}.`);
+}
+
 function resolvePlayerAttack(
   state: GameState,
   target: MonsterInstance,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ) {
   const def = monsterDef(target.defId);
   const dmg = playerAttackDamage(state.player, def);
@@ -130,6 +166,8 @@ function resolvePlayerAttack(
     msg(events, `You slay the ${def.name}.`);
     if (def.coinReward > 0) addCoins(state, def.coinReward);
     state.player.kills += 1;
+    state.levelKills += 1;
+    dropLoot(state, target.x, target.y, def, rng, events);
     state.monsters = state.monsters.filter((m) => m.id !== target.id);
   } else {
     msg(events, `You strike the ${def.name} for ${dmg} (${target.hp} left).`);
@@ -152,7 +190,8 @@ function movePlayer(
   state: GameState,
   dx: number,
   dy: number,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ): boolean {
   const p = state.player;
   const nx = p.x + dx;
@@ -160,7 +199,7 @@ function movePlayer(
 
   const target = monsterAt(state, nx, ny);
   if (target) {
-    resolvePlayerAttack(state, target, events);
+    resolvePlayerAttack(state, target, events, rng);
     return true; // attacking costs a turn
   }
   if (!isWalkable(state.map, nx, ny)) {
@@ -202,7 +241,8 @@ function tickTorch(state: GameState, events: GameEvent[]) {
 function useItem(
   state: GameState,
   defId: string,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ): boolean {
   const p = state.player;
   const entry = p.bag.find((b) => b.defId === defId);
@@ -218,10 +258,10 @@ function useItem(
   switch (def.effect) {
     case "bomb":
       // auto-target fallback; the UI normally routes this to cursor targeting
-      return throwFirebomb(state, entry, def, events);
+      return throwFirebomb(state, entry, def, events, rng);
     case "blast":
       // one-time burst centered on the player (3x3)
-      return detonateAt(state, entry, def, p.x, p.y, events);
+      return detonateAt(state, entry, def, p.x, p.y, events, rng);
     case "heal":
     case "greaterHeal": {
       const before = p.hp;
@@ -303,7 +343,8 @@ function detonateAt(
   def: (typeof ITEMS)[string],
   tx: number,
   ty: number,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ): boolean {
   const p = state.player;
   events.push({
@@ -328,6 +369,8 @@ function detonateAt(
       const md = monsterDef(m.defId);
       if (md.coinReward > 0) addCoins(state, md.coinReward);
       state.player.kills += 1;
+      state.levelKills += 1;
+      dropLoot(state, m.x, m.y, md, rng, events);
       slain++;
     } else {
       survivors.push(m);
@@ -346,7 +389,8 @@ function throwFirebomb(
   state: GameState,
   entry: { defId: string; count: number },
   def: (typeof ITEMS)[string],
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ): boolean {
   const p = state.player;
   const w = state.map.width;
@@ -365,7 +409,7 @@ function throwFirebomb(
     msg(events, `No target in sight for the ${def.name}.`);
     return false;
   }
-  return detonateAt(state, entry, def, target.x, target.y, events);
+  return detonateAt(state, entry, def, target.x, target.y, events, rng);
 }
 
 /** Throw a firebomb at a chosen tile (cursor targeting). */
@@ -374,7 +418,8 @@ function throwFirebombAt(
   defId: string,
   tx: number,
   ty: number,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ): boolean {
   const entry = state.player.bag.find((b) => b.defId === defId);
   if (!entry) return false;
@@ -382,7 +427,7 @@ function throwFirebombAt(
   if (def.category !== "potion" || def.effect !== "bomb") return false;
   if (chebyshev(state.player.x, state.player.y, tx, ty) > CONFIG.throwRange)
     return false;
-  return detonateAt(state, entry, def, tx, ty, events);
+  return detonateAt(state, entry, def, tx, ty, events, rng);
 }
 
 function equipFromBag(
@@ -405,19 +450,20 @@ function equipFromBag(
 function applyPlayerAction(
   state: GameState,
   action: PlayerAction,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ): boolean {
   switch (action.type) {
     case "wait":
       return true;
     case "move":
-      return movePlayer(state, action.dx, action.dy, events);
+      return movePlayer(state, action.dx, action.dy, events, rng);
     case "equip":
       return equipFromBag(state, action.defId, events);
     case "useItem":
-      return useItem(state, action.defId, events);
+      return useItem(state, action.defId, events, rng);
     case "throwAt":
-      return throwFirebombAt(state, action.defId, action.x, action.y, events);
+      return throwFirebombAt(state, action.defId, action.x, action.y, events, rng);
   }
 }
 
@@ -535,18 +581,70 @@ function actMonster(
       // holds its ground until it spots you, then pursues relentlessly
       if (m.state === "chase") chaseStep(state, m, def, events);
       return;
-    case "ranged":
-      if (m.state === "chase") {
-        if (seen && dist <= (def.rangedRange ?? 4)) rangedAttack(state, m, def, events);
-        else chaseStep(state, m, def, events);
+    case "ranged": {
+      if (m.state !== "chase") return;
+      const inRange = seen && dist <= (def.rangedRange ?? 4);
+      if (!inRange) {
+        chaseStep(state, m, def, events); // close until the player is in range
+      } else if ((m.cooldown ?? 0) > 0) {
+        m.cooldown = (m.cooldown ?? 0) - 1; // reload — hold position, don't fire
+      } else {
+        rangedAttack(state, m, def, events);
+        m.cooldown = def.rangedCooldown ?? 1;
       }
       return;
+    }
     case "chase":
     default:
       if (m.state === "chase") chaseStep(state, m, def, events);
       else moveRandom(state, m, def, rng, events);
       return;
   }
+}
+
+/**
+ * On "survive" levels, trickle in reinforcements (every few turns, up to the
+ * level's budget) so holding out is a real fight rather than a waiting game.
+ */
+function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
+  const config = LEVELS[state.currentLevel];
+  if (config.goal.type !== "survive") return;
+  if (state.turnCount % 5 !== 0) return;
+  if (state.monsters.length >= config.monsterBudget) return;
+
+  const { map, player } = state;
+  const cands: number[] = [];
+  for (let i = 0; i < map.tiles.length; i++) {
+    const t = map.tiles[i];
+    if (t !== "floor" && t !== "trapSprung") continue;
+    const x = i % map.width;
+    const y = Math.floor(i / map.width);
+    if (chebyshev(x, y, player.x, player.y) < 6) continue; // arrive off in the dark
+    cands.push(i);
+  }
+  if (cands.length === 0) return;
+
+  const spot = cands[rng.int(0, cands.length - 1)];
+  const total = config.spawnTable.reduce((s, e) => s + e.weight, 0);
+  let roll = rng.int(1, total);
+  let chosen = config.spawnTable[0].monsterId;
+  for (const e of config.spawnTable) {
+    roll -= e.weight;
+    if (roll <= 0) {
+      chosen = e.monsterId;
+      break;
+    }
+  }
+  const def = monsterDef(chosen);
+  state.monsters.push({
+    id: `rf${state.turnCount}_${state.monsters.length}`,
+    defId: chosen,
+    x: spot % map.width,
+    y: Math.floor(spot / map.width),
+    hp: def.maxHp,
+    state: "chase",
+  });
+  msg(events, "More of the dead surge onto the wall.");
 }
 
 function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
@@ -573,7 +671,7 @@ export function resolveTurn(
   rng: Rng
 ): TurnResult {
   const events: GameEvent[] = [];
-  const tookTurn = applyPlayerAction(state, action, events);
+  const tookTurn = applyPlayerAction(state, action, events, rng);
 
   if (!tookTurn) {
     pushLog(state, events);
@@ -607,6 +705,7 @@ export function resolveTurn(
     };
   }
 
+  maybeReinforce(state, rng, events);
   advanceMonsters(state, rng, events);
 
   if (state.player.hp <= 0) {

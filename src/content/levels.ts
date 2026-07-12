@@ -140,11 +140,12 @@ export const LEVELS: LevelConfig[] = [
     mapWidth: 52,
     mapHeight: 32,
     generator: "digger",
-    monsterBudget: 12,
+    monsterBudget: 13,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "ghoul", weight: 4 },
       { monsterId: "gargoyle", weight: 2 },
+      { monsterId: "gate_captain", weight: 1 },
     ],
     turnLimit: 300,
     itemDropCount: 4,
@@ -156,9 +157,9 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.3,
     baseLightRadius: 5,
     trapCount: 5,
-    goal: { type: "killTarget", monsterId: "gate_captain" },
+    goal: { type: "killCount", count: 8 },
     narration:
-      "The Warden of the Gate crumples and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
+      "The last of the gate's wardens falls and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
     shopTier: 5,
   },
   {
@@ -246,9 +247,9 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 6,
     trapCount: 2,
     waterCount: 8,
-    goal: { type: "reachLocation" },
+    goal: { type: "survive", turns: 35 },
     narration:
-      "You crest the ramparts as the wind dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",
+      "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",
     shopTier: 8,
   },
   {

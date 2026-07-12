@@ -63,8 +63,12 @@ export interface MonsterDef {
   isBoss?: boolean;
   rangedDmg?: number;
   rangedRange?: number;
+  /** turns a ranged attacker must reload between shots (default 1) */
+  rangedCooldown?: number;
   /** ignores this much of the player's armor when attacking (wraith) */
   armorPierce?: number;
+  /** loot dropped on death: `chance` (0–1) to drop one weighted item */
+  loot?: { chance: number; table: { itemId: string; weight: number }[] };
 }
 
 export type ItemCategory =
@@ -113,7 +117,9 @@ export type GoalConfig =
   | { type: "reachLocation" }
   | { type: "collectX"; questTag: string; count: number }
   | { type: "findItem"; questTag: string }
-  | { type: "killTarget"; monsterId: string };
+  | { type: "killTarget"; monsterId: string }
+  | { type: "killCount"; count: number } // cull: slay N monsters this level
+  | { type: "survive"; turns: number }; // hold out for N turns
 
 // ── Level configuration (the data-driven spine) ─────────────────────────────
 export interface LevelConfig {
@@ -150,6 +156,8 @@ export interface MonsterInstance {
   y: number;
   hp: number;
   state: "idle" | "chase";
+  /** turns until a ranged attacker can fire again (reload) */
+  cooldown?: number;
   /** flagged as the killTarget for the current level's goal */
   isGoalTarget?: boolean;
 }
@@ -208,6 +216,8 @@ export interface GameState {
   items: ItemInstance[];
   turnsLeft: number;
   turnCount: number;
+  /** monsters the player has slain on THIS level (for the cull goal) */
+  levelKills: number;
   questProgress: Record<string, number>;
   /** armed trap tiles the player is aware of (sensed or detected) */
   knownTraps: number[];

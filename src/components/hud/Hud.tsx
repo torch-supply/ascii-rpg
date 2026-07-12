@@ -15,8 +15,16 @@ export function HudBar() {
   const weapon = ITEMS[p.weaponId];
   const armor = ITEMS[p.armorId];
   const hpPct = Math.max(0, Math.round((p.hp / p.maxHp) * 100));
-  const turnPct = Math.max(0, Math.round((game.turnsLeft / level.turnLimit) * 100));
-  const lowTurns = game.turnsLeft <= 40;
+  // On "survive" levels the timer counts down toward zero remaining hold-time.
+  const survive = level.goal.type === "survive";
+  const surviveLeft = survive
+    ? Math.max(0, (level.goal as { turns: number }).turns - game.turnCount)
+    : 0;
+  const turnLabel = survive ? "HOLD" : "TURNS";
+  const turnsVal = survive ? surviveLeft : game.turnsLeft;
+  const turnsMax = survive ? (level.goal as { turns: number }).turns : level.turnLimit;
+  const turnPct = Math.max(0, Math.round((turnsVal / turnsMax) * 100));
+  const lowTurns = !survive && game.turnsLeft <= 40;
 
   return (
     <div className="z-10 shrink-0 border-b border-edge bg-panel/95 px-4 py-2 text-[13px]">
@@ -49,15 +57,18 @@ export function HudBar() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-dim">TURNS</span>
+          <span className="text-dim">{turnLabel}</span>
           <span className="h-2 w-28 overflow-hidden rounded-sm border border-edge">
             <span
               className="block h-full"
-              style={{ width: `${turnPct}%`, background: lowTurns ? "#ff5555" : "#7fdfff" }}
+              style={{
+                width: `${turnPct}%`,
+                background: lowTurns ? "#ff5555" : survive ? "#ffd24d" : "#7fdfff",
+              }}
             />
           </span>
-          <span className={lowTurns ? "text-hp blink" : "text-magic"}>
-            {game.turnsLeft}
+          <span className={lowTurns ? "text-hp blink" : survive ? "text-gold" : "text-magic"}>
+            {turnsVal}
           </span>
         </div>
       </div>

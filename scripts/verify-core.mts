@@ -419,5 +419,82 @@ console.log("\n[14] Status potions & trap sense");
   }
 }
 
+// ─── 15. Ranged reload cadence ──────────────────────────────────────────────
+console.log("\n[15] Ranged attackers reload (fire every other turn)");
+{
+  const g = beginLevel("imp-seed", 0, createPlayer());
+  g.monsters = [];
+  const p = g.player;
+  const w = g.map.width;
+  // carve a clear line of sight east and park an imp 2 tiles away
+  g.map.tiles[idx(p.x + 1, p.y, w)] = "floor";
+  g.map.tiles[idx(p.x + 2, p.y, w)] = "floor";
+  g.monsters = [
+    { id: "i1", defId: "imp", x: p.x + 2, y: p.y, hp: 5, state: "chase" },
+  ];
+  let hitTurns = 0;
+  for (let t = 0; t < 4; t++) {
+    const before = g.player.hp;
+    resolveTurn(g, { type: "wait" }, new Rng(20 + t));
+    if (g.player.hp < before) hitTurns++;
+  }
+  check(
+    "imp fires on a reload cadence, not every turn",
+    hitTurns > 0 && hitTurns < 4,
+    `(hit on ${hitTurns}/4 turns)`
+  );
+}
+
+// ─── 16. Survive & cull goals ───────────────────────────────────────────────
+console.log("\n[16] Survive & cull goals");
+{
+  const si = LEVELS.findIndex((l) => l.goal.type === "survive");
+  const target = (LEVELS[si].goal as { turns: number }).turns;
+  const g = beginLevel("survive-seed", si, createPlayer());
+  g.player.maxHp = 999999;
+  g.player.hp = 999999; // stay alive so we're testing the goal, not combat
+  let done = false;
+  for (let t = 0; t < target + 12 && !done; t++) {
+    if (resolveTurn(g, { type: "wait" }, new Rng(30 + t)).goalComplete) done = true;
+  }
+  check("survive goal completes after holding out", done && g.turnCount >= target);
+
+  const ci = LEVELS.findIndex((l) => l.goal.type === "killCount");
+  const count = (LEVELS[ci].goal as { count: number }).count;
+  const g2 = beginLevel("cull-seed", ci, createPlayer());
+  check("cull incomplete at start", !isGoalComplete(g2));
+  g2.levelKills = count;
+  check("cull completes at the kill count", isGoalComplete(g2));
+}
+
+// ─── 17. Monster loot drops ─────────────────────────────────────────────────
+console.log("\n[17] Monster loot drops");
+{
+  // a guaranteed-drop boss leaves an item on its tile when slain by melee
+  const g = beginLevel("loot-seed", 0, createPlayer());
+  const p = g.player;
+  p.weaponPower = 999; // one-shot it
+  const spot = [
+    { x: p.x + 1, y: p.y },
+    { x: p.x - 1, y: p.y },
+    { x: p.x, y: p.y + 1 },
+    { x: p.x, y: p.y - 1 },
+  ].find((n) => isWalkable(g.map, n.x, n.y))!;
+  g.monsters = [
+    { id: "boss", defId: "frost_troll", x: spot.x, y: spot.y, hp: 5, state: "chase" },
+  ];
+  g.items = [];
+  resolveTurn(
+    g,
+    { type: "move", dx: Math.sign(spot.x - p.x), dy: Math.sign(spot.y - p.y) },
+    new Rng(40)
+  );
+  check("guaranteed-drop boss leaves loot on its tile", g.items.length >= 1);
+  check(
+    "loot dropped on the corpse tile",
+    g.items.some((it) => it.x === spot.x && it.y === spot.y)
+  );
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

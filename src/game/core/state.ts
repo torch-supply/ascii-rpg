@@ -86,6 +86,7 @@ export function beginLevel(
     items: data.items,
     turnsLeft: config.turnLimit,
     turnCount: 0,
+    levelKills: 0,
     questProgress: {},
     knownTraps: [],
     visible: [],

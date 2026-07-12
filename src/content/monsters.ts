@@ -54,7 +54,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 6,
     speed: 1,
     coinReward: 3,
-    rangedDmg: 4,
+    rangedDmg: 3,
     rangedRange: 4,
   },
   goblin: {
@@ -69,6 +69,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 6,
     speed: 1,
     coinReward: 3,
+    loot: { chance: 0.15, table: [{ itemId: "p_heal", weight: 1 }] },
   },
   skeleton: {
     id: "skeleton",
@@ -82,6 +83,13 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 7,
     speed: 1,
     coinReward: 5,
+    loot: {
+      chance: 0.18,
+      table: [
+        { itemId: "p_heal", weight: 3 },
+        { itemId: "a_leather", weight: 1 },
+      ],
+    },
   },
   zombie: {
     id: "zombie",
@@ -95,6 +103,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 6,
     speed: 1,
     coinReward: 6,
+    loot: { chance: 0.2, table: [{ itemId: "p_heal", weight: 1 }] },
   },
   wraith: {
     id: "wraith",
@@ -109,6 +118,13 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 8,
     armorPierce: 2, // its touch slips past armor
+    loot: {
+      chance: 0.25,
+      table: [
+        { itemId: "p_gheal", weight: 2 },
+        { itemId: "p_ward", weight: 1 },
+      ],
+    },
   },
   ghoul: {
     id: "ghoul",
@@ -122,6 +138,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 6,
     speed: 1,
     coinReward: 5,
+    loot: { chance: 0.18, table: [{ itemId: "p_heal", weight: 2 }] },
   },
   gargoyle: {
     id: "gargoyle",
@@ -135,6 +152,13 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 8,
     speed: 1,
     coinReward: 10,
+    loot: {
+      chance: 0.3,
+      table: [
+        { itemId: "p_gheal", weight: 2 },
+        { itemId: "a_scale", weight: 1 },
+      ],
+    },
   },
   gate_captain: {
     id: "gate_captain",
@@ -149,6 +173,14 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 22,
     isBoss: true,
+    loot: {
+      chance: 1,
+      table: [
+        { itemId: "p_gheal", weight: 2 },
+        { itemId: "a_scale", weight: 1 },
+        { itemId: "w_mace", weight: 1 },
+      ],
+    },
   },
   herald: {
     id: "herald",
@@ -165,6 +197,14 @@ export const MONSTERS: Record<string, MonsterDef> = {
     isBoss: true,
     rangedDmg: 7,
     rangedRange: 5,
+    loot: {
+      chance: 1,
+      table: [
+        { itemId: "p_gheal", weight: 2 },
+        { itemId: "p_ruin", weight: 1 },
+        { itemId: "i_lantern", weight: 1 },
+      ],
+    },
   },
   frost_troll: {
     id: "frost_troll",
@@ -179,6 +219,14 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 30,
     isBoss: true,
+    loot: {
+      chance: 1,
+      table: [
+        { itemId: "p_gheal", weight: 2 },
+        { itemId: "w_axe", weight: 1 },
+        { itemId: "a_chain", weight: 1 },
+      ],
+    },
   },
   lich: {
     id: "lich",
