@@ -68,7 +68,12 @@ export function HudBar() {
           <span className="text-dim"> ({weapon.power})</span>
           <span className="text-fg"> · ▣ {armor.name}</span>
           <span className="text-dim"> ({armor.reduction})</span>
-          {p.hasTorch && <span className="text-gold"> · ( torch</span>}
+          {p.hasTorch && p.torchFuel > 0 && (
+            <span className={p.torchFuel <= 20 ? "text-hp" : "text-gold"}>
+              {" "}
+              · ( torch {p.torchFuel}
+            </span>
+          )}
         </span>
         <span style={{ color: level.palette.accent }}>✦ {goalLabel(game)}</span>
       </div>

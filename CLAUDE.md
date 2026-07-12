@@ -40,11 +40,12 @@ React and the canvas are **read-only consumers** of state. No timing lives in th
 Camera-based viewport: the renderer draws a window sized to the host at a fixed cell size (`TARGET_ROWS`) and scrolls to keep the player in view (edge-clamped) — the map may exceed the viewport. Fog-of-war: `visible` (bright) / `explored` (dim memory) / unseen (black).
 
 ## Status
-**Phase 1 (core loop) + Phase 2 (polish) complete and verified.**
-- Phase 1: splash → 5 procedural levels with narration → win/lose; turn-based movement + bump-to-attack; fog-of-war; items/inventory/equip; all goal types (reach/collect/find/kill); lives/HP/turn-budget; save & resume.
-- Phase 2: between-level shop (coins → gear/potions/torch); firebomb (auto-target + AoE); monster AI variety (zombie slow-chase, wraith armor-pierce, guardChase mini-boss, ranged lich); non-blocking projectile/hit animations; per-biome glyph variants.
+**Phase 1 + Phase 2 + much of Phase 3 complete and verified.**
+- Phase 1: splash → **6** procedural levels (dungeon → forest → marsh → mountain → castle → throne) with narration → win/lose; turn-based bump combat; fog-of-war; items/inventory/equip; all goal types; lives/HP/turn-budget; save & resume.
+- Phase 2: between-level shop (5 tiers); firebomb; monster AI variety (zombie slow-chase, wraith armor-pierce, guardChase mini-boss, ranged lich); non-blocking hit/projectile animations; per-biome glyph variants.
+- Phase 3 (done): **hidden spike traps** + **impassable water/chasm** terrain (`generate.ts` places them reachability-safely; `TileType` trap/trapSprung/water); **torch fuel** (light is a managed resource; burns out over turns); **cursor firebomb targeting** (a `targeting` UI mode + `throwAt` action + renderer blast overlay); **more content** — marsh biome + The Mire level, spider/imp monsters, mace/scale/lantern items.
 
-**Phase 3 (stretch, not built):** in-level shopkeeper NPC (reuse Shop UI via an `onBump` handler); traps (`^`) / water interactions; torch fuel; cursor-based firebomb targeting (currently auto-target); difficulty multiplier; more levels (append to `levels.ts`, zero code change); a real-time mode (implement `src/game/loop/LoopDriver.ts` + an animation-gated input model).
+**Phase 3 remaining:** in-level shopkeeper NPC (reuse Shop UI via an `onBump` handler); difficulty multiplier; a real-time mode (implement `src/game/loop/LoopDriver.ts` + an animation-gated input model). Saves are versioned via `CONFIG.contentVersion` (bump it when content/shape changes so old saves retire cleanly).
 
 ## Workflow notes
 - Do NOT auto-commit; the user commits. Verify with `tsc`/`build`/`test:core` and leave changes for the user to review on their own dev server (don't launch `npm run dev`).

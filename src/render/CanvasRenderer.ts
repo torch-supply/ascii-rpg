@@ -94,10 +94,26 @@ export class CanvasRenderer {
     }
   }
 
-  draw(state: GameState) {
+  draw(state: GameState, targeting?: { x: number; y: number } | null) {
     if (this.cols === 0) this.fit();
     this.lastState = state;
     this.renderBase(state);
+    if (targeting) this.drawTargeting(targeting.x, targeting.y);
+  }
+
+  /** Firebomb aiming overlay: a reticle at the target + its 3x3 blast ring. */
+  private drawTargeting(tx: number, ty: number) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const center = dx === 0 && dy === 0;
+        this.drawCell(
+          tx + dx,
+          ty + dy,
+          center ? "X" : "+",
+          center ? "#ffdd55" : "#ff7a3c"
+        );
+      }
+    }
   }
 
   /** Queue cosmetic effects from a resolved turn and run the animation loop. */

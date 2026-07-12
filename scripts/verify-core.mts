@@ -2,7 +2,7 @@
 // Run with: npx tsx verify-core.mts   — deleted after verification.
 import { generateLevel } from "@/game/core/map/generate";
 import { LEVELS } from "@/content/levels";
-import { createPlayer, beginLevel } from "@/game/core/state";
+import { createPlayer, beginLevel, recomputeLight } from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import { isGoalComplete } from "@/game/core/goals";
@@ -176,7 +176,9 @@ console.log("\n[4] Level 2 collectX goal");
 // ─── 5. killTarget goal (Level 3 — Frost Troll) ─────────────────────────────
 console.log("\n[5] Level 3 killTarget goal");
 {
-  const idx3 = 2;
+  const idx3 = LEVELS.findIndex(
+    (l) => l.goal.type === "killTarget" && l.goal.monsterId === "frost_troll"
+  );
   const player = createPlayer();
   const game = beginLevel("kill-seed", idx3, player);
   const boss = game.monsters.find((m) => m.isGoalTarget);
@@ -189,7 +191,7 @@ console.log("\n[5] Level 3 killTarget goal");
 // ─── 6. findItem goal (Level 4 — Sunblade) ──────────────────────────────────
 console.log("\n[6] Level 4 findItem goal");
 {
-  const idx4 = 3;
+  const idx4 = LEVELS.findIndex((l) => l.goal.type === "findItem");
   const player = createPlayer();
   const game = beginLevel("find-seed", idx4, player);
   const sun = game.items.find((it) => it.questTag === "sunblade");
@@ -281,6 +283,70 @@ console.log("\n[10] Firebomb potion");
   check("firebomb removed from bag", !game.player.bag.some((b) => b.defId === "p_bomb"));
   check("kill awarded coins", game.player.coins > coinsBefore);
   check("firebomb emitted a projectile effect", res.events.some((e) => e.kind === "projectile"));
+}
+
+// ─── 11. Traps ──────────────────────────────────────────────────────────────
+console.log("\n[11] Hidden traps");
+{
+  const g = beginLevel("trap-seed", 0, createPlayer()); // dungeon has trapCount
+  check("dungeon scatters hidden traps", g.map.tiles.some((t) => t === "trap"));
+
+  const p = g.player;
+  const nb = [
+    { x: p.x + 1, y: p.y },
+    { x: p.x - 1, y: p.y },
+    { x: p.x, y: p.y + 1 },
+    { x: p.x, y: p.y - 1 },
+  ].find((n) => tileAt(g.map, n.x, n.y) === "floor");
+  if (nb) {
+    g.map.tiles[idx(nb.x, nb.y, g.map.width)] = "trap";
+    g.monsters = [];
+    const hp0 = g.player.hp;
+    resolveTurn(g, { type: "move", dx: Math.sign(nb.x - p.x), dy: Math.sign(nb.y - p.y) }, new Rng(5));
+    check("stepping on a trap deals damage", g.player.hp < hp0);
+    check("trap becomes sprung (one-shot)", tileAt(g.map, nb.x, nb.y) === "trapSprung");
+  }
+}
+
+// ─── 12. Torch fuel ─────────────────────────────────────────────────────────
+console.log("\n[12] Torch fuel");
+{
+  const g = beginLevel("torch-seed", 0, createPlayer());
+  g.monsters = [];
+  const base = g.player.baseLightRadius;
+  g.player.hasTorch = true;
+  g.player.torchFuel = 3;
+  recomputeLight(g.player);
+  check("a lit torch widens the light radius", g.player.lightRadius > base);
+  const rng = new Rng(6);
+  for (let i = 0; i < 3; i++) resolveTurn(g, { type: "wait" }, rng);
+  check("torch burns out at 0 fuel", !g.player.hasTorch && g.player.torchFuel === 0);
+  check("light reverts to base once unlit", g.player.lightRadius === base);
+}
+
+// ─── 13. Cursor firebomb throw ──────────────────────────────────────────────
+console.log("\n[13] Cursor firebomb throw (throwAt)");
+{
+  const g = beginLevel("throw-seed", 0, createPlayer());
+  const spot = { x: g.player.x + 2, y: g.player.y };
+  g.monsters = [{ id: "t1", defId: "rat", x: spot.x, y: spot.y, hp: 4, state: "idle" }];
+  g.player.bag = [{ defId: "p_bomb", count: 1 }];
+  const res = resolveTurn(g, { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y }, new Rng(7));
+  check("throwAt consumes a turn", res.tookTurn);
+  check("throwAt detonates on the targeted tile", g.monsters.length === 0);
+  check("throwAt consumes the firebomb", !g.player.bag.some((b) => b.defId === "p_bomb"));
+
+  const g2 = beginLevel("throw-seed2", 0, createPlayer());
+  g2.player.bag = [{ defId: "p_bomb", count: 1 }];
+  const r2 = resolveTurn(
+    g2,
+    { type: "throwAt", defId: "p_bomb", x: g2.player.x + 40, y: g2.player.y + 40 },
+    new Rng(1)
+  );
+  check(
+    "throwAt out of range is rejected (no turn, keeps bomb)",
+    !r2.tookTurn && g2.player.bag.some((b) => b.defId === "p_bomb")
+  );
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

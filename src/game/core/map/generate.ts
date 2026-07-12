@@ -142,6 +142,70 @@ function farthestCell(
   return best === -1 ? null : best;
 }
 
+/** Convert floor cells into water blobs (impassable). Done BEFORE computing the
+ * connected component, so any pockets water seals off are simply never used. */
+function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number) {
+  let remaining = config.waterCount ?? 0;
+  let guard = 0;
+  while (remaining > 0 && guard < 200) {
+    guard++;
+    const floors: number[] = [];
+    for (let i = 0; i < tiles.length; i++) if (tiles[i] === "floor") floors.push(i);
+    if (floors.length === 0) break;
+    let cur = floors[mapInt(0, floors.length - 1)];
+    const blob = mapInt(3, 7);
+    for (let b = 0; b < blob && remaining > 0; b++) {
+      if (tiles[cur] === "floor") {
+        tiles[cur] = "water";
+        remaining--;
+      }
+      const cx = cur % w;
+      const cy = Math.floor(cur / w);
+      const dirs = [
+        [0, -1],
+        [0, 1],
+        [-1, 0],
+        [1, 0],
+      ];
+      for (let k = dirs.length - 1; k > 0; k--) {
+        const j = mapInt(0, k);
+        [dirs[k], dirs[j]] = [dirs[j], dirs[k]];
+      }
+      let moved = false;
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx > 0 && ny > 0 && nx < w - 1 && ny < h - 1 && tiles[ny * w + nx] === "floor") {
+          cur = ny * w + nx;
+          moved = true;
+          break;
+        }
+      }
+      if (!moved) break;
+    }
+  }
+}
+
+/** Scatter hidden spike traps on free reachable floor cells. */
+function placeTraps(
+  config: LevelConfig,
+  tiles: TileType[],
+  floors: number[],
+  occupied: Set<number>
+) {
+  let placed = 0;
+  let attempts = 0;
+  const count = config.trapCount ?? 0;
+  while (placed < count && attempts < count * 20 + 20) {
+    attempts++;
+    const i = floors[mapInt(0, floors.length - 1)];
+    if (occupied.has(i) || tiles[i] !== "floor") continue;
+    tiles[i] = "trap";
+    occupied.add(i);
+    placed++;
+  }
+}
+
 /**
  * Generate a level deterministically from (masterSeed, levelIndex). Seeds the
  * GLOBAL rot.js RNG (the map-gen stream) so geometry + placement are a pure
@@ -157,6 +221,7 @@ export function generateLevel(
   const w = config.mapWidth;
   const h = config.mapHeight;
   const tiles = buildTiles(config);
+  placeWater(config, tiles, w, h); // before component calc — seals off nothing reachable
   const map: GameMap = { width: w, height: h, tiles };
 
   // Only ever place onto the largest connected region so nothing is unreachable.
@@ -283,6 +348,9 @@ export function generateLevel(
     }
     items.push(inst);
   }
+
+  // Hidden traps last, on free reachable floor (not under the player/items/exit).
+  placeTraps(config, tiles, floors, occupied);
 
   return { map, monsters, items, playerStart };
 }

@@ -17,13 +17,19 @@ export function tileAt(map: GameMap, x: number, y: number): TileType {
   return map.tiles[idx(x, y, map.width)];
 }
 
-/** Can an actor stand here? */
+/** Can an actor stand here? Water/chasm and walls block; traps are walkable. */
 export function isWalkable(map: GameMap, x: number, y: number): boolean {
   const t = tileAt(map, x, y);
-  return t === "floor" || t === "door" || t === "exit";
+  return (
+    t === "floor" ||
+    t === "door" ||
+    t === "exit" ||
+    t === "trap" ||
+    t === "trapSprung"
+  );
 }
 
-/** Does light/vision pass through here? Walls block; doors are treated open. */
+/** Does light/vision pass through here? Only walls block (you see across water). */
 export function isTransparent(map: GameMap, x: number, y: number): boolean {
   return tileAt(map, x, y) !== "wall";
 }

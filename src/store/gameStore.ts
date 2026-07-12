@@ -7,6 +7,7 @@ import { resolveTurn } from "@/game/core/actions";
 import { beginLevel, createPlayer, clonePlayer } from "@/game/core/state";
 import { giveItem } from "@/game/core/inventory";
 import { LEVELS } from "@/content/levels";
+import { CONFIG } from "@/content/config";
 import { ITEMS, SHOP_TIERS, type ShopEntry } from "@/content/items";
 import { OPENING, BIOME_SCENE } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
@@ -29,8 +30,16 @@ export type UIMode =
   | "help"
   | "narration"
   | "shop"
+  | "targeting"
   | "gameover"
   | "victory";
+
+export interface TargetingData {
+  defId: string;
+  x: number;
+  y: number;
+  range: number;
+}
 
 export interface NarrationData {
   title: string;
@@ -50,6 +59,8 @@ export interface GameStore {
   narration: NarrationData | null;
   /** how many of each item bought during the current shop visit */
   shopPurchases: Record<string, number>;
+  /** active firebomb targeting cursor (null unless mode === "targeting") */
+  targeting: TargetingData | null;
 
   // lifecycle
   init: () => void;
@@ -60,6 +71,12 @@ export interface GameStore {
   // shop
   buyShopEntry: (entry: ShopEntry) => void;
   leaveShop: () => void;
+
+  // firebomb targeting
+  beginTargeting: (defId: string) => void;
+  moveCursor: (dx: number, dy: number) => void;
+  confirmTarget: () => void;
+  cancelTarget: () => void;
 
   // the turn-based LoopDriver entry point (the seam)
   submitAction: (action: PlayerAction) => void;
@@ -150,6 +167,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     saveInfo: null,
     narration: null,
     shopPurchases: {},
+    targeting: null,
 
     init: () => {
       const info = peekSaveInfo();
@@ -292,11 +310,60 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const def = ITEMS[entry.defId];
       if (mode === "inventory") set({ mode: "playing" });
       if (def.category === "potion") {
-        get().submitAction({ type: "useItem", defId: entry.defId });
+        if (def.effect === "bomb") get().beginTargeting(entry.defId);
+        else get().submitAction({ type: "useItem", defId: entry.defId });
       } else if (def.category === "weapon" || def.category === "armor") {
         get().submitAction({ type: "equip", defId: entry.defId });
       }
     },
+
+    beginTargeting: (defId: string) => {
+      const { game } = get();
+      if (!game) return;
+      const p = game.player;
+      const w = game.map.width;
+      const visible = new Set(game.visible);
+      // start the cursor on the nearest visible monster in range, else on you
+      let cx = p.x;
+      let cy = p.y;
+      let best = Infinity;
+      for (const m of game.monsters) {
+        if (!visible.has(m.y * w + m.x)) continue;
+        const d = Math.max(Math.abs(p.x - m.x), Math.abs(p.y - m.y));
+        if (d <= CONFIG.throwRange && d < best) {
+          best = d;
+          cx = m.x;
+          cy = m.y;
+        }
+      }
+      set({
+        mode: "targeting",
+        targeting: { defId, x: cx, y: cy, range: CONFIG.throwRange },
+      });
+    },
+
+    moveCursor: (dx: number, dy: number) => {
+      const { targeting, game } = get();
+      if (!targeting || !game) return;
+      const nx = Math.max(0, Math.min(game.map.width - 1, targeting.x + dx));
+      const ny = Math.max(0, Math.min(game.map.height - 1, targeting.y + dy));
+      const d = Math.max(
+        Math.abs(game.player.x - nx),
+        Math.abs(game.player.y - ny)
+      );
+      if (d > targeting.range) return; // stay within throwing distance
+      set({ targeting: { ...targeting, x: nx, y: ny } });
+    },
+
+    confirmTarget: () => {
+      const { targeting } = get();
+      if (!targeting) return;
+      const { defId, x, y } = targeting;
+      set({ mode: "playing", targeting: null });
+      get().submitAction({ type: "throwAt", defId, x, y });
+    },
+
+    cancelTarget: () => set({ mode: "playing", targeting: null }),
 
     setMode: (mode: UIMode) => set({ mode }),
 
@@ -306,6 +373,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const { mode } = get();
       if (cmd.kind === "action") {
         if (mode === "playing") get().submitAction(cmd.action);
+        else if (mode === "targeting" && cmd.action.type === "move")
+          get().moveCursor(cmd.action.dx, cmd.action.dy);
         return;
       }
       if (cmd.kind === "bagSlot") {
@@ -323,6 +392,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       switch (cmd.cmd) {
         case "pause":
           if (mode === "playing") set({ mode: "paused" });
+          else if (mode === "targeting") get().cancelTarget();
           else if (mode === "paused" || mode === "inventory" || mode === "help")
             set({ mode: "playing" });
           break;
@@ -337,13 +407,15 @@ export const gameStore = createStore<GameStore>((set, get) => {
         case "confirm":
           if (mode === "narration") get().continueNarration();
           else if (mode === "shop") get().leaveShop();
+          else if (mode === "targeting") get().confirmTarget();
           else if (mode === "gameover" || mode === "victory")
             get().quitToTitle();
           else if (mode === "paused" || mode === "inventory" || mode === "help")
             set({ mode: "playing" });
           break;
         case "cancel":
-          if (mode === "paused" || mode === "inventory" || mode === "help")
+          if (mode === "targeting") get().cancelTarget();
+          else if (mode === "paused" || mode === "inventory" || mode === "help")
             set({ mode: "playing" });
           break;
       }

@@ -15,6 +15,8 @@ export const G_PIT =
   "linear-gradient(180deg,#ffe14d 0%,#e0913c 42%,#8a7a5a 72%,#565663 100%)";
 export const G_FOREST =
   "linear-gradient(180deg,#c8f39a 0%,#6fcf4f 38%,#2f9e44 68%,#184a24 100%)";
+export const G_MARSH =
+  "linear-gradient(180deg,#a7c26a 0%,#5f7a3c 38%,#3c5a4a 70%,#284a58 100%)";
 export const G_MOUNTAIN =
   "linear-gradient(180deg,#eef8ff 0%,#a9e0ff 42%,#6f9bd1 74%,#37506f 100%)";
 export const G_CASTLE =
@@ -66,6 +68,14 @@ const FOREST = String.raw`
        ┃         ┃          ┃        ┃
        ┃         ┃          ┃        ┃
   ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,`;
+
+const MARSH = String.raw`
+    \|/    \\|//    \|/     \|/
+   \\|//    \|/    \\|//   \|/
+  ≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈
+  ~~~~~≈≈≈~~~~~≈≈~~~~~≈≈≈~~~~≈≈~
+  ≈≈~~~~~≈≈≈~~~~~≈≈~~~~~≈≈≈~~~~~
+  ~~~~≈≈~~~~~≈≈≈~~~~~≈≈~~~~~≈≈≈~`;
 
 const MOUNTAIN = String.raw`
              /\
@@ -123,6 +133,7 @@ const SKULL = String.raw`
 export const BIOME_SCENE: Record<Biome, Scene> = {
   dungeon: { art: PIT, gradient: G_PIT },
   forest: { art: FOREST, gradient: G_FOREST },
+  marsh: { art: MARSH, gradient: G_MARSH },
   mountain: { art: MOUNTAIN, gradient: G_MOUNTAIN },
   castle: { art: CASTLE, gradient: G_CASTLE },
   throne: { art: THRONE, gradient: G_THRONE },

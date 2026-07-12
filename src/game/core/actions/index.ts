@@ -91,6 +91,7 @@ function pickUp(state: GameState, events: GameEvent[]) {
     }
     case "torch": {
       p.hasTorch = true;
+      p.torchFuel = def.fuel ?? CONFIG.torchFuel;
       recomputeLight(p);
       msg(events, `You light a ${def.name}. The dark pulls back.`);
       break;
@@ -155,12 +156,36 @@ function movePlayer(
     return true; // attacking costs a turn
   }
   if (!isWalkable(state.map, nx, ny)) {
-    return false; // bumped a wall — no turn spent
+    return false; // bumped a wall / water — no turn spent
   }
   p.x = nx;
   p.y = ny;
+  springTrap(state, events);
   pickUp(state, events);
   return true;
+}
+
+/** Trigger a hidden trap under the player, revealing and spending it. */
+function springTrap(state: GameState, events: GameEvent[]) {
+  const i = idx(state.player.x, state.player.y, state.map.width);
+  if (state.map.tiles[i] !== "trap") return;
+  state.map.tiles[i] = "trapSprung";
+  const dmg = Math.max(1, CONFIG.trapDamage - state.player.armorReduction);
+  state.player.hp -= dmg;
+  events.push({ kind: "hit", x: state.player.x, y: state.player.y });
+  msg(events, `A hidden spike trap! You take ${dmg} damage.`);
+}
+
+/** Burn torch fuel each turn; the light gutters out at zero. */
+function tickTorch(state: GameState, events: GameEvent[]) {
+  const p = state.player;
+  if (!p.hasTorch || p.torchFuel <= 0) return;
+  p.torchFuel -= 1;
+  if (p.torchFuel <= 0) {
+    p.hasTorch = false;
+    recomputeLight(p);
+    msg(events, "Your torch gutters out. The dark closes back in.");
+  }
 }
 
 function useItem(
@@ -189,47 +214,30 @@ function useItem(
 }
 
 /**
- * Firebomb: auto-targets the nearest monster in view, then deals full damage to
- * it and splash (half, rounded up) to any monster adjacent to the blast. Costs
- * a turn; wasted (no consume) if there's nothing in sight.
+ * Detonate a firebomb at (tx,ty): full damage to that tile, splash (half,
+ * rounded up) to the 3x3 around it. Consumes the item, awards coins for kills.
  */
-function throwFirebomb(
+function detonateAt(
   state: GameState,
   entry: { defId: string; count: number },
   def: (typeof ITEMS)[string],
+  tx: number,
+  ty: number,
   events: GameEvent[]
 ): boolean {
   const p = state.player;
-  const w = state.map.width;
-  const visible = new Set(state.visible);
-  const range = 7;
-
-  let target: MonsterInstance | null = null;
-  let best = Infinity;
-  for (const m of state.monsters) {
-    if (!visible.has(idx(m.x, m.y, w))) continue;
-    const d = chebyshev(p.x, p.y, m.x, m.y);
-    if (d <= range && d < best) {
-      best = d;
-      target = m;
-    }
-  }
-  if (!target) {
-    msg(events, `No target in sight for the ${def.name}.`);
-    return false; // don't waste it
-  }
-
   events.push({
     kind: "projectile",
     from: { x: p.x, y: p.y },
-    to: { x: target.x, y: target.y },
+    to: { x: tx, y: ty },
     glyph: "*",
   });
 
   const dmg = def.magnitude ?? 0;
   for (const m of state.monsters) {
-    if (chebyshev(m.x, m.y, target.x, target.y) > 1) continue;
-    m.hp -= m.id === target.id ? dmg : Math.ceil(dmg / 2);
+    const d = chebyshev(m.x, m.y, tx, ty);
+    if (d > 1) continue;
+    m.hp -= d === 0 ? dmg : Math.ceil(dmg / 2);
     events.push({ kind: "hit", x: m.x, y: m.y });
   }
 
@@ -250,6 +258,50 @@ function throwFirebomb(
   entry.count -= 1;
   if (entry.count <= 0) p.bag = p.bag.filter((b) => b !== entry);
   return true;
+}
+
+/** Auto-target the nearest visible monster (used as a fallback). */
+function throwFirebomb(
+  state: GameState,
+  entry: { defId: string; count: number },
+  def: (typeof ITEMS)[string],
+  events: GameEvent[]
+): boolean {
+  const p = state.player;
+  const w = state.map.width;
+  const visible = new Set(state.visible);
+  let target: MonsterInstance | null = null;
+  let best = Infinity;
+  for (const m of state.monsters) {
+    if (!visible.has(idx(m.x, m.y, w))) continue;
+    const d = chebyshev(p.x, p.y, m.x, m.y);
+    if (d <= CONFIG.throwRange && d < best) {
+      best = d;
+      target = m;
+    }
+  }
+  if (!target) {
+    msg(events, `No target in sight for the ${def.name}.`);
+    return false;
+  }
+  return detonateAt(state, entry, def, target.x, target.y, events);
+}
+
+/** Throw a firebomb at a chosen tile (cursor targeting). */
+function throwFirebombAt(
+  state: GameState,
+  defId: string,
+  tx: number,
+  ty: number,
+  events: GameEvent[]
+): boolean {
+  const entry = state.player.bag.find((b) => b.defId === defId);
+  if (!entry) return false;
+  const def = ITEMS[defId];
+  if (def.category !== "potion" || def.effect !== "bomb") return false;
+  if (chebyshev(state.player.x, state.player.y, tx, ty) > CONFIG.throwRange)
+    return false;
+  return detonateAt(state, entry, def, tx, ty, events);
 }
 
 function equipFromBag(
@@ -283,6 +335,8 @@ function applyPlayerAction(
       return equipFromBag(state, action.defId, events);
     case "useItem":
       return useItem(state, action.defId, events);
+    case "throwAt":
+      return throwFirebombAt(state, action.defId, action.x, action.y, events);
   }
 }
 
@@ -444,6 +498,7 @@ export function resolveTurn(
 
   state.turnCount += 1;
   state.turnsLeft -= 1;
+  tickTorch(state, events);
   recomputeFOV(state);
 
   // Completing your objective happens on your turn, before monsters act.
@@ -451,6 +506,18 @@ export function resolveTurn(
     state.goalDone = true;
     pushLog(state, events);
     return { tookTurn: true, goalComplete: true, playerDied: false, events };
+  }
+
+  // A trap (or a firebomb misfire) can be lethal before monsters even move.
+  if (state.player.hp <= 0) {
+    pushLog(state, events);
+    return {
+      tookTurn: true,
+      goalComplete: false,
+      playerDied: true,
+      deathReason: "combat",
+      events,
+    };
   }
 
   advanceMonsters(state, rng, events);

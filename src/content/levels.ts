@@ -30,6 +30,7 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.0,
     baseLightRadius: 8,
+    trapCount: 3,
     goal: { type: "reachLocation" },
     narration:
       "You haul yourself out of the pit into cold night air. No stars — only a black wall of trees ahead, whispering. The Blackwood. Somewhere in it lies the path the dead don't want you to find.",
@@ -48,6 +49,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "rat", weight: 3 },
       { monsterId: "bat", weight: 4 },
       { monsterId: "goblin", weight: 4 },
+      { monsterId: "spider", weight: 3 },
     ],
     turnLimit: 360,
     itemDropCount: 4,
@@ -58,10 +60,42 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.0,
     baseLightRadius: 6,
+    trapCount: 2,
+    waterCount: 10,
     goal: { type: "collectX", questTag: "moonstone", count: 3 },
     narration:
-      "The three shards flare together and a silver trail cuts through the trees, climbing. Ahead the ground turns to ice and bare rock. The Frostspine Pass — and something enormous breathing on the wind.",
+      "The three shards flare as one, and a silver thread pulls you downward — toward a reek of rot and black standing water. The Mire. Whatever the dead are guarding, the only path runs through it.",
     shopTier: 2,
+  },
+  {
+    id: "the_mire",
+    title: "The Mire",
+    biome: "marsh",
+    palette: { wall: "#5f7a3c", floor: "#2e3a28", accent: "#7fdfff" },
+    mapWidth: 50,
+    mapHeight: 30,
+    generator: "cellular",
+    monsterBudget: 10,
+    spawnTable: [
+      { monsterId: "spider", weight: 4 },
+      { monsterId: "imp", weight: 4 },
+      { monsterId: "goblin", weight: 3 },
+    ],
+    turnLimit: 330,
+    itemDropCount: 4,
+    dropTable: [
+      { itemId: "c_gold", weight: 6 },
+      { itemId: "p_heal", weight: 3 },
+      { itemId: "i_torch", weight: 1 },
+    ],
+    coinRichness: 1.15,
+    baseLightRadius: 6,
+    trapCount: 6,
+    waterCount: 46,
+    goal: { type: "reachLocation" },
+    narration:
+      "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into ice and bare rock — the Frostspine Pass — and something enormous is breathing on the wind.",
+    shopTier: 3,
   },
   {
     id: "frostspine_pass",
@@ -85,10 +119,12 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.25,
     baseLightRadius: 5,
+    trapCount: 3,
+    waterCount: 18,
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
       "Gorm topples off the bridge into the white below. The way is open. Across the chasm, Blackhall Castle claws at the sky, its windows lit with dead-blue fire. Your blade won't be enough in there.",
-    shopTier: 3,
+    shopTier: 4,
   },
   {
     id: "blackhall_castle",
@@ -113,10 +149,11 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.5,
     baseLightRadius: 4,
+    trapCount: 6,
     goal: { type: "findItem", questTag: "sunblade" },
     narration:
       "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. The crypt door groans open toward a stair of black marble, rising to a throne. Malachar is waiting. End this.",
-    shopTier: 4,
+    shopTier: 5,
   },
   {
     id: "throne_of_dusk",
@@ -139,6 +176,7 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 2.0,
     baseLightRadius: 5,
+    trapCount: 2,
     goal: { type: "killTarget", monsterId: "lich" },
     // Final level: narration here is unused for transition (victory screen
     // shows VICTORY_NARRATION instead), but kept for completeness.

@@ -1,5 +1,6 @@
 import type { PlayerState } from "./types";
 import { ITEMS } from "@/content/items";
+import { CONFIG } from "@/content/config";
 import { recomputeLight } from "./state";
 
 // Shared inventory/equipment helpers used by both map pickups (actions) and
@@ -48,6 +49,7 @@ export function giveItem(p: PlayerState, defId: string) {
       break;
     case "torch":
       p.hasTorch = true;
+      p.torchFuel = def.fuel ?? CONFIG.torchFuel;
       recomputeLight(p);
       break;
     default:

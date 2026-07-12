@@ -5,7 +5,14 @@
 import type { GameEvent } from "./events";
 
 // ── Map / tiles ────────────────────────────────────────────────────────────
-export type TileType = "wall" | "floor" | "door" | "exit";
+export type TileType =
+  | "wall"
+  | "floor"
+  | "door"
+  | "exit"
+  | "trap" // armed, hidden (renders as floor) until stepped on
+  | "trapSprung" // triggered, visible, harmless
+  | "water"; // impassable but transparent (chasm / water)
 
 export interface GameMap {
   width: number;
@@ -22,7 +29,13 @@ export interface Pos {
 }
 
 // ── Content definitions (immutable registries) ──────────────────────────────
-export type Biome = "dungeon" | "forest" | "mountain" | "castle" | "throne";
+export type Biome =
+  | "dungeon"
+  | "forest"
+  | "marsh"
+  | "mountain"
+  | "castle"
+  | "throne";
 export type GeneratorKind = "digger" | "uniform" | "cellular";
 
 export type MonsterBehavior =
@@ -77,6 +90,7 @@ export interface ItemDef {
   magnitude?: number; // potion
   questTag?: string; // quest / findItem
   lightBonus?: number; // torch
+  fuel?: number; // torch: turns of light before it burns out
 }
 
 export interface Palette {
@@ -108,6 +122,10 @@ export interface LevelConfig {
   dropTable: { itemId: string; weight: number }[];
   coinRichness: number;
   baseLightRadius: number;
+  /** hidden spike traps scattered on the path (default 0) */
+  trapCount?: number;
+  /** impassable water/chasm tiles, placed as blobs (default 0) */
+  waterCount?: number;
   goal: GoalConfig;
   /** Transition narration shown after completing this level. */
   narration: string;
@@ -157,6 +175,8 @@ export interface PlayerState {
   baseLightRadius: number;
   lightRadius: number;
   hasTorch: boolean;
+  /** turns of torch light remaining; 0 = unlit */
+  torchFuel: number;
 }
 
 export type GameStatus = "playing" | "levelComplete" | "gameOver" | "victory";
@@ -188,7 +208,8 @@ export type PlayerAction =
   | { type: "move"; dx: number; dy: number }
   | { type: "wait" }
   | { type: "equip"; defId: string }
-  | { type: "useItem"; defId: string };
+  | { type: "useItem"; defId: string }
+  | { type: "throwAt"; defId: string; x: number; y: number };
 
 // ── Turn resolution result ─────────────────────────────────────────────────
 export interface TurnResult {

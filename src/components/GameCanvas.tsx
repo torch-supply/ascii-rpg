@@ -17,8 +17,10 @@ export default function GameCanvas() {
     const renderer = new CanvasRenderer(host);
 
     const drawFromStore = () => {
-      const g = gameStore.getState().game;
-      if (g) renderer.draw(g);
+      const s = gameStore.getState();
+      if (s.game) {
+        renderer.draw(s.game, s.mode === "targeting" ? s.targeting : null);
+      }
     };
 
     // initial fit + paint
@@ -27,7 +29,9 @@ export default function GameCanvas() {
 
     // redraw on every committed state change (camera follows the player)
     const unsub = gameStore.subscribe((s) => {
-      if (s.game) renderer.draw(s.game);
+      if (s.game) {
+        renderer.draw(s.game, s.mode === "targeting" ? s.targeting : null);
+      }
     });
 
     // cosmetic hit/projectile animations emitted by the store each turn

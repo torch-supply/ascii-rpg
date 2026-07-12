@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { gameStore, useGameStore } from "@/store/gameStore";
 import { EMBER_ART, DAWN_ART, G_EMBER, G_DAWN_TITLE, SUBTITLE } from "@/content/ascii";
 import { LEVELS } from "@/content/levels";
@@ -11,9 +10,6 @@ import { Embers } from "@/components/ui/Embers";
 export default function Splash() {
   const hasSave = useGameStore((s) => s.hasSave);
   const saveInfo = useGameStore((s) => s.saveInfo);
-  const [showSeed, setShowSeed] = useState(false);
-  const [seed, setSeed] = useState("");
-
   const startNew = () => {
     if (
       hasSave &&
@@ -21,7 +17,7 @@ export default function Splash() {
     ) {
       return;
     }
-    gameStore.getState().newGame(seed);
+    gameStore.getState().newGame();
   };
 
   return (
@@ -63,24 +59,9 @@ export default function Splash() {
             <span className="ml-1 text-xs text-dim">(overwrites save)</span>
           )}
         </MenuButton>
-
-        <button
-          onClick={() => setShowSeed((v) => !v)}
-          className="pointer-events-auto text-xs text-dim underline underline-offset-2 hover:text-fg"
-        >
-          {showSeed ? "hide seed" : "custom seed (optional)"}
-        </button>
-        {showSeed && (
-          <input
-            value={seed}
-            onChange={(e) => setSeed(e.target.value)}
-            placeholder="leave blank for random"
-            className="pointer-events-auto w-72 max-w-[85vw] border border-edge bg-panel px-3 py-1.5 text-center text-sm text-fg outline-none focus:border-gold"
-          />
-        )}
       </div>
 
-      <p className="text-[11px] text-edge">
+      <p className="max-w-md text-balance text-xs text-dim">
         v1 · {LEVELS.length} levels · move with arrows or hjkl · bump to attack ·
         find the way, then live to tell it
       </p>

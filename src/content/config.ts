@@ -10,8 +10,14 @@ export const CONFIG = {
   minSpawnDistanceFromPlayer: 6,
   /** message log lines kept in memory */
   messageLogMax: 50,
+  /** damage a hidden spike trap deals when triggered (reduced by armor) */
+  trapDamage: 6,
+  /** default torch fuel (turns of light) if an item doesn't specify its own */
+  torchFuel: 150,
+  /** how far the firebomb cursor may be placed from the player */
+  throwRange: 7,
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "1",
+  contentVersion: "2",
 };

@@ -5,6 +5,7 @@ export const ITEMS: Record<string, ItemDef> = {
   // ── weapons ──
   w_dagger: { id: "w_dagger", name: "Rusty Dagger", glyph: "/", color: "#b0b0b0", category: "weapon", stackable: false, power: 3 },
   w_short: { id: "w_short", name: "Short Sword", glyph: "/", color: "#e0e0e0", category: "weapon", stackable: false, power: 5 },
+  w_mace: { id: "w_mace", name: "Flanged Mace", glyph: "/", color: "#c9c9d2", category: "weapon", stackable: false, power: 6 },
   w_axe: { id: "w_axe", name: "War Axe", glyph: "/", color: "#f0d0a0", category: "weapon", stackable: false, power: 8 },
   w_ench: { id: "w_ench", name: "Enchanted Blade", glyph: "/", color: "#9fdfff", category: "weapon", stackable: false, power: 12 },
   w_sun: { id: "w_sun", name: "The Sunblade", glyph: "/", color: "#ffe14d", category: "weapon", stackable: false, power: 18, questTag: "sunblade" },
@@ -13,6 +14,7 @@ export const ITEMS: Record<string, ItemDef> = {
   a_rags: { id: "a_rags", name: "Tattered Rags", glyph: "[", color: "#8a7a5a", category: "armor", stackable: false, reduction: 0 },
   a_leather: { id: "a_leather", name: "Leather Armor", glyph: "[", color: "#cd7f32", category: "armor", stackable: false, reduction: 1 },
   a_chain: { id: "a_chain", name: "Chainmail", glyph: "[", color: "#c0c0c8", category: "armor", stackable: false, reduction: 2 },
+  a_scale: { id: "a_scale", name: "Scale Mail", glyph: "[", color: "#b8c0b0", category: "armor", stackable: false, reduction: 3 },
   a_plate: { id: "a_plate", name: "Plate Armor", glyph: "[", color: "#e8e8f0", category: "armor", stackable: false, reduction: 4 },
 
   // ── potions (polish; usable but not required for the core loop) ──
@@ -23,8 +25,9 @@ export const ITEMS: Record<string, ItemDef> = {
   // ── coins ──
   c_gold: { id: "c_gold", name: "Gold", glyph: "$", color: "#ffd700", category: "coin", stackable: true, value: 10 },
 
-  // ── torch (polish) ──
-  i_torch: { id: "i_torch", name: "Torch", glyph: "(", color: "#ff8c00", category: "torch", stackable: false, lightBonus: 3 },
+  // ── torches (light + fuel) ──
+  i_torch: { id: "i_torch", name: "Torch", glyph: "(", color: "#ff8c00", category: "torch", stackable: false, lightBonus: 3, fuel: 150 },
+  i_lantern: { id: "i_lantern", name: "Lantern", glyph: "(", color: "#ffd24d", category: "torch", stackable: false, lightBonus: 4, fuel: 280 },
 
   // ── quest items ──
   q_shard: { id: "q_shard", name: "Moonstone Shard", glyph: "*", color: "#7fdfff", category: "quest", stackable: true, questTag: "moonstone" },
@@ -50,18 +53,28 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
     { itemId: "i_torch", price: 10 },
   ],
   2: [
-    { itemId: "w_axe", price: 30 },
-    { itemId: "a_chain", price: 25 },
+    { itemId: "w_mace", price: 24 },
+    { itemId: "a_leather", price: 12 },
     { itemId: "p_heal", price: 8, maxQty: 3 },
-    { itemId: "p_gheal", price: 18, maxQty: 2 },
+    { itemId: "i_torch", price: 10 },
+    { itemId: "p_bomb", price: 20, maxQty: 2 },
   ],
   3: [
-    { itemId: "w_ench", price: 55 },
-    { itemId: "a_plate", price: 45 },
-    { itemId: "p_gheal", price: 18, maxQty: 3 },
+    { itemId: "w_axe", price: 34 },
+    { itemId: "a_chain", price: 25 },
+    { itemId: "i_lantern", price: 30 },
+    { itemId: "p_gheal", price: 18, maxQty: 2 },
     { itemId: "p_bomb", price: 20, maxQty: 3 },
   ],
   4: [
+    { itemId: "w_ench", price: 55 },
+    { itemId: "a_scale", price: 38 },
+    { itemId: "p_gheal", price: 18, maxQty: 3 },
+    { itemId: "p_bomb", price: 20, maxQty: 3 },
+  ],
+  5: [
+    { itemId: "a_plate", price: 48 },
+    { itemId: "i_lantern", price: 30 },
     { itemId: "p_gheal", price: 18, maxQty: 3 },
     { itemId: "p_bomb", price: 20, maxQty: 3 },
   ],

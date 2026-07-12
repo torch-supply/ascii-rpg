@@ -15,7 +15,13 @@ import PauseModal from "@/components/overlays/PauseModal";
 import HelpModal from "@/components/overlays/HelpModal";
 import InventoryModal from "@/components/overlays/InventoryModal";
 
-const CANVAS_MODES = new Set(["playing", "paused", "inventory", "help"]);
+const CANVAS_MODES = new Set([
+  "playing",
+  "paused",
+  "inventory",
+  "help",
+  "targeting",
+]);
 
 export default function GameRoot() {
   const mode = useGameStore((s) => s.mode);
@@ -53,6 +59,13 @@ export default function GameRoot() {
           {/* the map fills only this region, so it always fits the viewport */}
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <GameCanvas />
+            {mode === "targeting" && (
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
+                <span className="border border-gold/50 bg-panel/90 px-3 py-1 text-xs text-gold">
+                  Aim the firebomb — move cursor · Enter to throw · Esc to cancel
+                </span>
+              </div>
+            )}
           </div>
           <HudFooter />
         </div>
