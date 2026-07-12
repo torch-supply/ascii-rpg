@@ -5,7 +5,7 @@ import { gameStore, useGameStore } from "@/store/gameStore";
 import { KeyboardInput } from "@/game/input/KeyboardInput";
 
 import GameCanvas from "@/components/GameCanvas";
-import Hud from "@/components/hud/Hud";
+import { HudBar, HudFooter } from "@/components/hud/Hud";
 import Splash from "@/components/screens/Splash";
 import Narration from "@/components/screens/Narration";
 import GameOver from "@/components/screens/GameOver";
@@ -47,10 +47,14 @@ export default function GameRoot() {
   return (
     <div className="relative h-full w-full overflow-hidden bg-ink">
       {showCanvas && (
-        <>
-          <GameCanvas />
-          <Hud />
-        </>
+        <div className="flex h-full w-full flex-col overflow-hidden">
+          <HudBar />
+          {/* the map fills only this region, so it always fits the viewport */}
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <GameCanvas />
+            <HudFooter />
+          </div>
+        </div>
       )}
 
       {mode === "splash" && <Splash />}

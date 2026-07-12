@@ -209,5 +209,38 @@ console.log("\n[7] Combat formulas & turn-budget death");
   check("turn budget exhaustion kills the player", res.playerDied && res.deathReason === "timeout");
 }
 
+// ─── 8. Connectivity — no more "trapped with no way out" (regression) ───────
+console.log("\n[8] Connectivity: player can reach every objective");
+{
+  const seeds = ["s1", "s2", "s3", "trap-check", "xyzzy", "blackwood", "abc", "999"];
+  let checked = 0;
+  let unreachable = 0;
+  for (const seed of seeds) {
+    for (let li = 0; li < LEVELS.length; li++) {
+      const g = beginLevel(seed, li, createPlayer());
+      const from: Pos = { x: g.player.x, y: g.player.y };
+      for (const it of g.items) {
+        if (!it.questTag) continue;
+        checked++;
+        if (bfsPath(g.map, from, { x: it.x, y: it.y }) === null) unreachable++;
+      }
+      if (g.map.exit) {
+        checked++;
+        if (bfsPath(g.map, from, g.map.exit) === null) unreachable++;
+      }
+      const boss = g.monsters.find((m) => m.isGoalTarget);
+      if (boss) {
+        checked++;
+        if (bfsPath(g.map, from, { x: boss.x, y: boss.y }) === null) unreachable++;
+      }
+    }
+  }
+  check(
+    `all objectives reachable across ${seeds.length} seeds × ${LEVELS.length} levels`,
+    unreachable === 0,
+    `(${unreachable}/${checked} unreachable)`
+  );
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

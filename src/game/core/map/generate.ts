@@ -62,6 +62,46 @@ function buildTiles(config: LevelConfig): TileType[] {
   return tiles;
 }
 
+/**
+ * Largest 4-connected component of floor cells. Confining all placement to
+ * this component guarantees the player can always reach the exit / quest items
+ * / boss — cellular caves in particular can leave isolated pockets.
+ */
+function largestFloorComponent(map: GameMap): number[] {
+  const { width: w, height: h, tiles } = map;
+  const seen = new Uint8Array(w * h);
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  let best: number[] = [];
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] !== "floor" || seen[i]) continue;
+    const comp: number[] = [];
+    const stack = [i];
+    seen[i] = 1;
+    while (stack.length) {
+      const cur = stack.pop()!;
+      comp.push(cur);
+      const cx = cur % w;
+      const cy = Math.floor(cur / w);
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const ni = ny * w + nx;
+        if (seen[ni] || tiles[ni] !== "floor") continue;
+        seen[ni] = 1;
+        stack.push(ni);
+      }
+    }
+    if (comp.length > best.length) best = comp;
+  }
+  return best;
+}
+
 function pickCell(
   floors: number[],
   occupied: Set<number>,
@@ -119,8 +159,8 @@ export function generateLevel(
   const tiles = buildTiles(config);
   const map: GameMap = { width: w, height: h, tiles };
 
-  const floors: number[] = [];
-  for (let i = 0; i < tiles.length; i++) if (tiles[i] === "floor") floors.push(i);
+  // Only ever place onto the largest connected region so nothing is unreachable.
+  const floors = largestFloorComponent(map);
 
   const occupied = new Set<number>();
   const monsters: MonsterInstance[] = [];
