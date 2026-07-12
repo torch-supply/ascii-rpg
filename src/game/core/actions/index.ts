@@ -31,6 +31,11 @@ function msg(events: GameEvent[], text: string) {
   events.push({ kind: "message", text });
 }
 
+function addCoins(state: GameState, n: number) {
+  state.player.coins += n;
+  state.player.goldEarned += n; // run stat (never decremented by shopping)
+}
+
 function monsterAt(
   state: GameState,
   x: number,
@@ -56,7 +61,7 @@ function pickUp(state: GameState, events: GameEvent[]) {
   switch (def.category) {
     case "coin": {
       const v = it.value ?? def.value ?? 0;
-      p.coins += v;
+      addCoins(state, v);
       msg(events, `You pick up ${v} gold.`);
       break;
     }
@@ -119,9 +124,8 @@ function resolvePlayerAttack(
   events.push({ kind: "hit", x: target.x, y: target.y });
   if (target.hp <= 0) {
     msg(events, `You slay the ${def.name}.`);
-    if (def.coinReward > 0) {
-      state.player.coins += def.coinReward;
-    }
+    if (def.coinReward > 0) addCoins(state, def.coinReward);
+    state.player.kills += 1;
     state.monsters = state.monsters.filter((m) => m.id !== target.id);
   } else {
     msg(events, `You strike the ${def.name} for ${dmg} (${target.hp} left).`);
@@ -246,7 +250,8 @@ function detonateAt(
   for (const m of state.monsters) {
     if (m.hp <= 0) {
       const md = monsterDef(m.defId);
-      if (md.coinReward > 0) p.coins += md.coinReward;
+      if (md.coinReward > 0) addCoins(state, md.coinReward);
+      state.player.kills += 1;
       slain++;
     } else {
       survivors.push(m);
@@ -497,6 +502,7 @@ export function resolveTurn(
   }
 
   state.turnCount += 1;
+  state.player.totalTurns += 1; // run stat (across all levels)
   state.turnsLeft -= 1;
   tickTorch(state, events);
   recomputeFOV(state);

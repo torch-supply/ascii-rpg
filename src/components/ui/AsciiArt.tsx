@@ -18,6 +18,7 @@ export function AsciiArt({
   color = "#ffe14d",
   lineColors,
   colors,
+  shimmer = false,
   className = "",
 }: {
   art: string;
@@ -25,6 +26,8 @@ export function AsciiArt({
   color?: string;
   lineColors?: string[];
   colors?: Record<string, string>;
+  /** with `gradient`: sweep a bright band across the letters (animated) */
+  shimmer?: boolean;
   className?: string;
 }) {
   // Strip leading/trailing blank lines (an artifact of the `\n...\n` raw
@@ -73,18 +76,35 @@ export function AsciiArt({
     return <pre className={cls}>{nodes}</pre>;
   }
 
-  // ── gradient / flat color ──
-  const style: CSSProperties = gradient
-    ? {
-        backgroundImage: gradient,
-        WebkitBackgroundClip: "text",
-        backgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        color: "transparent",
-      }
-    : { color };
+  // ── gradient (optionally with an animated shimmer sweep) / flat color ──
+  if (gradient) {
+    const clip: CSSProperties = {
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      color: "transparent",
+    };
+    if (shimmer) {
+      const style: CSSProperties = {
+        ...clip,
+        backgroundImage: `linear-gradient(100deg, transparent 42%, rgba(255,248,220,0.85) 50%, transparent 58%), ${gradient}`,
+        backgroundSize: "250% 100%, 100% 100%",
+        backgroundRepeat: "no-repeat",
+      };
+      return (
+        <pre className={`${cls} ascii-shimmer`} style={style}>
+          {content}
+        </pre>
+      );
+    }
+    return (
+      <pre className={cls} style={{ ...clip, backgroundImage: gradient }}>
+        {content}
+      </pre>
+    );
+  }
   return (
-    <pre className={cls} style={style}>
+    <pre className={cls} style={{ color }}>
       {content}
     </pre>
   );

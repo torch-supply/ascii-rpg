@@ -81,20 +81,30 @@ body {
   animation: emberGlow 4.5s ease-in-out infinite;
 }
 
+/* Sparks cool-to-warm as they rise: ember-red at the base → gold near the top. */
 @keyframes emberRise {
   0% {
     transform: translateY(12px) scale(1);
     opacity: 0;
+    background: #ff5a3c;
+    box-shadow: 0 0 6px 1px rgba(255, 90, 40, 0.7);
   }
   12% {
     opacity: 0.9;
   }
-  78% {
+  55% {
+    background: #ff9d3c;
+    box-shadow: 0 0 6px 1px rgba(255, 150, 60, 0.65);
+  }
+  80% {
     opacity: 0.45;
+    background: #ffd24d;
   }
   100% {
     transform: translateY(-150px) scale(0.35);
     opacity: 0;
+    background: #fff2b0;
+    box-shadow: 0 0 5px 1px rgba(255, 225, 130, 0.6);
   }
 }
 .ember-spark {
@@ -108,8 +118,23 @@ body {
   animation-iteration-count: infinite;
 }
 
+/* Title shimmer: a bright band sweeps across the letters over the ember base.
+   The moving layer is background layer 1; the ember gradient (layer 2) is fixed. */
+@keyframes titleShimmer {
+  0% {
+    background-position: 220% 0, 0 0;
+  }
+  100% {
+    background-position: -120% 0, 0 0;
+  }
+}
+.ascii-shimmer {
+  animation: titleShimmer 5s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .ember-flicker {
+  .ember-flicker,
+  .ascii-shimmer {
     animation: none;
   }
   .ember-spark {

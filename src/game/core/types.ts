@@ -173,6 +173,10 @@ export interface PlayerState {
   armorReduction: number;
   coins: number;
   bag: BagEntry[];
+  // ── run-cumulative stats (carry across levels via clonePlayer) ──
+  kills: number;
+  totalTurns: number;
+  goldEarned: number;
   baseLightRadius: number;
   lightRadius: number;
   hasTorch: boolean;

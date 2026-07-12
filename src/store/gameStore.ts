@@ -41,6 +41,14 @@ export interface TargetingData {
   range: number;
 }
 
+export interface RunResult {
+  kills: number;
+  turns: number;
+  gold: number;
+  timeMs: number;
+  victory: boolean;
+}
+
 export interface NarrationData {
   title: string;
   body: string;
@@ -63,6 +71,8 @@ export interface GameStore {
   shopPurchases: Record<string, number>;
   /** active firebomb targeting cursor (null unless mode === "targeting") */
   targeting: TargetingData | null;
+  /** stats captured when a run ends (shown on victory / game-over) */
+  runResult: RunResult | null;
 
   // lifecycle
   init: () => void;
@@ -93,7 +103,18 @@ export interface GameStore {
   persist: () => void;
 }
 
+// Wall-clock start of the current run/session (for the run-time stat). Reset on
+// New Game and Resume; not persisted (time shown is this session's).
+let runStartMs = 0;
+
 export const gameStore = createStore<GameStore>((set, get) => {
+  const makeRunResult = (game: GameState, victory: boolean): RunResult => ({
+    kills: game.player.kills,
+    turns: game.player.totalTurns,
+    gold: game.player.goldEarned,
+    timeMs: Math.max(0, Date.now() - runStartMs),
+    victory,
+  });
   // Commit mutated game state with a fresh top-level identity so subscribers
   // (React HUD + canvas renderer) re-read it.
   const commit = () => set({ game: { ...get().game! } });
@@ -117,7 +138,13 @@ export const gameStore = createStore<GameStore>((set, get) => {
     const isLast = game.currentLevel >= LEVELS.length - 1;
     if (isLast) {
       clearSave();
-      set({ game: { ...game }, mode: "victory", hasSave: false, saveInfo: null });
+      set({
+        game: { ...game },
+        mode: "victory",
+        hasSave: false,
+        saveInfo: null,
+        runResult: makeRunResult(game, true),
+      });
       return;
     }
     const nextIdx = game.currentLevel + 1;
@@ -148,6 +175,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         mode: "gameover",
         hasSave: false,
         saveInfo: null,
+        runResult: makeRunResult(game, false),
       });
       return;
     }
@@ -173,6 +201,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     narration: null,
     shopPurchases: {},
     targeting: null,
+    runResult: null,
 
     init: () => {
       const info = peekSaveInfo();
@@ -187,10 +216,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const player = createPlayer();
       const rng = new Rng(gameplaySeed(masterSeed));
       const game = beginLevel(masterSeed, 0, player);
+      runStartMs = Date.now();
       set({
         game,
         rng,
         mode: "narration",
+        runResult: null,
         narration: {
           title: OPENING.title,
           body: OPENING.body,
@@ -211,6 +242,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         return;
       }
       const rng = new Rng(0, save.gameplayRngState);
+      runStartMs = Date.now();
       set({ game: save.game, rng, mode: "playing", narration: null });
     },
 
@@ -223,6 +255,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         narration: null,
         hasSave: !!info,
         saveInfo: info,
+        runResult: null,
       });
     },
 

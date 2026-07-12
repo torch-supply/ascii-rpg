@@ -25,11 +25,12 @@ export default function Splash() {
       <div className="relative flex flex-col items-center gap-1 px-6 pt-8">
         <Embers />
         <div className="ember-flicker relative z-10 flex flex-col items-center gap-1">
-          <AsciiArt art={EMBER_ART} gradient={G_EMBER} className="text-[11px] sm:text-base" />
+          <AsciiArt art={EMBER_ART} gradient={G_EMBER} shimmer className="text-[11px] sm:text-base" />
           <div className="text-sm italic text-[#ff8c00] sm:text-base">of</div>
           <AsciiArt
             art={DAWN_ART}
             gradient={G_DAWN_TITLE}
+            shimmer
             className="-mt-[18px] text-[11px] sm:text-base"
           />
         </div>

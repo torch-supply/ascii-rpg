@@ -6,6 +6,7 @@ import { LEVELS } from "@/content/levels";
 import { MenuButton } from "@/components/ui/MenuButton";
 import { AsciiArt } from "@/components/ui/AsciiArt";
 import { Prose } from "@/components/ui/Prose";
+import { RunStats } from "@/components/ui/RunStats";
 
 export default function GameOver() {
   const game = useGameStore((s) => s.game);
@@ -29,6 +30,7 @@ export default function GameOver() {
           {LEVELS[game.currentLevel].title}.
         </p>
       )}
+      <RunStats />
       <MenuButton accent onClick={() => gameStore.getState().quitToTitle()}>
         ▸ Return to title
         <span className="ml-1 text-xs opacity-70">(Enter)</span>
