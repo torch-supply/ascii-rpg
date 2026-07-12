@@ -16,6 +16,10 @@ export const CONFIG = {
   torchFuel: 150,
   /** how far the firebomb cursor may be placed from the player */
   throwRange: 7,
+  /** weapon-power bonus while the Might effect is active */
+  mightBonus: 4,
+  /** armed traps within this many tiles are sensed (revealed as a faint ^) */
+  trapSenseRadius: 1,
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */

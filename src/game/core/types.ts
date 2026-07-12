@@ -75,7 +75,14 @@ export type ItemCategory =
   | "quest"
   | "torch";
 
-export type PotionEffect = "heal" | "greaterHeal" | "bomb";
+export type PotionEffect =
+  | "heal"
+  | "greaterHeal"
+  | "bomb" // thrown at a chosen tile (cursor targeting)
+  | "blast" // one-time burst around the player
+  | "ward" // temporary damage reduction
+  | "might" // temporary weapon-power boost
+  | "detect"; // reveal every trap on the level
 
 export interface ItemDef {
   id: string;
@@ -92,6 +99,7 @@ export interface ItemDef {
   questTag?: string; // quest / findItem
   lightBonus?: number; // torch
   fuel?: number; // torch: turns of light before it burns out
+  duration?: number; // potion: turns a timed effect (ward/might) lasts
 }
 
 export interface Palette {
@@ -182,6 +190,8 @@ export interface PlayerState {
   hasTorch: boolean;
   /** turns of torch light remaining; 0 = unlit */
   torchFuel: number;
+  /** active timed effects: id -> turns remaining (e.g. ward, might) */
+  effects: Record<string, number>;
 }
 
 export type GameStatus = "playing" | "levelComplete" | "gameOver" | "victory";
@@ -199,6 +209,8 @@ export interface GameState {
   turnsLeft: number;
   turnCount: number;
   questProgress: Record<string, number>;
+  /** armed trap tiles the player is aware of (sensed or detected) */
+  knownTraps: number[];
   /** currently in FOV (recomputed every player turn) — set of tile indices */
   visible: number[];
   /** seen before (fog memory) — set of tile indices */

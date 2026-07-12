@@ -3,6 +3,7 @@
 import { gameStore, useGameStore } from "@/store/gameStore";
 import { ITEMS, SHOP_TIERS, type ShopEntry } from "@/content/items";
 import { LEVELS } from "@/content/levels";
+import { CONFIG } from "@/content/config";
 import { MenuButton } from "@/components/ui/MenuButton";
 
 function statLabel(itemId: string): string {
@@ -13,9 +14,25 @@ function statLabel(itemId: string): string {
     case "armor":
       return `armor ${d.reduction}`;
     case "torch":
-      return `+${d.lightBonus} light`;
+      return `+${d.lightBonus} light · ${d.fuel} fuel`;
     case "potion":
-      return d.effect === "bomb" ? `${d.magnitude} dmg` : `heals ${d.magnitude}`;
+      switch (d.effect) {
+        case "heal":
+        case "greaterHeal":
+          return `heals ${d.magnitude}`;
+        case "bomb":
+          return `${d.magnitude} dmg · aimed`;
+        case "blast":
+          return `${d.magnitude} dmg burst`;
+        case "ward":
+          return `halves damage · ${d.duration}t`;
+        case "might":
+          return `+${CONFIG.mightBonus} power · ${d.duration}t`;
+        case "detect":
+          return "reveals traps";
+        default:
+          return "";
+      }
     default:
       return "";
   }
@@ -42,7 +59,7 @@ export default function Shop() {
       </p>
       <div className="text-sm text-gold">$ {coins} gold</div>
 
-      <div className="flex w-full max-w-md flex-col gap-2">
+      <div className="flex w-full max-w-lg flex-col gap-2">
         {entries.map((entry, i) => {
           const d = ITEMS[entry.itemId];
           const bought = purchases[entry.itemId] ?? 0;
@@ -54,11 +71,13 @@ export default function Shop() {
               key={entry.itemId}
               className="flex items-center justify-between gap-3 border border-edge bg-panel px-4 py-2 text-sm"
             >
-              <span className="flex min-w-0 items-baseline gap-2">
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                 <span className="text-magic">[{i + 1}]</span>
                 <span style={{ color: d.color }}>{d.glyph}</span>
-                <span className="truncate text-fg">{d.name}</span>
-                <span className="shrink-0 text-dim">· {statLabel(entry.itemId)}</span>
+                <span className="whitespace-nowrap text-fg">{d.name}</span>
+                <span className="whitespace-nowrap text-dim">
+                  · {statLabel(entry.itemId)}
+                </span>
                 {entry.maxQty != null && (
                   <span className="shrink-0 text-edge">
                     ({bought}/{entry.maxQty})

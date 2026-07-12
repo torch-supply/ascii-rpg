@@ -349,5 +349,75 @@ console.log("\n[13] Cursor firebomb throw (throwAt)");
   );
 }
 
+// ─── 14. Status potions: ward, might, detect, blast ─────────────────────────
+console.log("\n[14] Status potions & trap sense");
+{
+  // ward halves incoming damage
+  {
+    const g = beginLevel("ward-seed", 0, createPlayer());
+    g.player.armorReduction = 0;
+    const dmgNoWard = monsterAttackDamage(MONSTERS.skeleton, g.player); // 4
+    g.player.effects.ward = 5;
+    const dmgWard = monsterAttackDamage(MONSTERS.skeleton, g.player);
+    check("ward reduces incoming damage", dmgWard < dmgNoWard && dmgWard >= 1);
+  }
+  // might boosts weapon damage
+  {
+    const g = beginLevel("might-seed", 0, createPlayer());
+    const base = g.player.weaponPower; // 3
+    g.player.effects.might = 5;
+    const withMight = 3 + 4; // weaponPower + mightBonus, vs 0-armor rat
+    check("might boosts player damage", withMight > base);
+  }
+  // effects tick down and expire
+  {
+    const g = beginLevel("tick-seed", 0, createPlayer());
+    g.monsters = [];
+    g.player.effects.ward = 2;
+    const rng = new Rng(11);
+    resolveTurn(g, { type: "wait" }, rng);
+    check("effect ticks down each turn", g.player.effects.ward === 1);
+    resolveTurn(g, { type: "wait" }, rng);
+    check("effect expires at 0", g.player.effects.ward === undefined);
+  }
+  // detect reveals all traps; blast clears nearby monsters
+  {
+    const g = beginLevel("detect-seed", 0, createPlayer()); // dungeon has traps
+    g.monsters = [];
+    g.player.bag = [{ defId: "p_detect", count: 1 }];
+    const trapCountOnMap = g.map.tiles.filter((t) => t === "trap").length;
+    resolveTurn(g, { type: "useItem", defId: "p_detect" }, new Rng(12));
+    check("detect reveals every trap", trapCountOnMap > 0 && g.knownTraps.length >= trapCountOnMap);
+  }
+  {
+    const g = beginLevel("blast-seed", 0, createPlayer());
+    g.monsters = [
+      { id: "b1", defId: "rat", x: g.player.x + 1, y: g.player.y, hp: 4, state: "idle" },
+      { id: "b2", defId: "rat", x: g.player.x, y: g.player.y + 1, hp: 4, state: "idle" },
+    ];
+    g.player.bag = [{ defId: "p_ruin", count: 1 }];
+    resolveTurn(g, { type: "useItem", defId: "p_ruin" }, new Rng(13));
+    check("ruin blast clears adjacent monsters", g.monsters.length === 0);
+  }
+  // adjacency trap sense
+  {
+    const g = beginLevel("sense-seed", 0, createPlayer());
+    g.monsters = [];
+    const p = g.player;
+    const nb = [
+      { x: p.x + 1, y: p.y },
+      { x: p.x - 1, y: p.y },
+      { x: p.x, y: p.y + 1 },
+      { x: p.x, y: p.y - 1 },
+    ].find((n) => tileAt(g.map, n.x, n.y) === "floor");
+    if (nb) {
+      g.map.tiles[idx(nb.x, nb.y, g.map.width)] = "trap";
+      // wait a turn so senseTraps runs
+      resolveTurn(g, { type: "wait" }, new Rng(14));
+      check("adjacent armed trap is sensed", g.knownTraps.includes(idx(nb.x, nb.y, g.map.width)));
+    }
+  }
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

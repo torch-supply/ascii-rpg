@@ -27,11 +27,12 @@ export function createPlayer(): PlayerState {
     lightRadius: 8,
     hasTorch: false,
     torchFuel: 0,
+    effects: {},
   };
 }
 
 export function clonePlayer(p: PlayerState): PlayerState {
-  return { ...p, bag: p.bag.map((b) => ({ ...b })) };
+  return { ...p, bag: p.bag.map((b) => ({ ...b })), effects: { ...p.effects } };
 }
 
 /** Light radius = base (from level) + torch bonus while a torch is lit. */
@@ -86,6 +87,7 @@ export function beginLevel(
     turnsLeft: config.turnLimit,
     turnCount: 0,
     questProgress: {},
+    knownTraps: [],
     visible: [],
     explored: [],
     status: "playing",

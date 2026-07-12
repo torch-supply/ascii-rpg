@@ -201,6 +201,7 @@ export class CanvasRenderer {
     const palette = level.palette;
     const visible = new Set(state.visible);
     const explored = new Set(state.explored);
+    const knownTraps = new Set(state.knownTraps);
 
     this.display.clear();
 
@@ -216,9 +217,15 @@ export class CanvasRenderer {
         if (!isVis && !isExp) continue; // unseen -> background
 
         const t = map.tiles[i];
+        let glyph = terrainGlyph(t, level.biome);
         let color = terrainColor(t, palette);
+        // a sensed/detected (but still armed) trap shows as a faint warning ^
+        if (t === "trap" && knownTraps.has(i)) {
+          glyph = "^";
+          color = "#e0904a";
+        }
         if (!isVis) color = dim(color, FOG_DIM);
-        this.display.draw(sx, sy, terrainGlyph(t, level.biome), color, null);
+        this.display.draw(sx, sy, glyph, color, null);
       }
     }
 

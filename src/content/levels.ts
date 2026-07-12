@@ -91,6 +91,7 @@ export const LEVELS: LevelConfig[] = [
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_heal", weight: 3 },
+      { itemId: "p_detect", weight: 1 },
       { itemId: "i_torch", weight: 1 },
     ],
     coinRichness: 1.15,
@@ -209,6 +210,7 @@ export const LEVELS: LevelConfig[] = [
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_gheal", weight: 2 },
+      { itemId: "p_detect", weight: 2 },
       { itemId: "i_lantern", weight: 1 },
     ],
     coinRichness: 1.5,

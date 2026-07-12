@@ -74,6 +74,12 @@ export function HudBar() {
               · ( torch {p.torchFuel}
             </span>
           )}
+          {(p.effects.ward ?? 0) > 0 && (
+            <span className="text-magic"> · ⛨ ward {p.effects.ward}</span>
+          )}
+          {(p.effects.might ?? 0) > 0 && (
+            <span style={{ color: "#ff9d3c" }}> · ⚔ might {p.effects.might}</span>
+          )}
         </span>
         <span style={{ color: level.palette.accent }}>✦ {goalLabel(game)}</span>
       </div>

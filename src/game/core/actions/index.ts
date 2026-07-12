@@ -9,11 +9,15 @@ import type {
 } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
 import { Rng } from "@/game/core/rng";
-import { idx, isWalkable, chebyshev } from "@/game/core/grid";
+import { idx, isWalkable, chebyshev, inBounds } from "@/game/core/grid";
 import { recomputeFOV, recomputeLight } from "@/game/core/state";
 import { equipWeapon, equipArmor, addToBag } from "@/game/core/inventory";
 import { isGoalComplete } from "@/game/core/goals";
-import { playerAttackDamage, monsterAttackDamage } from "@/game/core/combat";
+import {
+  playerAttackDamage,
+  monsterAttackDamage,
+  wardMitigate,
+} from "@/game/core/combat";
 import { stepToward } from "@/game/core/map/pathfinding";
 import { monsterDef } from "@/content/monsters";
 import { ITEMS } from "@/content/items";
@@ -174,7 +178,10 @@ function springTrap(state: GameState, events: GameEvent[]) {
   const i = idx(state.player.x, state.player.y, state.map.width);
   if (state.map.tiles[i] !== "trap") return;
   state.map.tiles[i] = "trapSprung";
-  const dmg = Math.max(1, CONFIG.trapDamage - state.player.armorReduction);
+  const dmg = wardMitigate(
+    state.player,
+    Math.max(1, CONFIG.trapDamage - state.player.armorReduction)
+  );
   state.player.hp -= dmg;
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
   msg(events, `A hidden spike trap! You take ${dmg} damage.`);
@@ -203,18 +210,87 @@ function useItem(
   const def = ITEMS[defId];
   if (def.category !== "potion") return false;
 
-  if (def.effect === "bomb") {
-    return throwFirebomb(state, entry, def, events);
-  }
-  if (def.effect === "heal" || def.effect === "greaterHeal") {
-    const before = p.hp;
-    p.hp = Math.min(p.maxHp, p.hp + (def.magnitude ?? 0));
-    msg(events, `You drink the ${def.name}. (+${p.hp - before} hp)`);
+  const consume = () => {
     entry.count -= 1;
     if (entry.count <= 0) p.bag = p.bag.filter((b) => b !== entry);
-    return true; // drinking costs a turn
+  };
+
+  switch (def.effect) {
+    case "bomb":
+      // auto-target fallback; the UI normally routes this to cursor targeting
+      return throwFirebomb(state, entry, def, events);
+    case "blast":
+      // one-time burst centered on the player (3x3)
+      return detonateAt(state, entry, def, p.x, p.y, events);
+    case "heal":
+    case "greaterHeal": {
+      const before = p.hp;
+      p.hp = Math.min(p.maxHp, p.hp + (def.magnitude ?? 0));
+      msg(events, `You drink the ${def.name}. (+${p.hp - before} hp)`);
+      consume();
+      return true;
+    }
+    case "ward":
+      p.effects.ward = def.duration ?? 10;
+      msg(events, `A shimmer of warding wraps you. (${p.effects.ward} turns)`);
+      consume();
+      return true;
+    case "might":
+      p.effects.might = def.duration ?? 10;
+      msg(events, `Strength surges through your arm. (${p.effects.might} turns)`);
+      consume();
+      return true;
+    case "detect":
+      revealTraps(state);
+      msg(events, "The floor's hidden teeth glimmer into sight.");
+      consume();
+      return true;
+    default:
+      return false;
   }
-  return false;
+}
+
+/** Reveal every armed trap on the level (Draught of Seeing). */
+function revealTraps(state: GameState) {
+  const known = new Set(state.knownTraps);
+  const { tiles } = state.map;
+  for (let i = 0; i < tiles.length; i++) if (tiles[i] === "trap") known.add(i);
+  state.knownTraps = Array.from(known);
+}
+
+/** Passive sense: armed traps within trapSenseRadius reveal as a faint ^. */
+function senseTraps(state: GameState) {
+  const { player, map } = state;
+  const r = CONFIG.trapSenseRadius;
+  const known = new Set(state.knownTraps);
+  let changed = false;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (Math.abs(dx) + Math.abs(dy) > r) continue;
+      const x = player.x + dx;
+      const y = player.y + dy;
+      if (!inBounds(map, x, y)) continue;
+      const i = idx(x, y, map.width);
+      if (map.tiles[i] === "trap" && !known.has(i)) {
+        known.add(i);
+        changed = true;
+      }
+    }
+  }
+  if (changed) state.knownTraps = Array.from(known);
+}
+
+/** Count down timed effects each turn; announce those that expire. */
+function tickEffects(state: GameState, events: GameEvent[]) {
+  const e = state.player.effects;
+  for (const k of Object.keys(e)) {
+    e[k] -= 1;
+    if (e[k] <= 0) {
+      delete e[k];
+      if (k === "ward") msg(events, "Your warding fades.");
+      else if (k === "might") msg(events, "Your strength fades.");
+    }
+  }
 }
 
 /**
@@ -411,7 +487,10 @@ function rangedAttack(
   def: MonsterDef,
   events: GameEvent[]
 ) {
-  const dmg = Math.max(1, (def.rangedDmg ?? def.dmg) - state.player.armorReduction);
+  const dmg = wardMitigate(
+    state.player,
+    Math.max(1, (def.rangedDmg ?? def.dmg) - state.player.armorReduction)
+  );
   state.player.hp -= dmg;
   events.push({
     kind: "projectile",
@@ -505,7 +584,9 @@ export function resolveTurn(
   state.player.totalTurns += 1; // run stat (across all levels)
   state.turnsLeft -= 1;
   tickTorch(state, events);
+  tickEffects(state, events);
   recomputeFOV(state);
+  senseTraps(state);
 
   // Completing your objective happens on your turn, before monsters act.
   if (isGoalComplete(state)) {
