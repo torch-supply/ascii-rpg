@@ -1,26 +1,69 @@
 @import "tailwindcss";
 
+/* Terminal / roguelike theme tokens (Tailwind v4 @theme -> utilities like bg-ink, text-gold) */
+@theme {
+  --color-ink: #0d0d0d;
+  --color-panel: #121216;
+  --color-panel2: #17171d;
+  --color-edge: #2a2a32;
+  --color-dim: #7a7a82;
+  --color-fg: #d5d5da;
+  --color-gold: #ffd700;
+  --color-accent: #ffe14d;
+  --color-hp: #ff5555;
+  --color-good: #3fbf3f;
+  --color-magic: #7fdfff;
+  --color-danger: #c0392b;
+
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--color-ink);
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+  overflow: hidden; /* the game fills the window; no page scroll */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle scanline / vignette flavor for the terminal feel, kept cheap. */
+.crt-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+}
+
+/* Blinking caret used on menus */
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Preserve ASCII art whitespace */
+.ascii {
+  white-space: pre;
+  line-height: 1.05;
+  font-family: var(--font-mono);
 }
