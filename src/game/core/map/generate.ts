@@ -7,7 +7,7 @@ import type {
   Pos,
   TileType,
 } from "@/game/core/types";
-import { idx, manhattan } from "@/game/core/grid";
+import { idx, manhattan, isWalkable } from "@/game/core/grid";
 import { seedMapGen, mapInt, mapWeighted } from "@/game/core/rng";
 import { levelSeed } from "@/lib/hash";
 import { CONFIG } from "@/content/config";
@@ -186,12 +186,15 @@ function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number
   }
 }
 
-/** Scatter hidden spike traps on free reachable floor cells. */
+/** Scatter hidden spike traps on free reachable floor cells (never right next
+ * to the player's start, so the first step is always safe). */
 function placeTraps(
   config: LevelConfig,
   tiles: TileType[],
   floors: number[],
-  occupied: Set<number>
+  occupied: Set<number>,
+  w: number,
+  playerStart: Pos
 ) {
   let placed = 0;
   let attempts = 0;
@@ -200,9 +203,97 @@ function placeTraps(
     attempts++;
     const i = floors[mapInt(0, floors.length - 1)];
     if (occupied.has(i) || tiles[i] !== "floor") continue;
+    const x = i % w;
+    const y = Math.floor(i / w);
+    if (manhattan(x, y, playerStart.x, playerStart.y) <= 1) continue;
     tiles[i] = "trap";
     occupied.add(i);
     placed++;
+  }
+}
+
+/** Tiles reachable from `from` WITHOUT stepping on an (armed) trap. */
+function trapFreeReachable(map: GameMap, from: Pos): Set<number> {
+  const w = map.width;
+  const seen = new Set<number>([idx(from.x, from.y, w)]);
+  const q = [idx(from.x, from.y, w)];
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  while (q.length) {
+    const cur = q.shift()!;
+    const cx = cur % w;
+    const cy = Math.floor(cur / w);
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!isWalkable(map, nx, ny)) continue;
+      const ni = idx(nx, ny, w);
+      if (seen.has(ni) || map.tiles[ni] === "trap") continue;
+      seen.add(ni);
+      q.push(ni);
+    }
+  }
+  return seen;
+}
+
+/** Shortest walkable path (traps allowed) from `from` to `to`, as tile indices. */
+function walkablePath(map: GameMap, from: Pos, to: Pos): number[] {
+  const w = map.width;
+  const start = idx(from.x, from.y, w);
+  const goal = idx(to.x, to.y, w);
+  if (start === goal) return [start];
+  const prev = new Map<number, number>();
+  const seen = new Set<number>([start]);
+  const q = [start];
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  while (q.length) {
+    const cur = q.shift()!;
+    if (cur === goal) break;
+    const cx = cur % w;
+    const cy = Math.floor(cur / w);
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!isWalkable(map, nx, ny)) continue;
+      const ni = idx(nx, ny, w);
+      if (seen.has(ni)) continue;
+      seen.add(ni);
+      prev.set(ni, cur);
+      q.push(ni);
+    }
+  }
+  if (!prev.has(goal)) return [];
+  const path: number[] = [];
+  let c = goal;
+  while (c !== start) {
+    path.push(c);
+    c = prev.get(c)!;
+  }
+  path.push(start);
+  return path;
+}
+
+/**
+ * Fairness guarantee: every objective must be reachable WITHOUT crossing a
+ * trap. For any objective that isn't, demote the traps along a route to it back
+ * to floor — so traps stay as optional risk/reward, never a mandatory toll.
+ */
+function ensureTrapFreeRoutes(map: GameMap, from: Pos, objectives: Pos[]) {
+  for (const obj of objectives) {
+    const reachable = trapFreeReachable(map, from);
+    if (reachable.has(idx(obj.x, obj.y, map.width))) continue;
+    for (const i of walkablePath(map, from, obj)) {
+      if (map.tiles[i] === "trap") map.tiles[i] = "floor";
+    }
   }
 }
 
@@ -350,7 +441,14 @@ export function generateLevel(
   }
 
   // Hidden traps last, on free reachable floor (not under the player/items/exit).
-  placeTraps(config, tiles, floors, occupied);
+  placeTraps(config, tiles, floors, occupied, w, playerStart);
+
+  // Fairness: guarantee a trap-free route to every objective.
+  const objectives: Pos[] = [];
+  if (map.exit) objectives.push(map.exit);
+  for (const m of monsters) if (m.isGoalTarget) objectives.push({ x: m.x, y: m.y });
+  for (const it of items) if (it.questTag) objectives.push({ x: it.x, y: it.y });
+  ensureTrapFreeRoutes(map, playerStart, objectives);
 
   return { map, monsters, items, playerStart };
 }

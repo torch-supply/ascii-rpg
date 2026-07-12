@@ -496,5 +496,60 @@ console.log("\n[17] Monster loot drops");
   );
 }
 
+// ─── 18. Trap-free route to every objective (fairness) ──────────────────────
+console.log("\n[18] Trap-free route to objectives");
+{
+  const trapFree = (map: GameMap, from: Pos): Set<number> => {
+    const w = map.width;
+    const start = idx(from.x, from.y, w);
+    const seen = new Set<number>([start]);
+    const q: number[] = [start];
+    const dirs = [
+      [0, -1],
+      [0, 1],
+      [-1, 0],
+      [1, 0],
+    ];
+    while (q.length) {
+      const cur = q.shift()!;
+      const cx = cur % w;
+      const cy = Math.floor(cur / w);
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (!isWalkable(map, nx, ny)) continue;
+        const ni = idx(nx, ny, w);
+        if (seen.has(ni) || map.tiles[ni] === "trap") continue;
+        seen.add(ni);
+        q.push(ni);
+      }
+    }
+    return seen;
+  };
+
+  const seeds = ["f1", "f2", "f3", "f4", "f5", "f6"];
+  let bad = 0;
+  let checked = 0;
+  for (const seed of seeds) {
+    for (let li = 0; li < LEVELS.length; li++) {
+      const g = beginLevel(seed, li, createPlayer());
+      const free = trapFree(g.map, { x: g.player.x, y: g.player.y });
+      const objs: Pos[] = [];
+      if (g.map.exit) objs.push(g.map.exit);
+      for (const m of g.monsters) if (m.isGoalTarget) objs.push({ x: m.x, y: m.y });
+      for (const it of g.items) if (it.questTag) objs.push({ x: it.x, y: it.y });
+      for (const o of objs) {
+        checked++;
+        if (!free.has(idx(o.x, o.y, g.map.width))) bad++;
+      }
+    }
+  }
+  check(
+    `every objective is reachable without crossing a trap (${seeds.length}×${LEVELS.length} levels)`,
+    bad === 0,
+    `(${bad}/${checked} required a trap)`
+  );
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

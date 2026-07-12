@@ -53,7 +53,7 @@ export default function InventoryModal() {
                     ? "equip"
                     : "";
                 return (
-                  <li key={b.defId} className="flex items-baseline justify-between gap-4">
+                  <li key={`${b.defId}-${i}`} className="flex items-baseline justify-between gap-4">
                     <span>
                       <span className="text-magic">[{i + 1}]</span>{" "}
                       <span style={{ color: def.color }}>{def.glyph}</span>{" "}

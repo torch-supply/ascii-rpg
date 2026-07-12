@@ -68,7 +68,7 @@ export default function Shop() {
           const disabled = soldOut || tooPoor;
           return (
             <div
-              key={entry.itemId}
+              key={`${entry.itemId}-${i}`}
               className="flex items-center justify-between gap-3 border border-edge bg-panel px-4 py-2 text-sm"
             >
               <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
