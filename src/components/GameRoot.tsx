@@ -52,8 +52,8 @@ export default function GameRoot() {
           {/* the map fills only this region, so it always fits the viewport */}
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <GameCanvas />
-            <HudFooter />
           </div>
+          <HudFooter />
         </div>
       )}
 

@@ -76,29 +76,37 @@ export function HudBar() {
   );
 }
 
-/** Message log + controls hint — overlaid on the bottom of the canvas region. */
+/** Bottom status bar — message log (left) + controls (right), in normal flow. */
 export function HudFooter() {
   const game = useGameStore((s) => s.game);
   if (!game) return null;
-  const log = game.messageLog.slice(-4);
+  // Always render LOG_LINES slots (pad the top with blanks) so the footer is a
+  // constant height — otherwise it grows as messages accumulate and the map
+  // region resizes/jumps.
+  const LOG_LINES = 3;
+  const recent = game.messageLog.slice(-LOG_LINES);
+  const log = [
+    ...Array(Math.max(0, LOG_LINES - recent.length)).fill(""),
+    ...recent,
+  ];
 
   return (
-    <>
-      <div className="pointer-events-none absolute bottom-2 left-4 z-10 flex flex-col gap-0.5 text-[12px]">
+    <div className="z-10 flex shrink-0 items-end justify-between gap-4 border-t border-edge bg-panel/95 px-4 py-1.5 text-[12px]">
+      <div className="flex min-w-0 flex-col gap-0.5">
         {log.map((line, i) => (
           <span
-            key={`${game.turnCount}-${i}`}
-            className="text-dim"
-            style={{ opacity: 0.55 + (i / Math.max(1, log.length)) * 0.45 }}
+            key={i}
+            className="truncate text-dim"
+            style={{ opacity: line ? 0.45 + (i / (LOG_LINES - 1)) * 0.55 : 0 }}
           >
-            {line}
+            {line || " "}
           </span>
         ))}
       </div>
 
-      <div className="pointer-events-none absolute bottom-2 right-4 z-10 text-[11px] text-dim">
+      <div className="shrink-0 whitespace-nowrap text-[11px] text-dim">
         move ↑↓←→ / hjkl · bump = attack · [i]nv · [p]ause · [?]help
       </div>
-    </>
+    </div>
   );
 }

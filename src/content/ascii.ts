@@ -1,14 +1,20 @@
 import type { Biome } from "@/game/core/types";
 
-// Splash title. Kept within ~60 cols so it fits comfortably.
+// Splash title — figlet "Standard" font (stroke-based, so it stays connected
+// and perfectly column-aligned in any monospace font). "EMBER" over "DAWN",
+// DAWN centered beneath, with a small "of" between.
 export const SPLASH_ART = String.raw`
-   ______           __                 ____
-  / ____/___ ___   / /_  ___  _____   / __ \____ _      ______
- / __/ / __ '__ \ / __ \/ _ \/ ___/  / / / / __ \ | /| / / __ \
-/ /___/ / / / / // /_/ /  __/ /     / /_/ / /_/ / |/ |/ / / / /
-\____/_/ /_/ /_//_.___/\___/_/      \____/\__,_/|__/|__/_/ /_/
-
-              a  r o g u e l i k e   q u e s t
+ _____ __  __ ____  _____ ____
+| ____|  \/  | __ )| ____|  _ \
+|  _| | |\/| |  _ \|  _| | |_) |
+| |___| |  | | |_) | |___|  _ <
+|_____|_|  |_|____/|_____|_| \_\
+   of
+ ____    ___        ___   _
+|  _ \  / \ \      / / \ | |
+| | | |/ _ \ \ /\ / /|  \| |
+| |_| / ___ \ V  V / | |\  |
+|____/_/   \_\_/\_/  |_| \_|
 `;
 
 // A little adventurer beneath the title.

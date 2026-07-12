@@ -17,10 +17,10 @@ export default function HelpModal() {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-ink/80 px-4">
       <div className="flex w-full max-w-lg flex-col gap-4 border border-edge bg-panel px-7 py-6">
-        <h2 className="text-center text-lg uppercase tracking-[0.3em] text-gold">
+        <h2 className="text-balance text-center text-lg uppercase tracking-[0.3em] text-gold">
           How to Play
         </h2>
-        <p className="text-center text-xs leading-relaxed text-dim">
+        <p className="text-balance text-center text-xs leading-relaxed text-dim">
           A turn-based roguelike: the world only moves when you do. Explore in
           the torchlight, fight what you must, and complete each level&apos;s
           goal (shown top-right) before your turns run out.

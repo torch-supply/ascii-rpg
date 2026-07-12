@@ -14,7 +14,7 @@ export default function InventoryModal() {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-ink/80 px-4">
       <div className="flex w-full max-w-lg flex-col gap-4 border border-edge bg-panel px-7 py-6">
-        <h2 className="text-center text-lg uppercase tracking-[0.3em] text-gold">
+        <h2 className="text-balance text-center text-lg uppercase tracking-[0.3em] text-gold">
           Inventory
         </h2>
 

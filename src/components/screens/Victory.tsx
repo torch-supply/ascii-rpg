@@ -9,17 +9,17 @@ export default function Victory() {
 
   return (
     <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 overflow-auto bg-ink px-6 py-10 text-center">
-      <h2 className="text-2xl uppercase tracking-[0.4em] text-gold">
+      <h2 className="text-balance text-2xl uppercase tracking-[0.4em] text-gold">
         {VICTORY_NARRATION.title}
       </h2>
       <pre className="ascii text-[10px] leading-[1.1] text-gold sm:text-xs">
         {BIOME_ART.throne}
       </pre>
-      <p className="max-w-xl whitespace-pre-line text-sm leading-relaxed text-fg">
+      <p className="max-w-xl text-balance whitespace-pre-line text-sm leading-relaxed text-fg">
         {VICTORY_NARRATION.body}
       </p>
       {game && (
-        <p className="text-xs text-dim">
+        <p className="text-balance text-xs text-dim">
           Gold gathered: {game.player.coins} · lives remaining:{" "}
           {game.player.lives}
         </p>

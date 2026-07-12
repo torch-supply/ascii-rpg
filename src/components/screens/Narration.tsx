@@ -9,7 +9,7 @@ export default function Narration() {
 
   return (
     <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-7 overflow-auto bg-ink px-6 py-10 text-center">
-      <h2 className="text-lg uppercase tracking-[0.3em] text-gold">
+      <h2 className="text-balance text-lg uppercase tracking-[0.3em] text-gold">
         {n.title}
       </h2>
       {n.art && (
@@ -17,7 +17,7 @@ export default function Narration() {
           {n.art}
         </pre>
       )}
-      <p className="max-w-xl whitespace-pre-line text-sm leading-relaxed text-fg">
+      <p className="max-w-xl text-balance whitespace-pre-line text-sm leading-relaxed text-fg">
         {n.body}
       </p>
       <MenuButton accent onClick={() => gameStore.getState().continueNarration()}>

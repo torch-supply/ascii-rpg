@@ -10,14 +10,14 @@ export default function GameOver() {
 
   return (
     <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-7 bg-ink px-6 text-center">
-      <h2 className="text-2xl uppercase tracking-[0.4em] text-danger">
+      <h2 className="text-balance text-2xl uppercase tracking-[0.4em] text-danger">
         {GAMEOVER_NARRATION.title}
       </h2>
-      <p className="max-w-lg whitespace-pre-line text-sm leading-relaxed text-fg">
+      <p className="max-w-lg text-balance whitespace-pre-line text-sm leading-relaxed text-fg">
         {GAMEOVER_NARRATION.body}
       </p>
       {game && (
-        <p className="text-xs text-dim">
+        <p className="text-balance text-xs text-dim">
           You fell in Level {game.currentLevel + 1}:{" "}
           {LEVELS[game.currentLevel].title}.
         </p>

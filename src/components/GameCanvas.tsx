@@ -20,19 +20,19 @@ export default function GameCanvas() {
       if (g) renderer.draw(g);
     };
 
-    // initial paint + fit
-    drawFromStore();
+    // initial fit + paint
     renderer.fit();
     drawFromStore();
 
-    // redraw on every committed state change
+    // redraw on every committed state change (camera follows the player)
     const unsub = gameStore.subscribe((s) => {
       if (s.game) renderer.draw(s.game);
     });
 
-    // refit on container resize (fills the window on desktop)
+    // on container resize, recompute the viewport then repaint
     const ro = new ResizeObserver(() => {
       renderer.fit();
+      drawFromStore();
     });
     ro.observe(host);
 

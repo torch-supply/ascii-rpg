@@ -24,10 +24,15 @@ export default function Splash() {
 
   return (
     <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 overflow-auto bg-ink px-4 py-8 text-center">
-      <pre className="ascii text-[9px] leading-[1.1] text-gold sm:text-xs">
-        {SPLASH_ART}
-      </pre>
-      <p className="max-w-md text-sm leading-relaxed text-dim">
+      <div className="flex flex-col items-center gap-2">
+        <pre className="ascii text-[10px] leading-none text-gold sm:text-sm">
+          {SPLASH_ART}
+        </pre>
+        <div className="text-[11px] tracking-[0.4em] text-dim sm:text-xs">
+          A ROGUELIKE QUEST
+        </div>
+      </div>
+      <p className="max-w-md text-balance text-sm leading-relaxed text-dim">
         Escape the pit. Cross the cursed land. Recover the Sunblade. End the
         Lich-King Malachar — and rekindle the dawn.
       </p>
