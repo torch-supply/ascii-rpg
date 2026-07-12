@@ -45,7 +45,7 @@ export default function HelpModal() {
           </span>
         </div>
         <div className="flex justify-center pt-1">
-          <MenuButton accent onClick={() => gameStore.getState().setMode("playing")}>
+          <MenuButton accent autoFocus onClick={() => gameStore.getState().setMode("playing")}>
             ▸ Back
           </MenuButton>
         </div>

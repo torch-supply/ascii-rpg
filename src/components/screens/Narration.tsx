@@ -25,7 +25,7 @@ export default function Narration() {
         />
       )}
       <Prose text={n.body} className="max-w-xl text-sm text-fg" />
-      <MenuButton accent onClick={() => gameStore.getState().continueNarration()}>
+      <MenuButton accent autoFocus onClick={() => gameStore.getState().continueNarration()}>
         {n.buttonLabel}
         <span className="ml-1 text-xs opacity-70">(Enter)</span>
       </MenuButton>

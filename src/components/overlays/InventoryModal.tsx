@@ -73,7 +73,7 @@ export default function InventoryModal() {
         </div>
 
         <div className="flex justify-center pt-1">
-          <MenuButton accent onClick={() => gameStore.getState().setMode("playing")}>
+          <MenuButton accent autoFocus onClick={() => gameStore.getState().setMode("playing")}>
             ▸ Close <span className="text-xs opacity-70">(i / Esc)</span>
           </MenuButton>
         </div>

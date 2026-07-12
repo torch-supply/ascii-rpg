@@ -22,7 +22,7 @@ export default function Victory() {
       />
       <Prose text={VICTORY.body} className="max-w-xl text-sm text-fg" />
       <RunStats />
-      <MenuButton accent onClick={() => gameStore.getState().quitToTitle()}>
+      <MenuButton accent autoFocus onClick={() => gameStore.getState().quitToTitle()}>
         ▸ Return to title
         <span className="ml-1 text-xs opacity-70">(Enter)</span>
       </MenuButton>

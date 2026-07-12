@@ -37,6 +37,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Themed keyboard-focus effect — a soft ember glow (no hard outline). A faint
+   1px edge keeps it legible for accessibility; :focus-visible keeps it to
+   keyboard nav (not mouse clicks). */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px rgba(255, 225, 77, 0.75),
+    0 0 10px 1px rgba(255, 157, 60, 0.6),
+    0 0 22px 5px rgba(255, 120, 40, 0.4);
+}
+
 /* Subtle scanline / vignette flavor for the terminal feel, kept cheap. */
 .crt-vignette {
   background: radial-gradient(

@@ -15,6 +15,13 @@ export class KeyboardInput {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
 
+      // Let a focused button handle Enter/Space itself, so keyboard users can
+      // activate the button they've tabbed to instead of the global command.
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) {
+        return;
+      }
+
       const cmd = keyToCommand(e);
       if (!cmd) return;
       if (shouldPreventDefault(e)) e.preventDefault();

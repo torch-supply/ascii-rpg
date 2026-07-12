@@ -10,7 +10,7 @@ export default function PauseModal() {
       <div className="flex flex-col items-center gap-4 border border-edge bg-panel px-8 py-7 text-center">
         <h2 className="text-balance text-lg uppercase tracking-[0.3em] text-gold">Paused</h2>
         <div className="flex flex-col gap-2">
-          <MenuButton accent onClick={() => s().setMode("playing")}>
+          <MenuButton accent autoFocus onClick={() => s().setMode("playing")}>
             ▸ Resume <span className="text-xs opacity-70">(Esc)</span>
           </MenuButton>
           <MenuButton onClick={() => s().setMode("help")}>

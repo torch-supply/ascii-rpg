@@ -31,7 +31,7 @@ export default function GameOver() {
         </p>
       )}
       <RunStats />
-      <MenuButton accent onClick={() => gameStore.getState().quitToTitle()}>
+      <MenuButton accent autoFocus onClick={() => gameStore.getState().quitToTitle()}>
         ▸ Return to title
         <span className="ml-1 text-xs opacity-70">(Enter)</span>
       </MenuButton>
