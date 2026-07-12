@@ -18,6 +18,8 @@ export default function Narration() {
         <AsciiArt
           art={n.art}
           gradient={n.artGradient}
+          lineColors={n.artLineColors}
+          colors={n.artColors}
           color="#7fdfff"
           className="text-[11px] sm:text-sm"
         />

@@ -18,6 +18,8 @@ export default function GameOver() {
       <AsciiArt
         art={GAMEOVER.scene.art}
         gradient={GAMEOVER.scene.gradient}
+        lineColors={GAMEOVER.scene.lineColors}
+        colors={GAMEOVER.scene.colors}
         className="text-[11px] sm:text-sm"
       />
       <Prose text={GAMEOVER.body} className="max-w-lg text-sm text-fg" />

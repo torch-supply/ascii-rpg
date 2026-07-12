@@ -13,7 +13,11 @@ export function goalLabel(state: GameState): string {
       return "Find the way out (>)";
     case "collectX": {
       const have = state.questProgress[goal.questTag] ?? 0;
-      const name = goal.questTag === "moonstone" ? "Moonstone Shards" : goal.questTag;
+      const names: Record<string, string> = {
+        moonstone: "Moonstone Shards",
+        sigil: "Dusk Sigils",
+      };
+      const name = names[goal.questTag] ?? goal.questTag;
       return `Collect ${name} — ${have}/${goal.count}`;
     }
     case "findItem":

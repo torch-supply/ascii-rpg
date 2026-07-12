@@ -17,6 +17,8 @@ export default function Victory() {
       <AsciiArt
         art={VICTORY.scene.art}
         gradient={VICTORY.scene.gradient}
+        lineColors={VICTORY.scene.lineColors}
+        colors={VICTORY.scene.colors}
         className="text-[11px] sm:text-sm"
       />
       <Prose text={VICTORY.body} className="max-w-xl text-sm text-fg" />

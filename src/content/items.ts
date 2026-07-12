@@ -31,6 +31,7 @@ export const ITEMS: Record<string, ItemDef> = {
 
   // ── quest items ──
   q_shard: { id: "q_shard", name: "Moonstone Shard", glyph: "*", color: "#7fdfff", category: "quest", stackable: true, questTag: "moonstone" },
+  q_sigil: { id: "q_sigil", name: "Dusk Sigil", glyph: "*", color: "#c86bff", category: "quest", stackable: true, questTag: "sigil" },
 };
 
 export function itemDef(id: string): ItemDef {
@@ -45,6 +46,9 @@ export interface ShopEntry {
   price: number;
   maxQty?: number;
 }
+// One shop per between-level transition (9 for a 10-level run). Gear unlocks
+// climb (short→mace→axe→enchanted; leather→chain→scale→plate); potions and
+// firebombs restock; torch/lantern for the dark stretches.
 export const SHOP_TIERS: Record<number, ShopEntry[]> = {
   1: [
     { itemId: "w_short", price: 15 },
@@ -64,18 +68,42 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
     { itemId: "a_chain", price: 25 },
     { itemId: "i_lantern", price: 30 },
     { itemId: "p_gheal", price: 18, maxQty: 2 },
-    { itemId: "p_bomb", price: 20, maxQty: 3 },
+    { itemId: "p_bomb", price: 20, maxQty: 2 },
   ],
   4: [
-    { itemId: "w_ench", price: 55 },
-    { itemId: "a_scale", price: 38 },
-    { itemId: "p_gheal", price: 18, maxQty: 3 },
+    { itemId: "a_chain", price: 25 },
+    { itemId: "p_heal", price: 8, maxQty: 3 },
+    { itemId: "p_gheal", price: 18, maxQty: 2 },
     { itemId: "p_bomb", price: 20, maxQty: 3 },
+    { itemId: "i_torch", price: 10 },
   ],
   5: [
-    { itemId: "a_plate", price: 48 },
+    { itemId: "a_scale", price: 38 },
     { itemId: "i_lantern", price: 30 },
     { itemId: "p_gheal", price: 18, maxQty: 3 },
     { itemId: "p_bomb", price: 20, maxQty: 3 },
+  ],
+  6: [
+    { itemId: "w_ench", price: 55 },
+    { itemId: "a_scale", price: 38 },
+    { itemId: "i_lantern", price: 30 },
+    { itemId: "p_gheal", price: 18, maxQty: 3 },
+    { itemId: "p_bomb", price: 20, maxQty: 3 },
+  ],
+  7: [
+    { itemId: "a_plate", price: 48 },
+    { itemId: "p_gheal", price: 18, maxQty: 3 },
+    { itemId: "p_bomb", price: 20, maxQty: 3 },
+    { itemId: "i_lantern", price: 30 },
+  ],
+  8: [
+    { itemId: "a_plate", price: 48 },
+    { itemId: "p_gheal", price: 18, maxQty: 3 },
+    { itemId: "p_bomb", price: 20, maxQty: 3 },
+  ],
+  9: [
+    { itemId: "p_gheal", price: 18, maxQty: 3 },
+    { itemId: "p_bomb", price: 20, maxQty: 3 },
+    { itemId: "i_lantern", price: 30 },
   ],
 };

@@ -2,7 +2,11 @@ import type { Biome } from "@/game/core/types";
 
 export interface Scene {
   art: string;
-  gradient: string;
+  gradient?: string;
+  /** per-row colors (distinct horizontal zones) */
+  lineColors?: string[];
+  /** per-region colors via inline {key} tokens in the art */
+  colors?: Record<string, string>;
 }
 
 // ── Gradients (multi-stop; painted over aligned monospace art via AsciiArt) ──
@@ -21,6 +25,8 @@ export const G_MOUNTAIN =
   "linear-gradient(180deg,#eef8ff 0%,#a9e0ff 42%,#6f9bd1 74%,#37506f 100%)";
 export const G_CASTLE =
   "linear-gradient(180deg,#ecc4ff 0%,#c04cff 42%,#7a5cff 74%,#38284f 100%)";
+export const G_CRYPT =
+  "linear-gradient(180deg,#dfe6d0 0%,#9fb08a 34%,#6a7a6a 66%,#3a4048 100%)";
 export const G_THRONE =
   "linear-gradient(180deg,#fff0a0 0%,#ffd24d 28%,#ff8c00 58%,#c04cff 100%)";
 export const G_DAWN =
@@ -97,16 +103,33 @@ const CASTLE = String.raw`
     █████████████▐██▌█████████████
     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀`;
 
+const CRYPT = String.raw`
+     †         †         †
+   ┌───┐   ┌───┐   ┌───┐   ┌───┐
+   │RIP│   │RIP│   │RIP│   │RIP│
+   │   │   │   │   │   │   │   │
+   ┴───┴───┴───┴───┴───┴───┴───┴
+   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓`;
+
+// Per-region coloring via inline {key} tokens (tokens are stripped before
+// render, so columns stay aligned): purple dusk-light, a gold crown, a purple
+// throne, and Malachar in red.
+const THRONE_COLORS = {
+  v: "#8a6ad0", // dusk light / throne
+  y: "#ffd24d", // gold crown
+  o: "#ff9d3c", // crown base glow
+  r: "#ff5555", // Malachar
+};
 const THRONE = String.raw`
-            \      |      /
-         \      \   |   /      /
-        ▲      ▲    ▲    ▲      ▲
-      ██████████████████████████
-      ██████████████████████████
-      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-              ┌─────┐
-              │  M  │
-              └─────┘`;
+{v}            \      |      /
+{v}         \      \   |   /      /
+{y}        ▲      ▲    ▲    ▲      ▲
+{y}      ██████████████████████████
+{y}      ██████████████████████████
+{o}      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+{v}              ┌─────┐
+{v}              │  {r}M{v}  │
+{v}              └─────┘`;
 
 const DAWN = String.raw`
               \     |     /
@@ -119,24 +142,27 @@ const DAWN = String.raw`
         /      /  |  \      \
 `;
 
+// Per-region: bone-gray skull with red eye-sockets.
+const SKULL_COLORS = { b: "#c7ccc0", r: "#ff5a3c" };
 const SKULL = String.raw`
-         ,----------------,
-        /    __________     \
-       |    /          \     |
-       |   |  ▄▄    ▄▄  |    |
-       |   |  ██    ██  |    |
-       |   |     ▂▂     |    |
-       |    \   ▀▀▀▀   /     |
-        \    |¦¦¦¦¦¦¦¦|     /
-         '--'          '---'`;
+{b}         ,----------------,
+{b}        /    __________     \
+{b}       |    /          \     |
+{b}       |   |  {r}▄▄{b}    {r}▄▄{b}  |    |
+{b}       |   |  {r}██{b}    {r}██{b}  |    |
+{b}       |   |     ▂▂     |    |
+{b}       |    \   ▀▀▀▀   /     |
+{b}        \    |¦¦¦¦¦¦¦¦|     /
+{b}         '--'          '---'`;
 
 export const BIOME_SCENE: Record<Biome, Scene> = {
   dungeon: { art: PIT, gradient: G_PIT },
   forest: { art: FOREST, gradient: G_FOREST },
   marsh: { art: MARSH, gradient: G_MARSH },
   mountain: { art: MOUNTAIN, gradient: G_MOUNTAIN },
+  crypt: { art: CRYPT, gradient: G_CRYPT },
   castle: { art: CASTLE, gradient: G_CASTLE },
-  throne: { art: THRONE, gradient: G_THRONE },
+  throne: { art: THRONE, colors: THRONE_COLORS }, // per-region: crown + throne
 };
 
 // ── Narrative set-pieces ────────────────────────────────────────────────────
@@ -159,7 +185,20 @@ Light spills down the throne stairs, across the castle, over the pass and the wo
 You lower the Sunblade, and for the first time it is warm because of the sun — not because of you.
 
 THE END.`,
-  scene: { art: DAWN, gradient: G_DAWN } as Scene,
+  // per-row sunrise: pale sky at the crown of the rays down to a burning base
+  scene: {
+    art: DAWN,
+    lineColors: [
+      "#fff2b0",
+      "#ffe58a",
+      "#ffd24d",
+      "#ffc23c",
+      "#fffbe6",
+      "#ffab3c",
+      "#ff8c3a",
+      "#ff6a3c",
+    ],
+  } as Scene,
 };
 
 export const GAMEOVER = {
@@ -167,5 +206,5 @@ export const GAMEOVER = {
   body: `The dark takes you, as it took the realm. Somewhere, an Ember stays broken.
 
 GAME OVER.`,
-  scene: { art: SKULL, gradient: G_DEATH } as Scene,
+  scene: { art: SKULL, colors: SKULL_COLORS } as Scene,
 };

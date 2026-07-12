@@ -46,6 +46,8 @@ export interface NarrationData {
   body: string;
   art: string;
   artGradient?: string;
+  artLineColors?: string[];
+  artColors?: Record<string, string>;
   onContinue: "beginPlay" | "nextLevel" | "restartLevel" | "victory";
   buttonLabel: string;
 }
@@ -119,14 +121,17 @@ export const gameStore = createStore<GameStore>((set, get) => {
       return;
     }
     const nextIdx = game.currentLevel + 1;
+    const scene = BIOME_SCENE[LEVELS[nextIdx].biome];
     set({
       game: { ...game },
       mode: "narration",
       narration: {
         title: `${LEVELS[game.currentLevel].title} — cleared`,
         body: LEVELS[game.currentLevel].narration,
-        art: BIOME_SCENE[LEVELS[nextIdx].biome].art,
-        artGradient: BIOME_SCENE[LEVELS[nextIdx].biome].gradient,
+        art: scene.art,
+        artGradient: scene.gradient,
+        artLineColors: scene.lineColors,
+        artColors: scene.colors,
         onContinue: "nextLevel",
         buttonLabel: `Onward — ${LEVELS[nextIdx].title}`,
       },
@@ -191,6 +196,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
           body: OPENING.body,
           art: OPENING.scene.art,
           artGradient: OPENING.scene.gradient,
+          artLineColors: OPENING.scene.lineColors,
+          artColors: OPENING.scene.colors,
           onContinue: "beginPlay",
           buttonLabel: "Descend into the pit",
         },

@@ -3,8 +3,13 @@ import type { LevelConfig } from "@/game/core/types";
 // ─────────────────────────────────────────────────────────────────────────
 // THE LEVEL SPINE. Everything about the game's flow is driven by this ordered
 // array. To add/remove a level, edit ONLY this file — the number of levels
-// appears nowhere in engine code. The last element automatically ends the run
-// (victory), because the loop checks `currentLevel < LEVELS.length`.
+// appears nowhere else in engine code. The last element automatically ends the
+// run (victory), because the loop checks `currentLevel < LEVELS.length`.
+//
+// Arc: escape the pit → cross the cursed wild (wood, mire, pass) → fight through
+// Blackhall Castle (gate → halls → crypt → ramparts → antechamber) → the Throne.
+// Difficulty rises across the run: turn budget shrinks, monsters grow tougher
+// and more numerous, light dwindles, coins richen to fund the climb.
 // ─────────────────────────────────────────────────────────────────────────
 export const LEVELS: LevelConfig[] = [
   {
@@ -20,7 +25,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "rat", weight: 6 },
       { monsterId: "bat", weight: 4 },
     ],
-    turnLimit: 400,
+    turnLimit: 420,
     itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -51,7 +56,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "goblin", weight: 4 },
       { monsterId: "spider", weight: 3 },
     ],
-    turnLimit: 360,
+    turnLimit: 380,
     itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -81,7 +86,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "imp", weight: 4 },
       { monsterId: "goblin", weight: 3 },
     ],
-    turnLimit: 330,
+    turnLimit: 350,
     itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -105,12 +110,12 @@ export const LEVELS: LevelConfig[] = [
     mapWidth: 52,
     mapHeight: 32,
     generator: "cellular",
-    monsterBudget: 11,
+    monsterBudget: 12,
     spawnTable: [
       { monsterId: "goblin", weight: 5 },
       { monsterId: "skeleton", weight: 5 },
     ],
-    turnLimit: 300,
+    turnLimit: 320,
     itemDropCount: 3,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -123,37 +128,155 @@ export const LEVELS: LevelConfig[] = [
     waterCount: 18,
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
-      "Gorm topples off the bridge into the white below. The way is open. Across the chasm, Blackhall Castle claws at the sky, its windows lit with dead-blue fire. Your blade won't be enough in there.",
+      "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — and their warden has already seen you.",
     shopTier: 4,
   },
   {
-    id: "blackhall_castle",
-    title: "Blackhall Castle & Crypt",
+    id: "iron_gate",
+    title: "The Iron Gate",
+    biome: "castle",
+    palette: { wall: "#6a5c6e", floor: "#2e2833", accent: "#d24a4a" },
+    mapWidth: 52,
+    mapHeight: 32,
+    generator: "digger",
+    monsterBudget: 12,
+    spawnTable: [
+      { monsterId: "skeleton", weight: 4 },
+      { monsterId: "ghoul", weight: 4 },
+      { monsterId: "gargoyle", weight: 2 },
+    ],
+    turnLimit: 300,
+    itemDropCount: 4,
+    dropTable: [
+      { itemId: "c_gold", weight: 6 },
+      { itemId: "p_heal", weight: 2 },
+      { itemId: "p_bomb", weight: 1 },
+    ],
+    coinRichness: 1.3,
+    baseLightRadius: 5,
+    trapCount: 5,
+    goal: { type: "killTarget", monsterId: "gate_captain" },
+    narration:
+      "The Warden of the Gate crumples and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
+    shopTier: 5,
+  },
+  {
+    id: "great_hall",
+    title: "The Great Hall",
     biome: "castle",
     palette: { wall: "#5c4b70", floor: "#342d40", accent: "#c04cff" },
     mapWidth: 56,
-    mapHeight: 36,
+    mapHeight: 34,
     generator: "digger",
     monsterBudget: 14,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
-      { monsterId: "zombie", weight: 4 },
-      { monsterId: "wraith", weight: 3 },
+      { monsterId: "zombie", weight: 3 },
+      { monsterId: "ghoul", weight: 4 },
+      { monsterId: "wraith", weight: 2 },
     ],
-    turnLimit: 280,
-    itemDropCount: 3,
+    turnLimit: 290,
+    itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_gheal", weight: 2 },
       { itemId: "a_chain", weight: 1 },
     ],
+    coinRichness: 1.4,
+    baseLightRadius: 5,
+    trapCount: 4,
+    goal: { type: "collectX", questTag: "sigil", count: 3 },
+    narration:
+      "The three dusk-sigils lock into the crypt door and it swings inward on a breath of grave-air. Down there, the last kings hid the one blade that can still cut the night: the Sunblade.",
+    shopTier: 6,
+  },
+  {
+    id: "sunken_crypt",
+    title: "The Sunken Crypt",
+    biome: "crypt",
+    palette: { wall: "#6a6a5a", floor: "#262620", accent: "#9fe0b0" },
+    mapWidth: 54,
+    mapHeight: 34,
+    generator: "digger",
+    monsterBudget: 15,
+    spawnTable: [
+      { monsterId: "ghoul", weight: 5 },
+      { monsterId: "skeleton", weight: 4 },
+      { monsterId: "wraith", weight: 3 },
+    ],
+    turnLimit: 270,
+    itemDropCount: 3,
+    dropTable: [
+      { itemId: "c_gold", weight: 6 },
+      { itemId: "p_gheal", weight: 2 },
+      { itemId: "i_lantern", weight: 1 },
+    ],
     coinRichness: 1.5,
-    baseLightRadius: 4,
-    trapCount: 6,
+    baseLightRadius: 3,
+    trapCount: 8,
     goal: { type: "findItem", questTag: "sunblade" },
     narration:
-      "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. The crypt door groans open toward a stair of black marble, rising to a throne. Malachar is waiting. End this.",
-    shopTier: 5,
+      "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. There is no way up but the ramparts — open to the dead sky, and to whatever wheels across it.",
+    shopTier: 7,
+  },
+  {
+    id: "ramparts",
+    title: "The Ramparts",
+    biome: "castle",
+    palette: { wall: "#4a5a72", floor: "#232a38", accent: "#a9e0ff" },
+    mapWidth: 54,
+    mapHeight: 32,
+    generator: "digger",
+    monsterBudget: 14,
+    spawnTable: [
+      { monsterId: "wraith", weight: 4 },
+      { monsterId: "gargoyle", weight: 3 },
+      { monsterId: "skeleton", weight: 3 },
+    ],
+    turnLimit: 260,
+    itemDropCount: 4,
+    dropTable: [
+      { itemId: "c_gold", weight: 6 },
+      { itemId: "p_gheal", weight: 2 },
+      { itemId: "p_bomb", weight: 1 },
+    ],
+    coinRichness: 1.6,
+    baseLightRadius: 6,
+    trapCount: 2,
+    waterCount: 8,
+    goal: { type: "reachLocation" },
+    narration:
+      "You crest the ramparts as the wind dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",
+    shopTier: 8,
+  },
+  {
+    id: "antechamber",
+    title: "The Dusk Antechamber",
+    biome: "castle",
+    palette: { wall: "#7a5c4a", floor: "#33281f", accent: "#ffd24d" },
+    mapWidth: 48,
+    mapHeight: 30,
+    generator: "digger",
+    monsterBudget: 13,
+    spawnTable: [
+      { monsterId: "wraith", weight: 4 },
+      { monsterId: "skeleton", weight: 3 },
+      { monsterId: "ghoul", weight: 3 },
+    ],
+    turnLimit: 240,
+    itemDropCount: 4,
+    dropTable: [
+      { itemId: "c_gold", weight: 6 },
+      { itemId: "p_gheal", weight: 2 },
+      { itemId: "p_bomb", weight: 1 },
+    ],
+    coinRichness: 1.8,
+    baseLightRadius: 5,
+    trapCount: 3,
+    goal: { type: "killTarget", monsterId: "herald" },
+    narration:
+      "The Herald falls to ash and the black door yields. Beyond, a stair of black marble climbs to the Throne of Dusk. Malachar is waiting. End this.",
+    shopTier: 9,
   },
   {
     id: "throne_of_dusk",
@@ -163,13 +286,13 @@ export const LEVELS: LevelConfig[] = [
     mapWidth: 44,
     mapHeight: 28,
     generator: "digger",
-    monsterBudget: 9,
+    monsterBudget: 11,
     spawnTable: [
       { monsterId: "wraith", weight: 5 },
       { monsterId: "skeleton", weight: 4 },
     ],
-    turnLimit: 240,
-    itemDropCount: 2,
+    turnLimit: 220,
+    itemDropCount: 3,
     dropTable: [
       { itemId: "c_gold", weight: 5 },
       { itemId: "p_gheal", weight: 3 },
@@ -178,8 +301,8 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 5,
     trapCount: 2,
     goal: { type: "killTarget", monsterId: "lich" },
-    // Final level: narration here is unused for transition (victory screen
-    // shows VICTORY_NARRATION instead), but kept for completeness.
+    // Final level: this narration is unused for transition (the Victory screen
+    // shows VICTORY.body instead), but kept for completeness.
     narration: "The last of the dark drains from the hall.",
     shopTier: null,
   },

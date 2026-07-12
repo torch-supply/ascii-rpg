@@ -35,6 +35,7 @@ export type Biome =
   | "marsh"
   | "mountain"
   | "castle"
+  | "crypt"
   | "throne";
 export type GeneratorKind = "digger" | "uniform" | "cellular";
 

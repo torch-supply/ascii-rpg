@@ -37,11 +37,11 @@ React and the canvas are **read-only consumers** of state. No timing lives in th
 - `src/save/` — versioned localStorage snapshot (`schema`/`serialize`/`storage`). `src/components/` — `GameRoot`, `GameCanvas`, `hud/`, `screens/` (Splash/Narration/Shop/GameOver/Victory), `overlays/` (Pause/Inventory/Help), `ui/MenuButton`.
 
 ## Rendering
-Camera-based viewport: the renderer draws a window sized to the host at a fixed cell size (`TARGET_ROWS`) and scrolls to keep the player in view (edge-clamped) — the map may exceed the viewport. Fog-of-war: `visible` (bright) / `explored` (dim memory) / unseen (black).
+Camera-based viewport: the renderer draws a window sized to the host at a fixed cell size (`TARGET_ROWS`) and scrolls to keep the player in view (edge-clamped) — the map may exceed the viewport. Fog-of-war: `visible` (bright) / `explored` (dim memory) / unseen (black). ASCII art (`AsciiArt`) supports flat color, CSS `gradient`, per-row `lineColors`, or per-region inline `{key}` `colors` tokens (tokens are zero-width → alignment safe); parents use `text-center`, so `.ascii` forces `text-align:left` to keep columns.
 
 ## Status
 **Phase 1 + Phase 2 + much of Phase 3 complete and verified.**
-- Phase 1: splash → **6** procedural levels (dungeon → forest → marsh → mountain → castle → throne) with narration → win/lose; turn-based bump combat; fog-of-war; items/inventory/equip; all goal types; lives/HP/turn-budget; save & resume.
+- Phase 1: splash → **10** procedural levels with narration → win/lose; turn-based bump combat; fog-of-war; items/inventory/equip; all goal types; lives/HP/turn-budget; save & resume. Arc: dungeon → blackwood → mire → frostspine → **Blackhall Castle sections** (iron gate → great hall → sunken crypt → ramparts → dusk antechamber) → throne; difficulty rises across the run (turn budget shrinks, monsters toughen, light dwindles).
 - Phase 2: between-level shop (5 tiers); firebomb; monster AI variety (zombie slow-chase, wraith armor-pierce, guardChase mini-boss, ranged lich); non-blocking hit/projectile animations; per-biome glyph variants.
 - Phase 3 (done): **hidden spike traps** + **impassable water/chasm** terrain (`generate.ts` places them reachability-safely; `TileType` trap/trapSprung/water); **torch fuel** (light is a managed resource; burns out over turns); **cursor firebomb targeting** (a `targeting` UI mode + `throwAt` action + renderer blast overlay); **more content** — marsh biome + The Mire level, spider/imp monsters, mace/scale/lantern items.
 
