@@ -10,6 +10,8 @@ export interface SaveV1 {
   contentVersion: string;
   gameplayRngState: number[];
   game: GameState;
+  /** accumulated wall-clock play time for this run, ms (optional on old saves) */
+  playMs?: number;
 }
 
 export type AnySave = SaveV1;

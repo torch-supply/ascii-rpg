@@ -3,12 +3,13 @@ import type { GameState } from "@/game/core/types";
 import type { Rng } from "@/game/core/rng";
 import { SAVE_VERSION, type SaveV1 } from "./schema";
 
-export function serialize(game: GameState, rng: Rng): SaveV1 {
+export function serialize(game: GameState, rng: Rng, playMs: number): SaveV1 {
   return {
     version: SAVE_VERSION,
     contentVersion: CONFIG.contentVersion,
     gameplayRngState: rng.getState(),
     game,
+    playMs,
   };
 }
 

@@ -103,18 +103,31 @@ export interface GameStore {
   persist: () => void;
 }
 
-// Wall-clock start of the current run/session (for the run-time stat). Reset on
-// New Game and Resume; not persisted (time shown is this session's).
-let runStartMs = 0;
+// Accumulated wall-clock play time for the current run (ms). Persisted in the
+// save so it totals across sessions; lives here (not in GameState) so a
+// death-restart's entry snapshot never rewinds it. `sessionStartMs` marks when
+// the current session's timing began (New Game / Resume).
+let runPlayMs = 0;
+let sessionStartMs = 0;
+
+/** Roll the current session's elapsed time into the accumulated total. */
+function flushPlaytime() {
+  const now = Date.now();
+  runPlayMs += Math.max(0, now - sessionStartMs);
+  sessionStartMs = now;
+}
 
 export const gameStore = createStore<GameStore>((set, get) => {
-  const makeRunResult = (game: GameState, victory: boolean): RunResult => ({
-    kills: game.player.kills,
-    turns: game.player.totalTurns,
-    gold: game.player.goldEarned,
-    timeMs: Math.max(0, Date.now() - runStartMs),
-    victory,
-  });
+  const makeRunResult = (game: GameState, victory: boolean): RunResult => {
+    flushPlaytime();
+    return {
+      kills: game.player.kills,
+      turns: game.player.totalTurns,
+      gold: game.player.goldEarned,
+      timeMs: runPlayMs,
+      victory,
+    };
+  };
   // Commit mutated game state with a fresh top-level identity so subscribers
   // (React HUD + canvas renderer) re-read it.
   const commit = () => set({ game: { ...get().game! } });
@@ -122,7 +135,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
   const persist = () => {
     const s = get();
     if (!s.game || !s.rng) return;
-    writeSave(serialize(s.game, s.rng));
+    flushPlaytime();
+    writeSave(serialize(s.game, s.rng, runPlayMs));
     set({
       hasSave: true,
       saveInfo: {
@@ -216,7 +230,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const player = createPlayer();
       const rng = new Rng(gameplaySeed(masterSeed));
       const game = beginLevel(masterSeed, 0, player);
-      runStartMs = Date.now();
+      runPlayMs = 0;
+      sessionStartMs = Date.now();
       set({
         game,
         rng,
@@ -242,7 +257,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
         return;
       }
       const rng = new Rng(0, save.gameplayRngState);
-      runStartMs = Date.now();
+      runPlayMs = save.playMs ?? 0;
+      sessionStartMs = Date.now();
       set({ game: save.game, rng, mode: "playing", narration: null });
     },
 
