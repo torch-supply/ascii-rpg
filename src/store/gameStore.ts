@@ -93,6 +93,10 @@ export interface GameStore {
   // the turn-based LoopDriver entry point (the seam)
   submitAction: (action: PlayerAction) => void;
 
+  // dev tooling (only reachable from dev-gated UI/keys)
+  debugJumpTo: (levelIndex: number) => void;
+  debugSkipLevel: () => void;
+
   // input + ui
   handleCommand: (cmd: InputCommand) => void;
   setMode: (mode: UIMode) => void;
@@ -109,6 +113,9 @@ export interface GameStore {
 // the current session's timing began (New Game / Resume).
 let runPlayMs = 0;
 let sessionStartMs = 0;
+
+// Dev-only tooling is dead-code-eliminated from the production/static build.
+export const DEV = process.env.NODE_ENV !== "production";
 
 /** Roll the current session's elapsed time into the accumulated total. */
 function flushPlaytime() {
@@ -358,6 +365,56 @@ export const gameStore = createStore<GameStore>((set, get) => {
       persist();
     },
 
+    // ── dev tooling ──
+    debugJumpTo: (levelIndex: number) => {
+      const masterSeed = String(Math.floor(Math.random() * 1e9));
+      const player = createPlayer();
+      // give a loadout roughly matching where you'd be by this level
+      const w =
+        levelIndex >= 7 ? "w_sun" : levelIndex >= 5 ? "w_ench" : levelIndex >= 3 ? "w_axe" : "w_short";
+      const a =
+        levelIndex >= 7 ? "a_plate" : levelIndex >= 5 ? "a_scale" : levelIndex >= 3 ? "a_chain" : "a_leather";
+      player.weaponId = w;
+      player.weaponPower = ITEMS[w].power ?? 0;
+      player.armorId = a;
+      player.armorReduction = ITEMS[a].reduction ?? 0;
+      player.coins = 80;
+      player.bag = [
+        { defId: "p_heal", count: 3 },
+        { defId: "p_gheal", count: 2 },
+        { defId: "p_bomb", count: 2 },
+        { defId: "p_ward", count: 1 },
+        { defId: "p_might", count: 1 },
+        { defId: "p_detect", count: 2 },
+      ];
+      player.hasTorch = true;
+      player.torchFuel = ITEMS["i_lantern"].fuel ?? 200;
+      const rng = new Rng(gameplaySeed(masterSeed));
+      const game = beginLevel(masterSeed, levelIndex, player);
+      runPlayMs = 0;
+      sessionStartMs = Date.now();
+      set({ game, rng, mode: "playing", narration: null, runResult: null });
+    },
+
+    debugSkipLevel: () => {
+      const game = get().game;
+      if (!game) return;
+      const next = game.currentLevel + 1;
+      if (next >= LEVELS.length) {
+        clearSave();
+        set({
+          game: { ...game },
+          mode: "victory",
+          hasSave: false,
+          saveInfo: null,
+          runResult: makeRunResult(game, true),
+        });
+        return;
+      }
+      const ng = beginLevel(game.masterSeed, next, clonePlayer(game.player));
+      set({ game: ng, mode: "playing", narration: null });
+    },
+
     useBagSlot: (n: number) => {
       const { game, mode } = get();
       if (!game) return;
@@ -473,6 +530,9 @@ export const gameStore = createStore<GameStore>((set, get) => {
           if (mode === "targeting") get().cancelTarget();
           else if (mode === "paused" || mode === "inventory" || mode === "help")
             set({ mode: "playing" });
+          break;
+        case "debugSkip":
+          if (DEV && mode === "playing") get().debugSkipLevel();
           break;
       }
     },

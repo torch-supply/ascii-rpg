@@ -13,6 +13,8 @@ A single-player, browser-based ASCII roguelike RPG. Next.js (App Router) + TypeS
 - `npm run build` — static export
 - `npm run test:core` — pure-engine checks (determinism, goals, combat, connectivity, Phase 2 mechanics) via `scripts/verify-core.mts`
 
+**Dev tooling** (gated on `DEV = process.env.NODE_ENV !== "production"`, so it's absent from the static build): the splash shows a **level picker** that jumps into any level with a tier-appropriate loadout (`store.debugJumpTo`), and in play `>` skips to the next level (`debugSkipLevel`).
+
 ## Architecture — one-directional data flow
 ```
 KeyboardInput → store.handleCommand → store.submitAction (the turn-based LoopDriver)

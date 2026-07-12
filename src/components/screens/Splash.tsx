@@ -1,6 +1,6 @@
 "use client";
 
-import { gameStore, useGameStore } from "@/store/gameStore";
+import { gameStore, useGameStore, DEV } from "@/store/gameStore";
 import { EMBER_ART, DAWN_ART, G_EMBER, G_DAWN_TITLE, SUBTITLE } from "@/content/ascii";
 import { LEVELS } from "@/content/levels";
 import { MenuButton } from "@/components/ui/MenuButton";
@@ -61,6 +61,30 @@ export default function Splash() {
           )}
         </MenuButton>
       </div>
+
+      {DEV && (
+        <div className="pointer-events-auto flex flex-col items-center gap-1.5 border border-edge/60 px-4 py-3">
+          <div className="text-[10px] uppercase tracking-[0.3em] text-edge">
+            dev · jump to level (kitted-out)
+          </div>
+          <div className="flex max-w-[85vw] flex-wrap justify-center gap-1">
+            {LEVELS.map((lvl, i) => (
+              <button
+                key={lvl.id}
+                title={lvl.title}
+                onClick={() => gameStore.getState().debugJumpTo(i)}
+                className="border border-edge px-2 py-1 text-[11px] text-dim transition-colors hover:border-gold hover:text-gold"
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+          <div className="text-[10px] text-edge">
+            in play: press <span className="text-dim">&gt;</span> to skip to the
+            next level
+          </div>
+        </div>
+      )}
 
       <p className="max-w-md text-balance text-xs text-dim">
         v1 · {LEVELS.length} levels · move with arrows or hjkl · bump to attack ·

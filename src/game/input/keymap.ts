@@ -5,7 +5,10 @@ import type { PlayerAction } from "@/game/core/types";
 // stable contract a future (real-time) input adapter would also produce.
 export type InputCommand =
   | { kind: "action"; action: PlayerAction }
-  | { kind: "ui"; cmd: "pause" | "inventory" | "help" | "confirm" | "cancel" }
+  | {
+      kind: "ui";
+      cmd: "pause" | "inventory" | "help" | "confirm" | "cancel" | "debugSkip";
+    }
   | { kind: "bagSlot"; n: number };
 
 export function keyToCommand(e: KeyboardEvent): InputCommand | null {
@@ -45,6 +48,9 @@ export function keyToCommand(e: KeyboardEvent): InputCommand | null {
       return { kind: "ui", cmd: "help" };
     case "Enter":
       return { kind: "ui", cmd: "confirm" };
+    case ">":
+      return { kind: "ui", cmd: "debugSkip" }; // dev-only skip to next level
+
   }
 
   // ── bag hotkeys 1-9 ──
