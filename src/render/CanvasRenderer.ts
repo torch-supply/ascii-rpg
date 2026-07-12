@@ -1,7 +1,7 @@
 import * as ROT from "rot-js";
 import type { GameState } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
-import { idx } from "@/game/core/grid";
+import { idx, chebyshev } from "@/game/core/grid";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
@@ -23,6 +23,12 @@ const MAX_CELL = 30;
 const PROJECTILE_MS = 180;
 const HIT_DELAY_MS = 60;
 const HIT_MS = 170;
+
+// Distance-based lighting: brightness at the player's feet vs. at the light's
+// edge (terrain fades hard for atmosphere; entities stay more legible).
+const EDGE_MIN_TERRAIN = 0.4;
+const EDGE_MIN_ENTITY = 0.62;
+const AMBIENT_MS = 66; // ~15fps flicker redraw
 
 const clamp = (v: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, v));
@@ -58,6 +64,9 @@ export class CanvasRenderer {
   private camY = 0;
   private fx: Fx[] = [];
   private rafId: number | null = null;
+  private ambientId: number | null = null;
+  private lastAmbient = 0;
+  private reduceMotion = false;
 
   constructor(host: HTMLElement) {
     this.host = host;
@@ -67,11 +76,28 @@ export class CanvasRenderer {
       container.style.display = "block";
       host.appendChild(container);
     }
+    this.reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    // gentle torchlight flicker: re-render the base on a throttled ambient loop
+    if (!this.reduceMotion) {
+      this.ambientId = requestAnimationFrame(this.ambientTick);
+    }
   }
+
+  private ambientTick = (now: number) => {
+    this.ambientId = requestAnimationFrame(this.ambientTick);
+    if (now - this.lastAmbient < AMBIENT_MS) return;
+    this.lastAmbient = now;
+    if (this.fx.length || !this.lastState) return; // effect loop redraws instead
+    this.renderBase(this.lastState);
+  };
 
   dispose() {
     if (this.rafId != null) cancelAnimationFrame(this.rafId);
+    if (this.ambientId != null) cancelAnimationFrame(this.ambientId);
     this.rafId = null;
+    this.ambientId = null;
     const container = this.display.getContainer();
     if (container && container.parentNode === this.host) {
       this.host.removeChild(container);
@@ -179,6 +205,12 @@ export class CanvasRenderer {
     this.display.draw(sx, sy, glyph, color, null);
   }
 
+  /** Dim a visible tile by distance: full at the player, `edgeMin` at radius. */
+  private lit(color: string, dist: number, effR: number, edgeMin: number) {
+    const t = Math.min(1, dist / Math.max(1, effR));
+    return dim(color, 1 - (1 - edgeMin) * t);
+  }
+
   private renderBase(state: GameState) {
     const { map, player } = state;
     const { cols, rows } = this;
@@ -203,6 +235,13 @@ export class CanvasRenderer {
     const explored = new Set(state.explored);
     const knownTraps = new Set(state.knownTraps);
 
+    // Effective light radius wobbles slightly so the torchlight edge flickers.
+    const now = performance.now();
+    const flicker = this.reduceMotion
+      ? 0
+      : Math.sin(now * 0.005) * 0.5 + Math.sin(now * 0.013) * 0.3;
+    const effR = Math.max(2, player.lightRadius + flicker);
+
     this.display.clear();
 
     // terrain within the viewport window
@@ -224,7 +263,9 @@ export class CanvasRenderer {
           glyph = "^";
           color = "#e0904a";
         }
-        if (!isVis) color = dim(color, FOG_DIM);
+        color = isVis
+          ? this.lit(color, chebyshev(wx, wy, player.x, player.y), effR, EDGE_MIN_TERRAIN)
+          : dim(color, FOG_DIM);
         this.display.draw(sx, sy, glyph, color, null);
       }
     }
@@ -236,7 +277,13 @@ export class CanvasRenderer {
       const sy = it.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const def = ITEMS[it.defId];
-      this.display.draw(sx, sy, def.glyph, def.color, null);
+      const color = this.lit(
+        def.color,
+        chebyshev(it.x, it.y, player.x, player.y),
+        effR,
+        EDGE_MIN_ENTITY
+      );
+      this.display.draw(sx, sy, def.glyph, color, null);
     }
 
     // monsters (only where currently visible)
@@ -246,7 +293,13 @@ export class CanvasRenderer {
       const sy = m.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const def = MONSTERS[m.defId];
-      this.display.draw(sx, sy, def.glyph, def.color, null);
+      const color = this.lit(
+        def.color,
+        chebyshev(m.x, m.y, player.x, player.y),
+        effR,
+        EDGE_MIN_ENTITY
+      );
+      this.display.draw(sx, sy, def.glyph, color, null);
     }
 
     // player (always drawn; camera guarantees it's on-screen)

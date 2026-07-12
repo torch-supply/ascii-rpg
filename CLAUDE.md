@@ -39,7 +39,7 @@ React and the canvas are **read-only consumers** of state. No timing lives in th
 - `src/save/` — versioned localStorage snapshot (`schema`/`serialize`/`storage`). `src/components/` — `GameRoot`, `GameCanvas`, `hud/`, `screens/` (Splash/Narration/Shop/GameOver/Victory), `overlays/` (Pause/Inventory/Help), `ui/MenuButton`.
 
 ## Rendering
-Camera-based viewport: the renderer draws a window sized to the host at a fixed cell size (`TARGET_ROWS`) and scrolls to keep the player in view (edge-clamped) — the map may exceed the viewport. Fog-of-war: `visible` (bright) / `explored` (dim memory) / unseen (black). ASCII art (`AsciiArt`) supports flat color, CSS `gradient`, per-row `lineColors`, or per-region inline `{key}` `colors` tokens (tokens are zero-width → alignment safe); parents use `text-center`, so `.ascii` forces `text-align:left` to keep columns.
+Camera-based viewport: the renderer draws a window sized to the host at a fixed cell size (`TARGET_ROWS`) and scrolls to keep the player in view (edge-clamped) — the map may exceed the viewport. Fog-of-war with **distance-based lighting**: visible tiles dim by distance from the player (bright core → dim edge; entities fade less), `explored` = darker memory, unseen = black; a throttled ambient rAF loop flickers the light-edge radius (off under `prefers-reduced-motion`). ASCII art (`AsciiArt`) supports flat color, CSS `gradient`, per-row `lineColors`, or per-region inline `{key}` `colors` tokens (tokens are zero-width → alignment safe); parents use `text-center`, so `.ascii` forces `text-align:left` to keep columns.
 
 ## Status
 **Phase 1 + Phase 2 + much of Phase 3 complete and verified.**
