@@ -63,7 +63,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     maxHp: 16,
     dmg: 5,
     armor: 0,
-    behavior: "chase", // slowChase is polish; treated as chase in core
+    behavior: "slowChase", // shambles — acts every other turn
     sightRadius: 6,
     speed: 1,
     coinReward: 6,
@@ -80,6 +80,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 8,
     speed: 1,
     coinReward: 8,
+    armorPierce: 2, // its touch slips past armor
   },
   frost_troll: {
     id: "frost_troll",
@@ -89,7 +90,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     maxHp: 40,
     dmg: 8,
     armor: 1,
-    behavior: "chase", // guardChase is polish
+    behavior: "guardChase", // guards the bridge until it spots you
     sightRadius: 9,
     speed: 1,
     coinReward: 30,
@@ -103,11 +104,13 @@ export const MONSTERS: Record<string, MonsterDef> = {
     maxHp: 80,
     dmg: 12,
     armor: 2,
-    behavior: "chase", // ranged bolt is polish
+    behavior: "ranged", // hurls dark bolts, closes when far
     sightRadius: 10,
     speed: 1,
     coinReward: 0,
     isBoss: true,
+    rangedDmg: 9,
+    rangedRange: 5,
   },
 };
 

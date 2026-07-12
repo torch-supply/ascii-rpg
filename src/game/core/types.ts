@@ -2,6 +2,7 @@
 // Core type definitions. This module is PURE data — no React, Zustand, DOM,
 // or rot.js imports. Everything downstream depends on these shapes.
 // ─────────────────────────────────────────────────────────────────────────
+import type { GameEvent } from "./events";
 
 // ── Map / tiles ────────────────────────────────────────────────────────────
 export type TileType = "wall" | "floor" | "door" | "exit";
@@ -48,6 +49,8 @@ export interface MonsterDef {
   isBoss?: boolean;
   rangedDmg?: number;
   rangedRange?: number;
+  /** ignores this much of the player's armor when attacking (wraith) */
+  armorPierce?: number;
 }
 
 export type ItemCategory =
@@ -193,4 +196,6 @@ export interface TurnResult {
   goalComplete: boolean;
   playerDied: boolean;
   deathReason?: "combat" | "timeout";
+  /** cosmetic cues (hits, projectiles) for the animation layer */
+  events: GameEvent[];
 }

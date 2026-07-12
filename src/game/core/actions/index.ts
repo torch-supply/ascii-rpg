@@ -174,19 +174,82 @@ function useItem(
   const def = ITEMS[defId];
   if (def.category !== "potion") return false;
 
+  if (def.effect === "bomb") {
+    return throwFirebomb(state, entry, def, events);
+  }
   if (def.effect === "heal" || def.effect === "greaterHeal") {
     const before = p.hp;
     p.hp = Math.min(p.maxHp, p.hp + (def.magnitude ?? 0));
     msg(events, `You drink the ${def.name}. (+${p.hp - before} hp)`);
-  } else {
-    // Firebomb targeting is polish; not usable in the core loop yet.
-    msg(events, `You aren't sure how to use the ${def.name} yet.`);
-    return false;
+    entry.count -= 1;
+    if (entry.count <= 0) p.bag = p.bag.filter((b) => b !== entry);
+    return true; // drinking costs a turn
+  }
+  return false;
+}
+
+/**
+ * Firebomb: auto-targets the nearest monster in view, then deals full damage to
+ * it and splash (half, rounded up) to any monster adjacent to the blast. Costs
+ * a turn; wasted (no consume) if there's nothing in sight.
+ */
+function throwFirebomb(
+  state: GameState,
+  entry: { defId: string; count: number },
+  def: (typeof ITEMS)[string],
+  events: GameEvent[]
+): boolean {
+  const p = state.player;
+  const w = state.map.width;
+  const visible = new Set(state.visible);
+  const range = 7;
+
+  let target: MonsterInstance | null = null;
+  let best = Infinity;
+  for (const m of state.monsters) {
+    if (!visible.has(idx(m.x, m.y, w))) continue;
+    const d = chebyshev(p.x, p.y, m.x, m.y);
+    if (d <= range && d < best) {
+      best = d;
+      target = m;
+    }
+  }
+  if (!target) {
+    msg(events, `No target in sight for the ${def.name}.`);
+    return false; // don't waste it
   }
 
+  events.push({
+    kind: "projectile",
+    from: { x: p.x, y: p.y },
+    to: { x: target.x, y: target.y },
+    glyph: "*",
+  });
+
+  const dmg = def.magnitude ?? 0;
+  for (const m of state.monsters) {
+    if (chebyshev(m.x, m.y, target.x, target.y) > 1) continue;
+    m.hp -= m.id === target.id ? dmg : Math.ceil(dmg / 2);
+    events.push({ kind: "hit", x: m.x, y: m.y });
+  }
+
+  let slain = 0;
+  const survivors: MonsterInstance[] = [];
+  for (const m of state.monsters) {
+    if (m.hp <= 0) {
+      const md = monsterDef(m.defId);
+      if (md.coinReward > 0) p.coins += md.coinReward;
+      slain++;
+    } else {
+      survivors.push(m);
+    }
+  }
+  state.monsters = survivors;
+
+  msg(events, `The ${def.name} bursts into flame!${slain ? ` ${slain} slain.` : ""}`);
   entry.count -= 1;
   if (entry.count <= 0) p.bag = p.bag.filter((b) => b !== entry);
-  return true; // drinking costs a turn
+  return true;
 }
 
 function equipFromBag(
@@ -269,6 +332,38 @@ function moveRandom(
   }
 }
 
+function chaseStep(
+  state: GameState,
+  m: MonsterInstance,
+  def: MonsterDef,
+  events: GameEvent[]
+) {
+  const step = stepToward(
+    state.map,
+    { x: m.x, y: m.y },
+    { x: state.player.x, y: state.player.y }
+  );
+  if (step) monsterMoveTo(state, m, def, step.x, step.y, events);
+}
+
+function rangedAttack(
+  state: GameState,
+  m: MonsterInstance,
+  def: MonsterDef,
+  events: GameEvent[]
+) {
+  const dmg = Math.max(1, (def.rangedDmg ?? def.dmg) - state.player.armorReduction);
+  state.player.hp -= dmg;
+  events.push({
+    kind: "projectile",
+    from: { x: m.x, y: m.y },
+    to: { x: state.player.x, y: state.player.y },
+    glyph: "•",
+  });
+  events.push({ kind: "hit", x: state.player.x, y: state.player.y });
+  msg(events, `The ${def.name} hurls a bolt for ${dmg}.`);
+}
+
 function actMonster(
   state: GameState,
   m: MonsterInstance,
@@ -281,6 +376,10 @@ function actMonster(
   const dist = chebyshev(m.x, m.y, p.x, p.y);
   const seen = visible.has(idx(m.x, m.y, state.map.width));
 
+  // Chasers wake (and stay awake) once they spot the player in line of sight.
+  const isChaser = def.behavior !== "wander" && def.behavior !== "erratic";
+  if (isChaser && seen && dist <= def.sightRadius) m.state = "chase";
+
   switch (def.behavior) {
     case "wander":
       moveRandom(state, m, def, rng, events);
@@ -288,22 +387,27 @@ function actMonster(
     case "erratic":
       if (rng.chance(0.85)) moveRandom(state, m, def, rng, events);
       return;
-    default: {
-      // chase / guardChase / slowChase / ranged all treated as line-chasers
-      // for the core loop: notice the player within sight + LOS, then pursue.
-      if (seen && dist <= def.sightRadius) m.state = "chase";
+    case "slowChase":
+      // shambles: acts only every other turn
+      if (state.turnCount % 2 === 1) return;
+      if (m.state === "chase") chaseStep(state, m, def, events);
+      else moveRandom(state, m, def, rng, events);
+      return;
+    case "guardChase":
+      // holds its ground until it spots you, then pursues relentlessly
+      if (m.state === "chase") chaseStep(state, m, def, events);
+      return;
+    case "ranged":
       if (m.state === "chase") {
-        const step = stepToward(
-          state.map,
-          { x: m.x, y: m.y },
-          { x: p.x, y: p.y }
-        );
-        if (step) monsterMoveTo(state, m, def, step.x, step.y, events);
-      } else {
-        moveRandom(state, m, def, rng, events);
+        if (seen && dist <= (def.rangedRange ?? 4)) rangedAttack(state, m, def, events);
+        else chaseStep(state, m, def, events);
       }
       return;
-    }
+    case "chase":
+    default:
+      if (m.state === "chase") chaseStep(state, m, def, events);
+      else moveRandom(state, m, def, rng, events);
+      return;
   }
 }
 
@@ -335,7 +439,7 @@ export function resolveTurn(
 
   if (!tookTurn) {
     pushLog(state, events);
-    return { tookTurn: false, goalComplete: false, playerDied: false };
+    return { tookTurn: false, goalComplete: false, playerDied: false, events };
   }
 
   state.turnCount += 1;
@@ -346,7 +450,7 @@ export function resolveTurn(
   if (isGoalComplete(state)) {
     state.goalDone = true;
     pushLog(state, events);
-    return { tookTurn: true, goalComplete: true, playerDied: false };
+    return { tookTurn: true, goalComplete: true, playerDied: false, events };
   }
 
   advanceMonsters(state, rng, events);
@@ -358,6 +462,7 @@ export function resolveTurn(
       goalComplete: false,
       playerDied: true,
       deathReason: "combat",
+      events,
     };
   }
 
@@ -369,9 +474,10 @@ export function resolveTurn(
       goalComplete: false,
       playerDied: true,
       deathReason: "timeout",
+      events,
     };
   }
 
   pushLog(state, events);
-  return { tookTurn: true, goalComplete: false, playerDied: false };
+  return { tookTurn: true, goalComplete: false, playerDied: false, events };
 }

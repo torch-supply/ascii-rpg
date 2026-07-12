@@ -14,5 +14,10 @@ export function monsterAttackDamage(
   attacker: MonsterDef,
   player: PlayerState
 ): number {
-  return Math.max(1, attacker.dmg - player.armorReduction);
+  // Some attackers (wraith) pierce part of the player's armor.
+  const effectiveArmor = Math.max(
+    0,
+    player.armorReduction - (attacker.armorPierce ?? 0)
+  );
+  return Math.max(1, attacker.dmg - effectiveArmor);
 }

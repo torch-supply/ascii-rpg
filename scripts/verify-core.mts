@@ -7,6 +7,8 @@ import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import { isGoalComplete } from "@/game/core/goals";
 import { idx, isWalkable, tileAt } from "@/game/core/grid";
+import { monsterAttackDamage } from "@/game/core/combat";
+import { MONSTERS } from "@/content/monsters";
 import type { GameMap, Pos } from "@/game/core/types";
 
 let failures = 0;
@@ -240,6 +242,45 @@ console.log("\n[8] Connectivity: player can reach every objective");
     unreachable === 0,
     `(${unreachable}/${checked} unreachable)`
   );
+}
+
+// ─── 9. Phase 2: wraith armor-pierce ────────────────────────────────────────
+console.log("\n[9] Wraith armor-pierce");
+{
+  const p = createPlayer();
+  p.armorReduction = 4;
+  // wraith: dmg 6, pierce 2 → effective armor 2 → 4 damage
+  check("wraith pierces 2 of armor", monsterAttackDamage(MONSTERS.wraith, p) === 4);
+  // goblin: dmg 3, no pierce, armor 4 → min-1 floor
+  check("non-piercer respects armor + min-1 floor", monsterAttackDamage(MONSTERS.goblin, p) === 1);
+}
+
+// ─── 10. Phase 2: firebomb (auto-target + AoE + consume) ────────────────────
+console.log("\n[10] Firebomb potion");
+{
+  const game = beginLevel("bomb-seed", 0, createPlayer());
+  const rng = new Rng(9);
+  // place a lone weak monster on a walkable neighbor of the player, in view
+  const p = game.player;
+  const neighbor = [
+    { x: p.x + 1, y: p.y },
+    { x: p.x - 1, y: p.y },
+    { x: p.x, y: p.y + 1 },
+    { x: p.x, y: p.y - 1 },
+  ].find((n) => isWalkable(game.map, n.x, n.y))!;
+  game.monsters = [
+    { id: "test-rat", defId: "rat", x: neighbor.x, y: neighbor.y, hp: 4, state: "idle" },
+  ];
+  game.visible = [...game.visible, idx(neighbor.x, neighbor.y, game.map.width)];
+  game.player.bag = [{ defId: "p_bomb", count: 1 }];
+  const coinsBefore = game.player.coins;
+
+  const res = resolveTurn(game, { type: "useItem", defId: "p_bomb" }, rng);
+  check("firebomb consumed a turn", res.tookTurn);
+  check("firebomb slew the target", game.monsters.length === 0);
+  check("firebomb removed from bag", !game.player.bag.some((b) => b.defId === "p_bomb"));
+  check("kill awarded coins", game.player.coins > coinsBefore);
+  check("firebomb emitted a projectile effect", res.events.some((e) => e.kind === "projectile"));
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

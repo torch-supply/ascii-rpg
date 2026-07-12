@@ -1,4 +1,4 @@
-import type { Palette, TileType } from "@/game/core/types";
+import type { Biome, Palette, TileType } from "@/game/core/types";
 
 export const TERRAIN_GLYPH: Record<TileType, string> = {
   wall: "#",
@@ -6,6 +6,22 @@ export const TERRAIN_GLYPH: Record<TileType, string> = {
   door: "+",
   exit: ">",
 };
+
+// Per-biome glyph overrides give each region its own silhouette (colored by the
+// level palette). Anything not listed falls back to TERRAIN_GLYPH.
+const BIOME_WALL: Partial<Record<Biome, string>> = {
+  forest: "♣", // trees
+  mountain: "▲", // crags
+};
+const BIOME_FLOOR: Partial<Record<Biome, string>> = {
+  forest: ",", // undergrowth
+};
+
+export function terrainGlyph(t: TileType, biome: Biome): string {
+  if (t === "wall") return BIOME_WALL[biome] ?? TERRAIN_GLYPH.wall;
+  if (t === "floor") return BIOME_FLOOR[biome] ?? TERRAIN_GLYPH.floor;
+  return TERRAIN_GLYPH[t];
+}
 
 export const PLAYER_GLYPH = "@";
 export const PLAYER_COLOR = "#ffffff";

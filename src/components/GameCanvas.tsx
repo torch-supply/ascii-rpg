@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { gameStore } from "@/store/gameStore";
 import { CanvasRenderer } from "@/render/CanvasRenderer";
+import { setEffectSink } from "@/lib/effectBus";
 
 // React owns only this host <div>. The rot.js canvas is created in an effect,
 // appended into the host, and kept in a ref — React never reconciles it.
@@ -29,6 +30,9 @@ export default function GameCanvas() {
       if (s.game) renderer.draw(s.game);
     });
 
+    // cosmetic hit/projectile animations emitted by the store each turn
+    setEffectSink((fx) => renderer.playEffects(fx));
+
     // on container resize, recompute the viewport then repaint
     const ro = new ResizeObserver(() => {
       renderer.fit();
@@ -37,6 +41,7 @@ export default function GameCanvas() {
     ro.observe(host);
 
     return () => {
+      setEffectSink(null);
       unsub();
       ro.disconnect();
       renderer.dispose();

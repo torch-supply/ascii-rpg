@@ -1,12 +1,13 @@
 import * as ROT from "rot-js";
 import type { GameState } from "@/game/core/types";
+import type { GameEvent } from "@/game/core/events";
 import { idx } from "@/game/core/grid";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
 import { createDisplay } from "./Display";
 import {
-  TERRAIN_GLYPH,
+  terrainGlyph,
   PLAYER_GLYPH,
   PLAYER_COLOR,
   FOG_DIM,
@@ -19,14 +20,31 @@ const TARGET_ROWS = 26;
 const MIN_CELL = 12;
 const MAX_CELL = 30;
 
+const PROJECTILE_MS = 180;
+const HIT_DELAY_MS = 60;
+const HIT_MS = 170;
+
 const clamp = (v: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, v));
 
+type Fx =
+  | {
+      kind: "projectile";
+      fromX: number;
+      fromY: number;
+      toX: number;
+      toY: number;
+      glyph: string;
+      t0: number;
+      dur: number;
+    }
+  | { kind: "hit"; x: number; y: number; t0: number; dur: number };
+
 /**
  * Owns the rot.js Display. Renders a VIEWPORT window at a fixed, readable cell
- * size and scrolls a camera to keep the player in view — so the map can be
- * larger than the screen without ever overflowing it (classic roguelike scroll).
- * React owns only the host <div>; this class appends the canvas into it.
+ * size with a player-following camera, plus a non-blocking cosmetic animation
+ * layer (projectiles / hit flashes) driven by requestAnimationFrame. React owns
+ * only the host <div>.
  */
 export class CanvasRenderer {
   private display: ROT.Display;
@@ -34,6 +52,12 @@ export class CanvasRenderer {
   private cols = 0;
   private rows = 0;
   private cell = 0;
+
+  private lastState: GameState | null = null;
+  private camX = 0;
+  private camY = 0;
+  private fx: Fx[] = [];
+  private rafId: number | null = null;
 
   constructor(host: HTMLElement) {
     this.host = host;
@@ -46,6 +70,8 @@ export class CanvasRenderer {
   }
 
   dispose() {
+    if (this.rafId != null) cancelAnimationFrame(this.rafId);
+    this.rafId = null;
     const container = this.display.getContainer();
     if (container && container.parentNode === this.host) {
       this.host.removeChild(container);
@@ -70,22 +96,93 @@ export class CanvasRenderer {
 
   draw(state: GameState) {
     if (this.cols === 0) this.fit();
+    this.lastState = state;
+    this.renderBase(state);
+  }
+
+  /** Queue cosmetic effects from a resolved turn and run the animation loop. */
+  playEffects(events: GameEvent[]) {
+    if (!this.lastState) return;
+    const now = performance.now();
+    for (const e of events) {
+      if (e.kind === "projectile") {
+        this.fx.push({
+          kind: "projectile",
+          fromX: e.from.x,
+          fromY: e.from.y,
+          toX: e.to.x,
+          toY: e.to.y,
+          glyph: e.glyph,
+          t0: now,
+          dur: PROJECTILE_MS,
+        });
+      } else if (e.kind === "hit") {
+        this.fx.push({
+          kind: "hit",
+          x: e.x,
+          y: e.y,
+          t0: now + HIT_DELAY_MS,
+          dur: HIT_MS,
+        });
+      }
+    }
+    if (this.fx.length && this.rafId == null) {
+      this.rafId = requestAnimationFrame(this.tick);
+    }
+  }
+
+  private tick = (now: number) => {
+    this.rafId = null;
+    this.fx = this.fx.filter((f) => now - f.t0 < f.dur);
+    const state = this.lastState;
+    if (!state) return;
+
+    this.renderBase(state);
+    for (const f of this.fx) {
+      const p = clamp((now - f.t0) / f.dur, 0, 1);
+      if (f.kind === "projectile") {
+        const wx = Math.round(f.fromX + (f.toX - f.fromX) * p);
+        const wy = Math.round(f.fromY + (f.toY - f.fromY) * p);
+        this.drawCell(wx, wy, f.glyph, "#ff9d3c");
+      } else {
+        this.drawCell(f.x, f.y, "×", p < 0.5 ? "#ffdd55" : "#ff5555");
+      }
+    }
+
+    if (this.fx.length) {
+      this.rafId = requestAnimationFrame(this.tick);
+    } else {
+      this.renderBase(state); // clean final frame
+    }
+  };
+
+  private drawCell(wx: number, wy: number, glyph: string, color: string) {
+    const sx = wx - this.camX;
+    const sy = wy - this.camY;
+    if (sx < 0 || sy < 0 || sx >= this.cols || sy >= this.rows) return;
+    this.display.draw(sx, sy, glyph, color, null);
+  }
+
+  private renderBase(state: GameState) {
     const { map, player } = state;
     const { cols, rows } = this;
 
     // Camera: center on the player, clamped so we never scroll past the map.
-    const camX = clamp(
+    this.camX = clamp(
       player.x - Math.floor(cols / 2),
       0,
       Math.max(0, map.width - cols)
     );
-    const camY = clamp(
+    this.camY = clamp(
       player.y - Math.floor(rows / 2),
       0,
       Math.max(0, map.height - rows)
     );
+    const camX = this.camX;
+    const camY = this.camY;
 
-    const palette = LEVELS[state.currentLevel].palette;
+    const level = LEVELS[state.currentLevel];
+    const palette = level.palette;
     const visible = new Set(state.visible);
     const explored = new Set(state.explored);
 
@@ -105,7 +202,7 @@ export class CanvasRenderer {
         const t = map.tiles[i];
         let color = terrainColor(t, palette);
         if (!isVis) color = dim(color, FOG_DIM);
-        this.display.draw(sx, sy, TERRAIN_GLYPH[t], color, null);
+        this.display.draw(sx, sy, terrainGlyph(t, level.biome), color, null);
       }
     }
 

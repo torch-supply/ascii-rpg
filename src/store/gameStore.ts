@@ -14,6 +14,7 @@ import {
   SPLASH_HERO,
 } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
+import { emitEffects } from "@/lib/effectBus";
 import type { InputCommand } from "@/game/input/keymap";
 import { serialize } from "@/save/serialize";
 import {
@@ -219,6 +220,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         return;
       }
       commit();
+      emitEffects(res.events); // cosmetic hit/projectile animations
       persist();
     },
 
