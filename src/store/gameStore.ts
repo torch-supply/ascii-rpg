@@ -8,11 +8,7 @@ import { beginLevel, createPlayer, clonePlayer } from "@/game/core/state";
 import { giveItem } from "@/game/core/inventory";
 import { LEVELS } from "@/content/levels";
 import { ITEMS, SHOP_TIERS, type ShopEntry } from "@/content/items";
-import {
-  OPENING_NARRATION,
-  BIOME_ART,
-  SPLASH_HERO,
-} from "@/content/ascii";
+import { OPENING, BIOME_SCENE } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
 import { emitEffects } from "@/lib/effectBus";
 import type { InputCommand } from "@/game/input/keymap";
@@ -40,6 +36,7 @@ export interface NarrationData {
   title: string;
   body: string;
   art: string;
+  artGradient?: string;
   onContinue: "beginPlay" | "nextLevel" | "restartLevel" | "victory";
   buttonLabel: string;
 }
@@ -111,7 +108,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
       narration: {
         title: `${LEVELS[game.currentLevel].title} — cleared`,
         body: LEVELS[game.currentLevel].narration,
-        art: BIOME_ART[LEVELS[nextIdx].biome],
+        art: BIOME_SCENE[LEVELS[nextIdx].biome].art,
+        artGradient: BIOME_SCENE[LEVELS[nextIdx].biome].gradient,
         onContinue: "nextLevel",
         buttonLabel: `Onward — ${LEVELS[nextIdx].title}`,
       },
@@ -171,9 +169,10 @@ export const gameStore = createStore<GameStore>((set, get) => {
         rng,
         mode: "narration",
         narration: {
-          title: OPENING_NARRATION.title,
-          body: OPENING_NARRATION.body,
-          art: SPLASH_HERO,
+          title: OPENING.title,
+          body: OPENING.body,
+          art: OPENING.scene.art,
+          artGradient: OPENING.scene.gradient,
           onContinue: "beginPlay",
           buttonLabel: "Descend into the pit",
         },

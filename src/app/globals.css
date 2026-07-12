@@ -61,9 +61,70 @@ body {
   animation: blink 1s step-end infinite;
 }
 
-/* Preserve ASCII art whitespace */
+/* Title flourish: a warm ember glow that breathes, + drifting sparks. */
+@keyframes emberGlow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 5px rgba(255, 120, 40, 0.28));
+    opacity: 0.97;
+  }
+  45% {
+    filter: drop-shadow(0 0 14px rgba(255, 90, 30, 0.55));
+    opacity: 1;
+  }
+  72% {
+    filter: drop-shadow(0 0 8px rgba(255, 150, 60, 0.4));
+    opacity: 0.99;
+  }
+}
+.ember-flicker {
+  animation: emberGlow 4.5s ease-in-out infinite;
+}
+
+@keyframes emberRise {
+  0% {
+    transform: translateY(12px) scale(1);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  78% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: translateY(-150px) scale(0.35);
+    opacity: 0;
+  }
+}
+.ember-spark {
+  position: absolute;
+  bottom: 0;
+  border-radius: 9999px;
+  background: #ff8c3a;
+  box-shadow: 0 0 6px 1px rgba(255, 120, 40, 0.7);
+  animation-name: emberRise;
+  animation-timing-function: ease-in;
+  animation-iteration-count: infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ember-flicker {
+    animation: none;
+  }
+  .ember-spark {
+    display: none;
+  }
+}
+
+/* Preserve ASCII art whitespace + tight, aligned rows */
 .ascii {
   white-space: pre;
-  line-height: 1.05;
+  line-height: 1;
   font-family: var(--font-mono);
+  display: inline-block; /* gradient background-clip maps to the art box */
+  /* Critical: parents use text-align:center, which would otherwise center
+     each line individually and break column alignment. The box stays centered
+     by the flex container; the characters inside must line up. */
+  text-align: left;
 }

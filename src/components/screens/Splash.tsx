@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { gameStore, useGameStore } from "@/store/gameStore";
-import { SPLASH_ART } from "@/content/ascii";
+import { EMBER_ART, DAWN_ART, G_EMBER, G_DAWN_TITLE, SUBTITLE } from "@/content/ascii";
 import { LEVELS } from "@/content/levels";
 import { MenuButton } from "@/components/ui/MenuButton";
+import { AsciiArt } from "@/components/ui/AsciiArt";
+import { Embers } from "@/components/ui/Embers";
 
 export default function Splash() {
   const hasSave = useGameStore((s) => s.hasSave);
@@ -24,12 +26,19 @@ export default function Splash() {
 
   return (
     <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 overflow-auto bg-ink px-4 py-8 text-center">
-      <div className="flex flex-col items-center gap-2">
-        <pre className="ascii text-[10px] leading-none text-gold sm:text-sm">
-          {SPLASH_ART}
-        </pre>
-        <div className="text-[11px] tracking-[0.4em] text-dim sm:text-xs">
-          A ROGUELIKE QUEST
+      <div className="relative flex flex-col items-center gap-1 px-6 pt-8">
+        <Embers />
+        <div className="ember-flicker relative z-10 flex flex-col items-center gap-1">
+          <AsciiArt art={EMBER_ART} gradient={G_EMBER} className="text-[11px] sm:text-base" />
+          <div className="text-sm italic text-[#ff8c00] sm:text-base">of</div>
+          <AsciiArt
+            art={DAWN_ART}
+            gradient={G_DAWN_TITLE}
+            className="-mt-[18px] text-[11px] sm:text-base"
+          />
+        </div>
+        <div className="relative z-10 mt-3 text-[11px] tracking-[0.4em] text-dim sm:text-xs">
+          {SUBTITLE}
         </div>
       </div>
       <p className="max-w-md text-balance text-sm leading-relaxed text-dim">

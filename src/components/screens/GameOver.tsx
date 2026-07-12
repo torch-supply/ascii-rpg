@@ -1,21 +1,26 @@
 "use client";
 
 import { gameStore, useGameStore } from "@/store/gameStore";
-import { GAMEOVER_NARRATION } from "@/content/ascii";
+import { GAMEOVER } from "@/content/ascii";
 import { LEVELS } from "@/content/levels";
 import { MenuButton } from "@/components/ui/MenuButton";
+import { AsciiArt } from "@/components/ui/AsciiArt";
+import { Prose } from "@/components/ui/Prose";
 
 export default function GameOver() {
   const game = useGameStore((s) => s.game);
 
   return (
-    <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-7 bg-ink px-6 text-center">
+    <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 overflow-auto bg-ink px-6 py-10 text-center">
       <h2 className="text-balance text-2xl uppercase tracking-[0.4em] text-danger">
-        {GAMEOVER_NARRATION.title}
+        {GAMEOVER.title}
       </h2>
-      <p className="max-w-lg text-balance whitespace-pre-line text-sm leading-relaxed text-fg">
-        {GAMEOVER_NARRATION.body}
-      </p>
+      <AsciiArt
+        art={GAMEOVER.scene.art}
+        gradient={GAMEOVER.scene.gradient}
+        className="text-[11px] sm:text-sm"
+      />
+      <Prose text={GAMEOVER.body} className="max-w-lg text-sm text-fg" />
       {game && (
         <p className="text-balance text-xs text-dim">
           You fell in Level {game.currentLevel + 1}:{" "}

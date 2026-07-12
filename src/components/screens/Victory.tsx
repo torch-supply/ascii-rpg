@@ -1,8 +1,10 @@
 "use client";
 
 import { gameStore, useGameStore } from "@/store/gameStore";
-import { VICTORY_NARRATION, BIOME_ART } from "@/content/ascii";
+import { VICTORY } from "@/content/ascii";
 import { MenuButton } from "@/components/ui/MenuButton";
+import { AsciiArt } from "@/components/ui/AsciiArt";
+import { Prose } from "@/components/ui/Prose";
 
 export default function Victory() {
   const game = useGameStore((s) => s.game);
@@ -10,14 +12,14 @@ export default function Victory() {
   return (
     <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 overflow-auto bg-ink px-6 py-10 text-center">
       <h2 className="text-balance text-2xl uppercase tracking-[0.4em] text-gold">
-        {VICTORY_NARRATION.title}
+        {VICTORY.title}
       </h2>
-      <pre className="ascii text-[10px] leading-[1.1] text-gold sm:text-xs">
-        {BIOME_ART.throne}
-      </pre>
-      <p className="max-w-xl text-balance whitespace-pre-line text-sm leading-relaxed text-fg">
-        {VICTORY_NARRATION.body}
-      </p>
+      <AsciiArt
+        art={VICTORY.scene.art}
+        gradient={VICTORY.scene.gradient}
+        className="text-[11px] sm:text-sm"
+      />
+      <Prose text={VICTORY.body} className="max-w-xl text-sm text-fg" />
       {game && (
         <p className="text-balance text-xs text-dim">
           Gold gathered: {game.player.coins} · lives remaining:{" "}
