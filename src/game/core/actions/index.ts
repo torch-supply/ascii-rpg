@@ -11,6 +11,7 @@ import type { GameEvent } from "@/game/core/events";
 import { Rng } from "@/game/core/rng";
 import { idx, isWalkable, chebyshev } from "@/game/core/grid";
 import { recomputeFOV, recomputeLight } from "@/game/core/state";
+import { equipWeapon, equipArmor, addToBag } from "@/game/core/inventory";
 import { isGoalComplete } from "@/game/core/goals";
 import { playerAttackDamage, monsterAttackDamage } from "@/game/core/combat";
 import { stepToward } from "@/game/core/map/pathfinding";
@@ -43,30 +44,6 @@ function monsterAt(
 
 function itemAt(state: GameState, x: number, y: number): ItemInstance | undefined {
   return state.items.find((i) => i.x === x && i.y === y);
-}
-
-function equipWeapon(p: PlayerState, defId: string) {
-  const def = ITEMS[defId];
-  p.weaponId = defId;
-  p.weaponPower = def.power ?? 0;
-}
-
-function equipArmor(p: PlayerState, defId: string) {
-  const def = ITEMS[defId];
-  p.armorId = defId;
-  p.armorReduction = def.reduction ?? 0;
-}
-
-function addToBag(p: PlayerState, defId: string) {
-  const def = ITEMS[defId];
-  if (def.stackable) {
-    const entry = p.bag.find((b) => b.defId === defId);
-    if (entry) {
-      entry.count += 1;
-      return;
-    }
-  }
-  p.bag.push({ defId, count: 1 });
 }
 
 // ── pickups ────────────────────────────────────────────────────────────────

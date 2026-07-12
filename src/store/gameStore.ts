@@ -5,8 +5,9 @@ import type { GameState, PlayerAction } from "@/game/core/types";
 import { Rng } from "@/game/core/rng";
 import { resolveTurn } from "@/game/core/actions";
 import { beginLevel, createPlayer, clonePlayer } from "@/game/core/state";
+import { giveItem } from "@/game/core/inventory";
 import { LEVELS } from "@/content/levels";
-import { ITEMS } from "@/content/items";
+import { ITEMS, SHOP_TIERS, type ShopEntry } from "@/content/items";
 import {
   OPENING_NARRATION,
   BIOME_ART,
@@ -30,6 +31,7 @@ export type UIMode =
   | "inventory"
   | "help"
   | "narration"
+  | "shop"
   | "gameover"
   | "victory";
 
@@ -48,12 +50,18 @@ export interface GameStore {
   hasSave: boolean;
   saveInfo: SaveInfo | null;
   narration: NarrationData | null;
+  /** how many of each item bought during the current shop visit */
+  shopPurchases: Record<string, number>;
 
   // lifecycle
   init: () => void;
   newGame: (seed?: string) => void;
   resumeGame: () => void;
   quitToTitle: () => void;
+
+  // shop
+  buyShopEntry: (entry: ShopEntry) => void;
+  leaveShop: () => void;
 
   // the turn-based LoopDriver entry point (the seam)
   submitAction: (action: PlayerAction) => void;
@@ -142,6 +150,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     hasSave: false,
     saveInfo: null,
     narration: null,
+    shopPurchases: {},
 
     init: () => {
       const info = peekSaveInfo();
@@ -222,11 +231,18 @@ export const gameStore = createStore<GameStore>((set, get) => {
           persist();
           break;
         case "nextLevel": {
-          const nextIdx = game!.currentLevel + 1;
-          const player = clonePlayer(game!.player);
-          const ng = beginLevel(game!.masterSeed, nextIdx, player);
-          set({ game: ng, mode: "playing", narration: null });
-          persist();
+          const completed = game!.currentLevel;
+          const tier = LEVELS[completed].shopTier;
+          if (tier != null && SHOP_TIERS[tier]) {
+            // Visit the shop before the next level loads. Keep the current
+            // game state (for coins/gear) until the player leaves the shop.
+            set({ mode: "shop", narration: null, shopPurchases: {} });
+          } else {
+            const player = clonePlayer(game!.player);
+            const ng = beginLevel(game!.masterSeed, completed + 1, player);
+            set({ game: ng, mode: "playing", narration: null });
+            persist();
+          }
           break;
         }
         case "restartLevel": {
@@ -242,6 +258,29 @@ export const gameStore = createStore<GameStore>((set, get) => {
           set({ mode: "victory", narration: null, hasSave: false, saveInfo: null });
           break;
       }
+    },
+
+    buyShopEntry: (entry: ShopEntry) => {
+      const { game, shopPurchases } = get();
+      if (!game) return;
+      const bought = shopPurchases[entry.itemId] ?? 0;
+      if (entry.maxQty != null && bought >= entry.maxQty) return;
+      if (game.player.coins < entry.price) return;
+      game.player.coins -= entry.price;
+      giveItem(game.player, entry.itemId);
+      set({
+        game: { ...game },
+        shopPurchases: { ...shopPurchases, [entry.itemId]: bought + 1 },
+      });
+      persist();
+    },
+
+    leaveShop: () => {
+      const game = get().game!;
+      const player = clonePlayer(game.player);
+      const ng = beginLevel(game.masterSeed, game.currentLevel + 1, player);
+      set({ game: ng, mode: "playing", shopPurchases: {} });
+      persist();
     },
 
     useBagSlot: (n: number) => {
@@ -270,6 +309,13 @@ export const gameStore = createStore<GameStore>((set, get) => {
       }
       if (cmd.kind === "bagSlot") {
         if (mode === "playing" || mode === "inventory") get().useBagSlot(cmd.n);
+        else if (mode === "shop") {
+          const g = get().game;
+          const tier = g ? LEVELS[g.currentLevel].shopTier : null;
+          const entry =
+            tier != null ? SHOP_TIERS[tier]?.[cmd.n - 1] : undefined;
+          if (entry) get().buyShopEntry(entry);
+        }
         return;
       }
       // cmd.kind === "ui"
@@ -289,6 +335,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
           break;
         case "confirm":
           if (mode === "narration") get().continueNarration();
+          else if (mode === "shop") get().leaveShop();
           else if (mode === "gameover" || mode === "victory")
             get().quitToTitle();
           else if (mode === "paused" || mode === "inventory" || mode === "help")

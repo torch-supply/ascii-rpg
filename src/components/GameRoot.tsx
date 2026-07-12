@@ -8,6 +8,7 @@ import GameCanvas from "@/components/GameCanvas";
 import { HudBar, HudFooter } from "@/components/hud/Hud";
 import Splash from "@/components/screens/Splash";
 import Narration from "@/components/screens/Narration";
+import Shop from "@/components/screens/Shop";
 import GameOver from "@/components/screens/GameOver";
 import Victory from "@/components/screens/Victory";
 import PauseModal from "@/components/overlays/PauseModal";
@@ -59,6 +60,7 @@ export default function GameRoot() {
 
       {mode === "splash" && <Splash />}
       {mode === "narration" && <Narration />}
+      {mode === "shop" && <Shop />}
       {mode === "gameover" && <GameOver />}
       {mode === "victory" && <Victory />}
       {mode === "paused" && <PauseModal />}
