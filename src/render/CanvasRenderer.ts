@@ -67,6 +67,10 @@ export class CanvasRenderer {
   private ambientId: number | null = null;
   private lastAmbient = 0;
   private reduceMotion = false;
+  // smooth-scroll: slide the canvas one cell when the camera follows the player
+  private lastCamX = 0;
+  private lastCamY = 0;
+  private camPrimed = false;
 
   constructor(host: HTMLElement) {
     this.host = host;
@@ -125,6 +129,35 @@ export class CanvasRenderer {
     this.lastState = state;
     this.renderBase(state);
     if (targeting) this.drawTargeting(targeting.x, targeting.y);
+    this.maybeScroll();
+  }
+
+  /**
+   * When the camera follows the player by a single cell, slide the whole canvas
+   * from the old alignment to the new one so the world scrolls smoothly instead
+   * of snapping. Larger jumps (level load) and reduced-motion snap instantly.
+   */
+  private maybeScroll() {
+    const canvas = this.display.getContainer();
+    if (!canvas) return;
+    const dcx = this.camX - this.lastCamX;
+    const dcy = this.camY - this.lastCamY;
+    this.lastCamX = this.camX;
+    this.lastCamY = this.camY;
+    if (!this.camPrimed) {
+      this.camPrimed = true; // no slide on the first paint of a level
+      return;
+    }
+    if (this.reduceMotion || Math.abs(dcx) + Math.abs(dcy) !== 1) return;
+    const cw = canvas.clientWidth / this.cols;
+    const ch = canvas.clientHeight / this.rows;
+    // start shifted to the old position, then transition to identity
+    canvas.style.transition = "none";
+    canvas.style.transform = `translate(${dcx * cw}px, ${dcy * ch}px)`;
+    requestAnimationFrame(() => {
+      canvas.style.transition = "transform 110ms ease-out";
+      canvas.style.transform = "translate(0px, 0px)";
+    });
   }
 
   /** Firebomb aiming overlay: a reticle at the target + its 3x3 blast ring. */
