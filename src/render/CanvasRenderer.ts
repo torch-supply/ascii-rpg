@@ -21,8 +21,8 @@ const MIN_CELL = 12;
 const MAX_CELL = 30;
 
 const PROJECTILE_MS = 180;
-const HIT_DELAY_MS = 60;
-const HIT_MS = 170;
+const HIT_DELAY_MS = 30;
+const HIT_MS = 150;
 
 // Distance-based lighting: brightness at the player's feet vs. at the light's
 // edge (terrain fades hard for atmosphere; entities stay more legible).
@@ -214,13 +214,15 @@ export class CanvasRenderer {
 
     this.renderBase(state);
     for (const f of this.fx) {
+      if (now < f.t0) continue; // not started yet (delayed flash)
       const p = clamp((now - f.t0) / f.dur, 0, 1);
       if (f.kind === "projectile") {
         const wx = Math.round(f.fromX + (f.toX - f.fromX) * p);
         const wy = Math.round(f.fromY + (f.toY - f.fromY) * p);
         this.drawCell(wx, wy, f.glyph, "#ff9d3c");
       } else {
-        this.drawCell(f.x, f.y, "×", p < 0.5 ? "#ffdd55" : "#ff5555");
+        // hit flash: a bright spark on the struck tile, white → ember
+        this.drawCell(f.x, f.y, "*", p < 0.45 ? "#ffffff" : "#ff6a3c");
       }
     }
 
