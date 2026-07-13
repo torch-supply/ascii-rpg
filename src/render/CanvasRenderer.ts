@@ -23,6 +23,7 @@ const MAX_CELL = 30;
 const PROJECTILE_MS = 180;
 const HIT_DELAY_MS = 30;
 const HIT_MS = 150;
+const RING_MS = 300; // firebomb / Ruin expanding blast ring
 
 // Distance-based lighting: brightness at the player's feet vs. at the light's
 // edge (terrain fades hard for atmosphere; entities stay more legible).
@@ -44,7 +45,8 @@ type Fx =
       t0: number;
       dur: number;
     }
-  | { kind: "hit"; x: number; y: number; t0: number; dur: number };
+  | { kind: "hit"; x: number; y: number; t0: number; dur: number }
+  | { kind: "ring"; x: number; y: number; radius: number; t0: number; dur: number };
 
 /**
  * Owns the rot.js Display. Renders a VIEWPORT window at a fixed, readable cell
@@ -60,6 +62,7 @@ export class CanvasRenderer {
   private cell = 0;
 
   private lastState: GameState | null = null;
+  private targeting: { x: number; y: number } | null = null;
   private camX = 0;
   private camY = 0;
   private fx: Fx[] = [];
@@ -95,6 +98,7 @@ export class CanvasRenderer {
     this.lastAmbient = now;
     if (this.fx.length || !this.lastState) return; // effect loop redraws instead
     this.renderBase(this.lastState);
+    if (this.targeting) this.drawTargeting(this.targeting.x, this.targeting.y);
   };
 
   dispose() {
@@ -127,8 +131,9 @@ export class CanvasRenderer {
   draw(state: GameState, targeting?: { x: number; y: number } | null) {
     if (this.cols === 0) this.fit();
     this.lastState = state;
+    this.targeting = targeting ?? null;
     this.renderBase(state);
-    if (targeting) this.drawTargeting(targeting.x, targeting.y);
+    if (this.targeting) this.drawTargeting(this.targeting.x, this.targeting.y);
     this.maybeScroll();
   }
 
@@ -199,11 +204,43 @@ export class CanvasRenderer {
           t0: now + HIT_DELAY_MS,
           dur: HIT_MS,
         });
+      } else if (e.kind === "blast") {
+        this.fx.push({
+          kind: "ring",
+          x: e.x,
+          y: e.y,
+          radius: e.radius,
+          t0: now,
+          dur: RING_MS,
+        });
+      } else if (e.kind === "damage") {
+        this.spawnDamageNumber(e.x, e.y, e.amount, e.toPlayer);
       }
     }
     if (this.fx.length && this.rafId == null) {
       this.rafId = requestAnimationFrame(this.tick);
     }
+  }
+
+  /** A small number that floats up off a tile and fades (DOM overlay). */
+  private spawnDamageNumber(wx: number, wy: number, amount: number, toPlayer: boolean) {
+    if (this.reduceMotion) return;
+    const canvas = this.display.getContainer();
+    if (!canvas) return;
+    const sx = wx - this.camX;
+    const sy = wy - this.camY;
+    if (sx < 0 || sy < 0 || sx >= this.cols || sy >= this.rows) return;
+    const cw = canvas.clientWidth / this.cols;
+    const ch = canvas.clientHeight / this.rows;
+    const el = document.createElement("div");
+    el.className = "dmg-num";
+    el.textContent = String(amount);
+    el.style.left = `${canvas.offsetLeft + sx * cw + cw / 2}px`;
+    el.style.top = `${canvas.offsetTop + sy * ch}px`;
+    el.style.color = toPlayer ? "#ff6a6a" : "#ffe14d";
+    el.style.fontSize = `${Math.max(11, Math.round(cw * 0.7))}px`;
+    el.addEventListener("animationend", () => el.remove());
+    this.host.appendChild(el);
   }
 
   private tick = (now: number) => {
@@ -213,13 +250,29 @@ export class CanvasRenderer {
     if (!state) return;
 
     this.renderBase(state);
+    if (this.targeting) this.drawTargeting(this.targeting.x, this.targeting.y);
     for (const f of this.fx) {
       if (now < f.t0) continue; // not started yet (delayed flash)
       const p = clamp((now - f.t0) / f.dur, 0, 1);
       if (f.kind === "projectile") {
-        const wx = Math.round(f.fromX + (f.toX - f.fromX) * p);
-        const wy = Math.round(f.fromY + (f.toY - f.fromY) * p);
-        this.drawCell(wx, wy, f.glyph, "#ff9d3c");
+        // head + a short fading trail behind it
+        for (let k = 0; k < 3; k++) {
+          const pk = p - k * 0.16;
+          if (pk < 0) continue;
+          const wx = Math.round(f.fromX + (f.toX - f.fromX) * pk);
+          const wy = Math.round(f.fromY + (f.toY - f.fromY) * pk);
+          this.drawCell(wx, wy, f.glyph, dim("#ff9d3c", 1 - k * 0.34));
+        }
+      } else if (f.kind === "ring") {
+        // an expanding ring of sparks over the blast radius
+        const front = p * (f.radius + 1);
+        for (let dy = -f.radius; dy <= f.radius; dy++) {
+          for (let dx = -f.radius; dx <= f.radius; dx++) {
+            const d = Math.max(Math.abs(dx), Math.abs(dy));
+            if (d > f.radius || Math.abs(front - d) > 0.9) continue;
+            this.drawCell(f.x + dx, f.y + dy, "*", dim("#ffb347", 1 - p * 0.6));
+          }
+        }
       } else {
         // hit flash: a bright spark on the struck tile, white → ember
         this.drawCell(f.x, f.y, "*", p < 0.45 ? "#ffffff" : "#ff6a3c");
@@ -230,6 +283,7 @@ export class CanvasRenderer {
       this.rafId = requestAnimationFrame(this.tick);
     } else {
       this.renderBase(state); // clean final frame
+      if (this.targeting) this.drawTargeting(this.targeting.x, this.targeting.y);
     }
   };
 
@@ -301,6 +355,13 @@ export class CanvasRenderer {
         color = isVis
           ? this.lit(color, chebyshev(wx, wy, player.x, player.y), effR, EDGE_MIN_TERRAIN)
           : dim(color, FOG_DIM);
+        // living terrain: water shimmers, marsh reeds sway (per-tile phase)
+        if (isVis && !this.reduceMotion) {
+          if (t === "water")
+            color = dim(color, 0.82 + 0.18 * Math.sin(now * 0.004 + i * 0.9));
+          else if (level.biome === "marsh" && t === "wall")
+            color = dim(color, 0.9 + 0.1 * Math.sin(now * 0.0035 + i * 0.6));
+        }
         this.display.draw(sx, sy, glyph, color, null);
       }
     }

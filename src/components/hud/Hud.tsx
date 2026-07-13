@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
+import { MONSTERS } from "@/content/monsters";
+import { idx } from "@/game/core/grid";
 import { goalLabel } from "@/game/core/goals";
 
 /** Top status bar — rendered in normal flow above the canvas region. */
@@ -93,6 +96,76 @@ export function HudBar() {
           )}
         </span>
         <span style={{ color: level.palette.accent }}>✦ {goalLabel(game)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Prominent boss bar — shows while a boss is in view (engaged). Overlaid on
+   the map region, top-center. */
+export function BossBar() {
+  const game = useGameStore((s) => s.game);
+  if (!game) return null;
+  const w = game.map.width;
+  const boss = game.monsters.find(
+    (m) => MONSTERS[m.defId].isBoss && game.visible.includes(idx(m.x, m.y, w))
+  );
+  if (!boss) return null;
+  const def = MONSTERS[boss.defId];
+  const pct = Math.max(0, Math.min(100, Math.round((boss.hp / def.maxHp) * 100)));
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
+      <div className="w-80 max-w-[80%] border border-hp/60 bg-panel/90 px-3 py-1.5 shadow-[0_0_12px_rgba(255,60,60,0.25)]">
+        <div className="flex items-baseline justify-between text-[11px] uppercase tracking-[0.2em]">
+          <span style={{ color: def.color }}>
+            {def.glyph} {def.name}
+          </span>
+          <span className="text-dim">
+            {Math.max(0, boss.hp)}/{def.maxHp}
+          </span>
+        </div>
+        <div className="mt-1 h-2 overflow-hidden rounded-sm border border-edge">
+          <div
+            className="h-full transition-[width] duration-200 ease-out"
+            style={{ width: `${pct}%`, background: pct > 40 ? "#c0392b" : "#ff5555" }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Level intro card — a brief biome banner + goal that fades in when a level
+   opens, then unmounts itself on a timer. */
+export function LevelIntro() {
+  const game = useGameStore((s) => s.game);
+  const level = game ? game.currentLevel : -1;
+  const [shownFor, setShownFor] = useState(-1);
+
+  useEffect(() => {
+    if (level < 0) return;
+    setShownFor(level);
+    const t = setTimeout(() => setShownFor(-1), 2600);
+    return () => clearTimeout(t);
+  }, [level]);
+
+  if (!game || level < 0 || shownFor !== level) return null;
+  const cfg = LEVELS[level];
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+      <div className="intro-card border border-edge bg-ink/85 px-10 py-6 text-center">
+        <div className="text-[11px] uppercase tracking-[0.5em] text-dim">
+          Level {level + 1} / {LEVELS.length}
+        </div>
+        <div
+          className="mt-2 text-3xl uppercase tracking-[0.15em]"
+          style={{ color: cfg.palette.accent }}
+        >
+          {cfg.title}
+        </div>
+        <div className="mt-3 text-sm text-dim">✦ {goalLabel(game)}</div>
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import { gameStore, useGameStore } from "@/store/gameStore";
 import { KeyboardInput } from "@/game/input/KeyboardInput";
 
 import GameCanvas from "@/components/GameCanvas";
-import { HudBar, HudFooter } from "@/components/hud/Hud";
+import { HudBar, HudFooter, BossBar, LevelIntro } from "@/components/hud/Hud";
 import Splash from "@/components/screens/Splash";
 import Narration from "@/components/screens/Narration";
 import Shop from "@/components/screens/Shop";
@@ -59,6 +59,8 @@ export default function GameRoot() {
           {/* the map fills only this region, so it always fits the viewport */}
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <GameCanvas />
+            {mode !== "targeting" && <BossBar />}
+            <LevelIntro />
             {mode === "targeting" && (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
                 <span className="border border-gold/50 bg-panel/90 px-3 py-1 text-xs text-gold">

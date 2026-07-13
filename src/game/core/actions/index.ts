@@ -162,6 +162,7 @@ function resolvePlayerAttack(
   const dmg = playerAttackDamage(state.player, def);
   target.hp -= dmg;
   events.push({ kind: "hit", x: target.x, y: target.y });
+  events.push({ kind: "damage", x: target.x, y: target.y, amount: dmg, toPlayer: false });
   if (target.hp <= 0) {
     msg(events, `You slay the ${def.name}.`);
     if (def.coinReward > 0) addCoins(state, def.coinReward);
@@ -182,6 +183,7 @@ function resolveMonsterAttack(
   const dmg = monsterAttackDamage(def, state.player);
   state.player.hp -= dmg;
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
+  events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
   msg(events, `The ${def.name} hits you for ${dmg}.`);
 }
 
@@ -223,6 +225,7 @@ function springTrap(state: GameState, events: GameEvent[]) {
   );
   state.player.hp -= dmg;
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
+  events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
   msg(events, `A hidden spike trap! You take ${dmg} damage.`);
 }
 
@@ -353,13 +356,16 @@ function detonateAt(
     to: { x: tx, y: ty },
     glyph: "*",
   });
+  events.push({ kind: "blast", x: tx, y: ty, radius: 1 });
 
   const dmg = def.magnitude ?? 0;
   for (const m of state.monsters) {
     const d = chebyshev(m.x, m.y, tx, ty);
     if (d > 1) continue;
-    m.hp -= d === 0 ? dmg : Math.ceil(dmg / 2);
+    const dealt = d === 0 ? dmg : Math.ceil(dmg / 2);
+    m.hp -= dealt;
     events.push({ kind: "hit", x: m.x, y: m.y });
+    events.push({ kind: "damage", x: m.x, y: m.y, amount: dealt, toPlayer: false });
   }
 
   let slain = 0;
@@ -545,6 +551,7 @@ function rangedAttack(
     glyph: "•",
   });
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
+  events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
   msg(events, `The ${def.name} hurls a bolt for ${dmg}.`);
 }
 

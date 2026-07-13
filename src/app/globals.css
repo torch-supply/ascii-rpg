@@ -132,6 +132,57 @@ body {
   animation-iteration-count: infinite;
 }
 
+/* Floating damage numbers: rise off a struck tile and fade. Positioned by the
+   renderer (absolute, in the canvas host); anchored at the tile's top-center. */
+@keyframes floatUp {
+  0% {
+    transform: translate(-50%, 0) scale(0.7);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-50%, -4px) scale(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -34px) scale(0.9);
+    opacity: 0;
+  }
+}
+.dmg-num {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.9);
+  animation: floatUp 750ms ease-out forwards;
+}
+
+/* Level intro card: biome banner + goal fades in, holds, then the wrapper
+   unmounts it on a timer. */
+@keyframes introCard {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.intro-card {
+  animation: introCard 2600ms ease-in-out forwards;
+}
+
 /* Title shimmer: a bright band sweeps across the letters over the ember base.
    The moving layer is background layer 1; the ember gradient (layer 2) is fixed. */
 @keyframes titleShimmer {
@@ -148,10 +199,12 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .ember-flicker,
-  .ascii-shimmer {
+  .ascii-shimmer,
+  .intro-card {
     animation: none;
   }
-  .ember-spark {
+  .ember-spark,
+  .dmg-num {
     display: none;
   }
 }
