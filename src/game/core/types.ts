@@ -62,6 +62,12 @@ export interface StatusApplication {
   duration: number; // turns
 }
 
+// A champion/elite modifier rolled onto an ordinary monster at spawn:
+//   brute    — tankier + hits harder (armor + damage bonus)
+//   swift    — acts twice per turn
+//   volatile — bursts on death, damaging anything adjacent
+export type EliteKind = "brute" | "swift" | "volatile";
+
 export interface MonsterDef {
   id: string;
   name: string;
@@ -167,6 +173,8 @@ export interface LevelConfig {
   oilCount?: number;
   /** destructible cracked walls bordering rooms (default 0) */
   crackedWallCount?: number;
+  /** per-monster chance to spawn as an elite/champion (0–1, default 0) */
+  eliteChance?: number;
   goal: GoalConfig;
   /** Transition narration shown after completing this level. */
   narration: string;
@@ -188,6 +196,8 @@ export interface MonsterInstance {
   isGoalTarget?: boolean;
   /** active timed debuffs afflicting this monster (poison/bleed/burn/chill) */
   effects?: Record<string, number>;
+  /** champion modifier (buffed stats + better loot); bosses are never elite */
+  elite?: EliteKind;
 }
 
 export interface ItemInstance {

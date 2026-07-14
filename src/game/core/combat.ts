@@ -19,13 +19,14 @@ export function wardMitigate(player: PlayerState, dmg: number): number {
 
 export function monsterAttackDamage(
   attacker: MonsterDef,
-  player: PlayerState
+  player: PlayerState,
+  dmgBonus = 0
 ): number {
   // Some attackers (wraith) pierce part of the player's armor.
   const effectiveArmor = Math.max(
     0,
     player.armorReduction - (attacker.armorPierce ?? 0)
   );
-  const base = Math.max(1, attacker.dmg - effectiveArmor);
+  const base = Math.max(1, attacker.dmg + dmgBonus - effectiveArmor);
   return wardMitigate(player, base);
 }

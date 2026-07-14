@@ -6,7 +6,7 @@ import { STATUS } from "@/game/core/status";
 import type { StatusKind } from "@/game/core/types";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
-import { MONSTERS } from "@/content/monsters";
+import { MONSTERS, ELITE } from "@/content/monsters";
 import { createDisplay } from "./Display";
 import {
   terrainGlyph,
@@ -478,8 +478,12 @@ export class CanvasRenderer {
       const sy = m.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const def = MONSTERS[m.defId];
+      // debuff tint wins (so poison/burn still read); else elites glow their
+      // champion color; else the monster's own color
+      const baseColor =
+        statusTint(m.effects) ?? (m.elite ? ELITE[m.elite].color : def.color);
       const color = this.lit(
-        statusTint(m.effects) ?? def.color,
+        baseColor,
         chebyshev(m.x, m.y, player.x, player.y),
         effR,
         EDGE_MIN_ENTITY

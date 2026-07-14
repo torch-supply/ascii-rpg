@@ -23,10 +23,8 @@ _A transparent RGBA canvas now sits atop the rot.js grid (added for the cracked-
 - ⭐ **Active abilities with cooldowns** — a dash, a cleave (hit all adjacent), a short blink — tactical tools separate from consumables. Pairs great with classes.
 - ⭐ **Character classes / starting kits** — Warrior (melee+armor), Rogue (stealth+crit), Pyromancer (bombs+bolts). Big replay boost, picked on the splash.
 - **Weapon properties** — reach (hit 2 tiles), cleave, lifesteal, crit chance — so weapons aren't just "bigger number."
-- **Player ranged option** — a bow/sling with ammo, distinct from the firebomb.
-- **Elite/champion variants** — occasional buffed monsters (fast / armored / explodes on death) with a marker and better loot.
-- **Stealth via light** — monsters only spot you in lit tiles/within radius; sneak attacks deal bonus damage (ties torchlight into strategy).
-- **Altars/shrines** — risk/reward: sacrifice HP or gold for a boon; cursed-but-strong items.
+- **Player ranged option** — an equipped bow/sling with ammo, distinct from the firebomb. _(Pass 2 — in progress.)_
+- **Altars/shrines** — risk/reward: sacrifice HP or gold for a boon; cursed-but-strong items. _(Pass 2 — in progress.)_
 
 ## Systems / meta / replay
 

@@ -1,4 +1,48 @@
-import type { MonsterDef } from "@/game/core/types";
+import type { MonsterDef, EliteKind } from "@/game/core/types";
+
+// Elite/champion modifiers applied to an ordinary monster at spawn. Each rolls
+// onto a random regular monster (never a boss) at a level's `eliteChance`.
+export interface EliteMod {
+  label: string;
+  hpMult: number;
+  armorBonus: number; // extra armor vs. the player's blows
+  dmgBonus: number; // extra damage on its attacks
+  extraAction: boolean; // acts twice per turn
+  explodes: boolean; // bursts on death (see CONFIG.eliteExplodeDamage)
+  color: string; // glyph tint so the player can spot the threat
+}
+
+export const ELITE: Record<EliteKind, EliteMod> = {
+  brute: {
+    label: "Brute",
+    hpMult: 1.8,
+    armorBonus: 3,
+    dmgBonus: 2,
+    extraAction: false,
+    explodes: false,
+    color: "#f0b038",
+  },
+  swift: {
+    label: "Swift",
+    hpMult: 1.2,
+    armorBonus: 0,
+    dmgBonus: 0,
+    extraAction: true,
+    explodes: false,
+    color: "#7fe0ff",
+  },
+  volatile: {
+    label: "Volatile",
+    hpMult: 1.3,
+    armorBonus: 0,
+    dmgBonus: 0,
+    extraAction: false,
+    explodes: true,
+    color: "#ff6a3c",
+  },
+};
+
+export const ELITE_KINDS = Object.keys(ELITE) as EliteKind[];
 
 // Registry of monster definitions, keyed by id. Runtime instances are
 // lightweight ({defId, hp, x, y, state}) and look up their def here.

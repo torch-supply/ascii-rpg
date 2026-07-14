@@ -20,6 +20,10 @@ export const CONFIG = {
   mightBonus: 4,
   /** armed traps within this many tiles are sensed (revealed as a faint ^) */
   trapSenseRadius: 1,
+  /** damage multiplier for striking a monster that hasn't noticed you (sneak) */
+  sneakMultiplier: 2,
+  /** damage a volatile elite's death-burst deals to an adjacent player */
+  eliteExplodeDamage: 6,
   /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
   fireBurnDuration: 2,
   /** lingering fire tiles left by a thrown firebomb */
@@ -32,5 +36,5 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "4",
+  contentVersion: "5",
 };

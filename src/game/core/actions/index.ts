@@ -27,7 +27,7 @@ import {
 } from "@/game/core/status";
 import type { StatusApplication } from "@/game/core/types";
 import { stepToward } from "@/game/core/map/pathfinding";
-import { monsterDef } from "@/content/monsters";
+import { monsterDef, ELITE, type EliteMod } from "@/content/monsters";
 import { ITEMS } from "@/content/items";
 import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
@@ -126,23 +126,32 @@ function pickUp(state: GameState, events: GameEvent[]) {
 }
 
 // ── combat ─────────────────────────────────────────────────────────────────
-/** Roll a monster's loot table and drop one item on its tile (if free). */
+/** The elite modifier for a monster instance, if any. */
+function eliteMod(m: MonsterInstance): EliteMod | null {
+  return m.elite ? ELITE[m.elite] : null;
+}
+
+/** Roll a monster's loot table and drop one item on its tile (if free).
+ * `guaranteed` (elites) forces a drop, falling back to a potion with no table. */
 function dropLoot(
   state: GameState,
   x: number,
   y: number,
   def: MonsterDef,
   rng: Rng,
-  events: GameEvent[]
+  events: GameEvent[],
+  guaranteed = false
 ) {
   const loot = def.loot;
-  if (!loot || !rng.chance(loot.chance)) return;
+  const table = loot?.table ?? [{ itemId: "p_heal", weight: 1 }];
+  const chance = guaranteed ? 1 : loot?.chance ?? 0;
+  if (!rng.chance(chance)) return;
   if (itemAt(state, x, y)) return; // don't stack drops on a tile
-  const total = loot.table.reduce((s, e) => s + e.weight, 0);
+  const total = table.reduce((s, e) => s + e.weight, 0);
   if (total <= 0) return;
   let roll = rng.int(1, total);
-  let itemId = loot.table[0].itemId;
-  for (const e of loot.table) {
+  let itemId = table[0].itemId;
+  for (const e of table) {
     roll -= e.weight;
     if (roll <= 0) {
       itemId = e.itemId;
@@ -160,7 +169,23 @@ function dropLoot(
   msg(events, `The ${def.name} drops a ${idef.name}.`);
 }
 
-/** Award a kill: coins, run/level counters, loot drop. Does NOT remove `m`. */
+/** A volatile elite bursts on death, searing anything on the adjacent tiles. */
+function explodeOnDeath(state: GameState, m: MonsterInstance, events: GameEvent[]) {
+  const p = state.player;
+  events.push({ kind: "blast", x: m.x, y: m.y, radius: 1 });
+  if (chebyshev(p.x, p.y, m.x, m.y) <= 1) {
+    const dmg = wardMitigate(p, CONFIG.eliteExplodeDamage);
+    p.hp -= dmg;
+    events.push({ kind: "hit", x: p.x, y: p.y });
+    events.push({ kind: "damage", x: p.x, y: p.y, amount: dmg, toPlayer: true });
+    msg(events, "The volatile creature bursts apart — the blast catches you!");
+  } else {
+    msg(events, "A volatile creature bursts apart in the dark.");
+  }
+}
+
+/** Award a kill: coins, run/level counters, loot drop. Elites pay double and
+ * always drop; volatile elites detonate. Does NOT remove `m` from the list. */
 function awardKill(
   state: GameState,
   m: MonsterInstance,
@@ -168,10 +193,13 @@ function awardKill(
   rng: Rng,
   events: GameEvent[]
 ) {
-  if (def.coinReward > 0) addCoins(state, def.coinReward);
+  const em = eliteMod(m);
+  const coin = em ? def.coinReward * 2 : def.coinReward;
+  if (coin > 0) addCoins(state, coin);
   state.player.kills += 1;
   state.levelKills += 1;
-  dropLoot(state, m.x, m.y, def, rng, events);
+  dropLoot(state, m.x, m.y, def, rng, events, em != null);
+  if (em?.explodes) explodeOnDeath(state, m, events);
 }
 
 /** Roll a chance-on-hit affliction and apply it to an effects bag. */
@@ -226,16 +254,29 @@ function resolvePlayerAttack(
   rng: Rng
 ) {
   const def = monsterDef(target.defId);
-  const dmg = playerAttackDamage(state.player, def);
+  const em = eliteMod(target);
+  let dmg = playerAttackDamage(state.player, def);
+  if (em) dmg = Math.max(1, dmg - em.armorBonus); // brutes shrug off blows
+  // Ambush: a monster that could give chase but hasn't noticed you yet (you
+  // approached unseen in the dark) takes bonus damage from the first strike.
+  const canAlert = def.behavior !== "wander" && def.behavior !== "erratic";
+  const sneak = canAlert && target.state === "idle";
+  if (sneak) dmg = Math.round(dmg * CONFIG.sneakMultiplier);
   target.hp -= dmg;
   events.push({ kind: "hit", x: target.x, y: target.y });
   events.push({ kind: "damage", x: target.x, y: target.y, amount: dmg, toPlayer: false });
   if (target.hp <= 0) {
-    msg(events, `You slay the ${def.name}.`);
+    msg(events, sneak ? `A silent kill — the ${def.name} never woke.` : `You slay the ${def.name}.`);
     awardKill(state, target, def, rng, events);
     state.monsters = state.monsters.filter((m) => m.id !== target.id);
   } else {
-    msg(events, `You strike the ${def.name} for ${dmg} (${target.hp} left).`);
+    if (canAlert) target.state = "chase"; // the blow alerts it
+    msg(
+      events,
+      sneak
+        ? `Sneak attack! You hit the ${def.name} for ${dmg} (${target.hp} left).`
+        : `You strike the ${def.name} for ${dmg} (${target.hp} left).`
+    );
     // the wielded weapon may sear/chill/poison what it strikes (player → monster)
     if (!target.effects) target.effects = {};
     tryAfflict(target.effects, ITEMS[state.player.weaponId].onHit, rng, def.name, events);
@@ -245,11 +286,12 @@ function resolvePlayerAttack(
 
 function resolveMonsterAttack(
   state: GameState,
+  m: MonsterInstance,
   def: MonsterDef,
   events: GameEvent[],
   rng: Rng
 ) {
-  const dmg = monsterAttackDamage(def, state.player);
+  const dmg = monsterAttackDamage(def, state.player, eliteMod(m)?.dmgBonus ?? 0);
   state.player.hp -= dmg;
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
   events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
@@ -730,7 +772,7 @@ function monsterMoveTo(
   rng: Rng
 ) {
   if (nx === state.player.x && ny === state.player.y) {
-    resolveMonsterAttack(state, def, events, rng);
+    resolveMonsterAttack(state, m, def, events, rng);
     return;
   }
   if (!isWalkable(state.map, nx, ny)) return;
@@ -755,7 +797,7 @@ function moveRandom(
     const nx = m.x + dx;
     const ny = m.y + dy;
     if (nx === state.player.x && ny === state.player.y) {
-      resolveMonsterAttack(state, def, events, rng);
+      resolveMonsterAttack(state, m, def, events, rng);
       return;
     }
     if (isWalkable(state.map, nx, ny) && !monsterAt(state, nx, ny, m.id)) {
@@ -788,9 +830,10 @@ function rangedAttack(
   events: GameEvent[],
   rng: Rng
 ) {
+  const bonus = eliteMod(m)?.dmgBonus ?? 0;
   const dmg = wardMitigate(
     state.player,
-    Math.max(1, (def.rangedDmg ?? def.dmg) - state.player.armorReduction)
+    Math.max(1, (def.rangedDmg ?? def.dmg) + bonus - state.player.armorReduction)
   );
   state.player.hp -= dmg;
   events.push({
@@ -822,9 +865,12 @@ function actMonster(
   const dist = chebyshev(m.x, m.y, p.x, p.y);
   const seen = visible.has(idx(m.x, m.y, state.map.width));
 
-  // Chasers wake (and stay awake) once they spot the player in line of sight.
+  // Chasers wake (and stay awake) once they spot the player — but only as far
+  // as the player's own light reveals them. Dousing your torch / low-light
+  // levels let you slip closer unseen (and set up a sneak attack).
   const isChaser = def.behavior !== "wander" && def.behavior !== "erratic";
-  if (isChaser && seen && dist <= def.sightRadius) m.state = "chase";
+  const detectRange = Math.min(def.sightRadius, p.lightRadius);
+  if (isChaser && seen && dist <= detectRange) m.state = "chase";
 
   switch (def.behavior) {
     case "wander":
@@ -915,6 +961,15 @@ function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
   for (const m of state.monsters.slice()) {
     if (state.player.hp <= 0) break;
     actMonster(state, m, visible, rng, events);
+    // swift elites act twice (only while alerted, so they aren't a menace at rest)
+    if (
+      eliteMod(m)?.extraAction &&
+      m.state === "chase" &&
+      state.player.hp > 0 &&
+      state.monsters.includes(m)
+    ) {
+      actMonster(state, m, visible, rng, events);
+    }
   }
 }
 

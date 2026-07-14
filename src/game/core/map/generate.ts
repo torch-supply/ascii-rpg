@@ -12,7 +12,7 @@ import { seedMapGen, mapInt, mapWeighted } from "@/game/core/rng";
 import { levelSeed } from "@/lib/hash";
 import { CONFIG } from "@/content/config";
 import { ITEMS } from "@/content/items";
-import { monsterDef } from "@/content/monsters";
+import { monsterDef, ELITE, ELITE_KINDS } from "@/content/monsters";
 
 export interface LevelData {
   map: GameMap;
@@ -462,14 +462,22 @@ export function generateLevel(
     if (!monsterId) break;
     const def = monsterDef(monsterId);
     occupied.add(cell);
-    monsters.push({
+    const inst: MonsterInstance = {
       id: `m${levelIndex}_${mCounter++}`,
       defId: def.id,
       x: cell % w,
       y: Math.floor(cell / w),
       hp: def.maxHp,
       state: "idle",
-    });
+    };
+    // Roll an elite/champion modifier (bosses never qualify).
+    const eliteChance = config.eliteChance ?? 0;
+    if (!def.isBoss && eliteChance > 0 && mapInt(1, 100) <= eliteChance * 100) {
+      const kind = ELITE_KINDS[mapInt(0, ELITE_KINDS.length - 1)];
+      inst.elite = kind;
+      inst.hp = Math.round(def.maxHp * ELITE[kind].hpMult);
+    }
+    monsters.push(inst);
   }
 
   // Quest items (collectX / findItem).

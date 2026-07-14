@@ -9,7 +9,8 @@ import { isGoalComplete } from "@/game/core/goals";
 import { idx, isWalkable, tileAt } from "@/game/core/grid";
 import { monsterAttackDamage } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
-import { MONSTERS } from "@/content/monsters";
+import { MONSTERS, ELITE } from "@/content/monsters";
+import { CONFIG } from "@/content/config";
 import type { GameMap, Pos } from "@/game/core/types";
 
 let failures = 0;
@@ -747,6 +748,84 @@ console.log("\n[20] Environmental interplay");
       "fire spreads onto adjacent oil (which burns to floor)",
       game.map.tiles[b] === "floor" && game.fireTiles.some((f) => f.i === b)
     );
+  }
+}
+
+// ─── 21. Elites & stealth (sneak attacks) ───────────────────────────────────
+console.log("\n[21] Elites & stealth");
+{
+  const DIRS = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const adj = (g: ReturnType<typeof beginLevel>): Pos => {
+    for (const [dx, dy] of DIRS) {
+      const x = g.player.x + dx;
+      const y = g.player.y + dy;
+      if (isWalkable(g.map, x, y)) return { x, y };
+    }
+    throw new Error("no walkable neighbor");
+  };
+  const stepInto = (g: ReturnType<typeof beginLevel>, s: Pos) =>
+    resolveTurn(
+      g,
+      { type: "move", dx: Math.sign(s.x - g.player.x), dy: Math.sign(s.y - g.player.y) },
+      new Rng(1)
+    );
+
+  // sneak attack: striking an unaware chaser hits for the sneak multiplier
+  {
+    const g = beginLevel("elite-seed", 0, createPlayer());
+    g.player.weaponPower = 6;
+    const s = adj(g);
+    g.monsters = [{ id: "z", defId: "skeleton", x: s.x, y: s.y, hp: 100, state: "idle" }];
+    stepInto(g, s);
+    const sneakLoss = 100 - g.monsters[0].hp;
+
+    const g2 = beginLevel("elite-seed", 0, createPlayer());
+    g2.player.weaponPower = 6;
+    const s2 = adj(g2);
+    g2.monsters = [{ id: "z", defId: "skeleton", x: s2.x, y: s2.y, hp: 100, state: "chase" }];
+    stepInto(g2, s2);
+    const openLoss = 100 - g2.monsters[0].hp;
+
+    check("sneak attack on an unaware monster hits harder", sneakLoss === openLoss * CONFIG.sneakMultiplier);
+  }
+
+  // elite brute shrugs off part of every blow
+  {
+    const g = beginLevel("elite-seed", 0, createPlayer());
+    g.player.weaponPower = 10;
+    const s = adj(g);
+    g.monsters = [{ id: "b", defId: "skeleton", x: s.x, y: s.y, hp: 100, state: "chase", elite: "brute" }];
+    stepInto(g, s);
+    check("elite brute reduces incoming damage", 100 - g.monsters[0].hp === 10 - ELITE.brute.armorBonus);
+  }
+
+  // volatile elite bursts on death, catching an adjacent player
+  {
+    const g = beginLevel("elite-seed", 0, createPlayer());
+    g.player.weaponPower = 50;
+    const s = adj(g);
+    g.monsters = [{ id: "v", defId: "rat", x: s.x, y: s.y, hp: 2, state: "chase", elite: "volatile" }];
+    const hp0 = g.player.hp;
+    stepInto(g, s);
+    check("volatile elite explodes on death", !g.monsters.some((m) => m.id === "v"));
+    check("its blast catches an adjacent player", g.player.hp === hp0 - CONFIG.eliteExplodeDamage);
+  }
+
+  // elites pay double coins and always drop loot
+  {
+    const g = beginLevel("elite-seed", 0, createPlayer());
+    g.player.weaponPower = 60;
+    const s = adj(g);
+    g.monsters = [{ id: "e", defId: "skeleton", x: s.x, y: s.y, hp: 2, state: "chase", elite: "brute" }];
+    const coins0 = g.player.coins;
+    stepInto(g, s);
+    check("elite pays double coins", g.player.coins === coins0 + MONSTERS.skeleton.coinReward * 2);
+    check("elite always drops loot", g.items.some((it) => it.x === s.x && it.y === s.y));
   }
 }
 

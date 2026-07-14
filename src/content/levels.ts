@@ -99,6 +99,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 6,
     waterCount: 46,
     oilCount: 16,
+    eliteChance: 0.1,
     goal: { type: "reachLocation" },
     narration:
       "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into ice and bare rock — the Frostspine Pass — and something enormous is breathing on the wind.",
@@ -128,6 +129,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 5,
     trapCount: 3,
     waterCount: 18,
+    eliteChance: 0.12,
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
       "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — and their warden has already seen you.",
@@ -159,6 +161,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 5,
     trapCount: 5,
     crackedWallCount: 4,
+    eliteChance: 0.15,
     goal: { type: "killCount", count: 8 },
     narration:
       "The last of the gate's wardens falls and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
@@ -191,6 +194,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 4,
     oilCount: 12,
     crackedWallCount: 4,
+    eliteChance: 0.15,
     goal: { type: "collectX", questTag: "sigil", count: 3 },
     narration:
       "The three dusk-sigils lock into the crypt door and it swings inward on a breath of grave-air. Down there, the last kings hid the one blade that can still cut the night: the Sunblade.",
@@ -223,6 +227,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 8,
     oilCount: 10,
     crackedWallCount: 3,
+    eliteChance: 0.18,
     goal: { type: "findItem", questTag: "sunblade" },
     narration:
       "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. There is no way up but the ramparts — open to the dead sky, and to whatever wheels across it.",
@@ -253,6 +258,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 6,
     trapCount: 2,
     waterCount: 8,
+    eliteChance: 0.2,
     goal: { type: "survive", turns: 35 },
     narration:
       "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",
@@ -283,6 +289,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 5,
     trapCount: 3,
     crackedWallCount: 3,
+    eliteChance: 0.2,
     goal: { type: "killTarget", monsterId: "herald" },
     narration:
       "The Herald falls to ash and the black door yields. Beyond, a stair of black marble climbs to the Throne of Dusk. Malachar is waiting. End this.",
