@@ -298,17 +298,6 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const { mode, game, rng } = get();
       if (mode !== "playing" || !game || !rng) return;
 
-      // Walking into an unspent shrine opens its bargain instead of a turn.
-      if (action.type === "move") {
-        const nx = game.player.x + action.dx;
-        const ny = game.player.y + action.dy;
-        const altar = game.altars.find((a) => !a.used && a.x === nx && a.y === ny);
-        if (altar) {
-          set({ mode: "altar", activeAltar: altar });
-          return;
-        }
-      }
-
       const res = resolveTurn(game, action, rng);
       if (!res.tookTurn) {
         commit(); // no turn spent, but state (bag/equip) may have changed
@@ -325,6 +314,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
       commit();
       emitEffects(res.events); // cosmetic hit/projectile animations
       persist();
+      // Stepping onto an unspent shrine offers its bargain — AFTER the move
+      // resolves, so an altar never blocks a route (decline = walk on past it).
+      const altar = game.altars.find(
+        (a) => !a.used && a.x === game.player.x && a.y === game.player.y
+      );
+      if (altar) set({ mode: "altar", activeAltar: altar });
     },
 
     continueNarration: () => {
