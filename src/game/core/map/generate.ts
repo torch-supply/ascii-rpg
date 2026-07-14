@@ -212,6 +212,94 @@ function placeTraps(
   }
 }
 
+/** Scatter walkable oil slicks in small blobs on free floor (harmless until
+ * ignited — fire then races across them). */
+function placeOil(
+  config: LevelConfig,
+  tiles: TileType[],
+  occupied: Set<number>,
+  w: number,
+  h: number
+) {
+  let remaining = config.oilCount ?? 0;
+  let guard = 0;
+  while (remaining > 0 && guard < 200) {
+    guard++;
+    const floors: number[] = [];
+    for (let i = 0; i < tiles.length; i++) {
+      if (tiles[i] === "floor" && !occupied.has(i)) floors.push(i);
+    }
+    if (floors.length === 0) break;
+    let cur = floors[mapInt(0, floors.length - 1)];
+    const blob = mapInt(2, 5);
+    for (let b = 0; b < blob && remaining > 0; b++) {
+      if (tiles[cur] === "floor" && !occupied.has(cur)) {
+        tiles[cur] = "oil";
+        remaining--;
+      }
+      const cx = cur % w;
+      const cy = Math.floor(cur / w);
+      const dirs = [
+        [0, -1],
+        [0, 1],
+        [-1, 0],
+        [1, 0],
+      ];
+      for (let k = dirs.length - 1; k > 0; k--) {
+        const j = mapInt(0, k);
+        [dirs[k], dirs[j]] = [dirs[j], dirs[k]];
+      }
+      let moved = false;
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        const ni = ny * w + nx;
+        if (nx > 0 && ny > 0 && nx < w - 1 && ny < h - 1 && tiles[ni] === "floor" && !occupied.has(ni)) {
+          cur = ni;
+          moved = true;
+          break;
+        }
+      }
+      if (!moved) break;
+    }
+  }
+}
+
+/** Fracture some interior walls that separate two open spaces into destructible
+ * "cracked walls" — an explosion blows them open into a shortcut. */
+function placeCrackedWalls(
+  config: LevelConfig,
+  tiles: TileType[],
+  w: number,
+  h: number
+) {
+  const count = config.crackedWallCount ?? 0;
+  if (count <= 0) return;
+  const open = (i: number) =>
+    tiles[i] === "floor" ||
+    tiles[i] === "oil" ||
+    tiles[i] === "door" ||
+    tiles[i] === "trap" ||
+    tiles[i] === "trapSprung" ||
+    tiles[i] === "exit";
+  const cands: number[] = [];
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (tiles[i] !== "wall") continue;
+      // a thin wall: open on opposite sides, so breaking it links two spaces
+      const lr = open(i - 1) && open(i + 1);
+      const ud = open(i - w) && open(i + w);
+      if (lr || ud) cands.push(i);
+    }
+  }
+  for (let k = cands.length - 1; k > 0; k--) {
+    const j = mapInt(0, k);
+    [cands[k], cands[j]] = [cands[j], cands[k]];
+  }
+  for (let n = 0; n < count && n < cands.length; n++) tiles[cands[n]] = "crackedWall";
+}
+
 /** Tiles reachable from `from` WITHOUT stepping on an (armed) trap. */
 function trapFreeReachable(map: GameMap, from: Pos): Set<number> {
   const w = map.width;
@@ -442,6 +530,10 @@ export function generateLevel(
 
   // Hidden traps last, on free reachable floor (not under the player/items/exit).
   placeTraps(config, tiles, floors, occupied, w, playerStart);
+
+  // Environmental terrain: oil slicks (walkable) + destructible cracked walls.
+  placeOil(config, tiles, occupied, w, h);
+  placeCrackedWalls(config, tiles, w, h);
 
   // Fairness: guarantee a trap-free route to every objective.
   const objectives: Pos[] = [];

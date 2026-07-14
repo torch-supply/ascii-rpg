@@ -9,8 +9,12 @@ import { MenuButton } from "@/components/ui/MenuButton";
 function statLabel(itemId: string): string {
   const d = ITEMS[itemId];
   switch (d.category) {
-    case "weapon":
-      return `power ${d.power}`;
+    case "weapon": {
+      const bits = [`power ${d.power}`];
+      if (d.onHit) bits.push(`${d.onHit.effect}s`);
+      if (d.knockback) bits.push("knockback");
+      return bits.join(" · ");
+    }
     case "armor":
       return `armor ${d.reduction}`;
     case "torch":
@@ -28,6 +32,8 @@ function statLabel(itemId: string): string {
           return `halves damage · ${d.duration}t`;
         case "might":
           return `+${CONFIG.mightBonus} power · ${d.duration}t`;
+        case "cleanse":
+          return "cures poison/bleed/burn";
         case "detect":
           return "reveals traps";
         default:

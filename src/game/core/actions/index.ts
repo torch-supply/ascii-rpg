@@ -9,7 +9,7 @@ import type {
 } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
 import { Rng } from "@/game/core/rng";
-import { idx, isWalkable, chebyshev, inBounds } from "@/game/core/grid";
+import { idx, isWalkable, chebyshev, inBounds, tileAt } from "@/game/core/grid";
 import { recomputeFOV, recomputeLight } from "@/game/core/state";
 import { equipWeapon, equipArmor, addToBag } from "@/game/core/inventory";
 import { isGoalComplete } from "@/game/core/goals";
@@ -18,6 +18,14 @@ import {
   monsterAttackDamage,
   wardMitigate,
 } from "@/game/core/combat";
+import {
+  STATUS,
+  STATUS_KEYS,
+  DAMAGING_STATUS,
+  applyStatus,
+  isStatusKind,
+} from "@/game/core/status";
+import type { StatusApplication } from "@/game/core/types";
 import { stepToward } from "@/game/core/map/pathfinding";
 import { monsterDef } from "@/content/monsters";
 import { ITEMS } from "@/content/items";
@@ -152,6 +160,65 @@ function dropLoot(
   msg(events, `The ${def.name} drops a ${idef.name}.`);
 }
 
+/** Award a kill: coins, run/level counters, loot drop. Does NOT remove `m`. */
+function awardKill(
+  state: GameState,
+  m: MonsterInstance,
+  def: MonsterDef,
+  rng: Rng,
+  events: GameEvent[]
+) {
+  if (def.coinReward > 0) addCoins(state, def.coinReward);
+  state.player.kills += 1;
+  state.levelKills += 1;
+  dropLoot(state, m.x, m.y, def, rng, events);
+}
+
+/** Roll a chance-on-hit affliction and apply it to an effects bag. */
+function tryAfflict(
+  effects: Record<string, number>,
+  spec: StatusApplication | undefined,
+  rng: Rng,
+  who: string,
+  events: GameEvent[]
+) {
+  if (!spec || !rng.chance(spec.chance)) return;
+  const had = (effects[spec.effect] ?? 0) > 0;
+  applyStatus(effects, spec.effect, spec.duration);
+  if (!had) msg(events, STATUS[spec.effect].onApply(who));
+}
+
+/** Shove a struck monster back along the blow. Into water/chasm = a kill;
+ * a wall or another body stops it short. */
+function knockBack(
+  state: GameState,
+  target: MonsterInstance,
+  def: MonsterDef,
+  rng: Rng,
+  events: GameEvent[]
+) {
+  const dist = ITEMS[state.player.weaponId].knockback ?? 0;
+  if (dist <= 0) return;
+  const dx = Math.sign(target.x - state.player.x);
+  const dy = Math.sign(target.y - state.player.y);
+  if (dx === 0 && dy === 0) return;
+  for (let s = 0; s < dist; s++) {
+    const nx = target.x + dx;
+    const ny = target.y + dy;
+    if (tileAt(state.map, nx, ny) === "water") {
+      events.push({ kind: "hit", x: nx, y: ny });
+      msg(events, `You hurl the ${def.name} into the depths!`);
+      awardKill(state, target, def, rng, events);
+      state.monsters = state.monsters.filter((m) => m.id !== target.id);
+      return;
+    }
+    if (!isWalkable(state.map, nx, ny)) return; // slams into a wall
+    if (monsterAt(state, nx, ny, target.id)) return; // blocked by another body
+    target.x = nx;
+    target.y = ny;
+  }
+}
+
 function resolvePlayerAttack(
   state: GameState,
   target: MonsterInstance,
@@ -165,26 +232,30 @@ function resolvePlayerAttack(
   events.push({ kind: "damage", x: target.x, y: target.y, amount: dmg, toPlayer: false });
   if (target.hp <= 0) {
     msg(events, `You slay the ${def.name}.`);
-    if (def.coinReward > 0) addCoins(state, def.coinReward);
-    state.player.kills += 1;
-    state.levelKills += 1;
-    dropLoot(state, target.x, target.y, def, rng, events);
+    awardKill(state, target, def, rng, events);
     state.monsters = state.monsters.filter((m) => m.id !== target.id);
   } else {
     msg(events, `You strike the ${def.name} for ${dmg} (${target.hp} left).`);
+    // the wielded weapon may sear/chill/poison what it strikes (player → monster)
+    if (!target.effects) target.effects = {};
+    tryAfflict(target.effects, ITEMS[state.player.weaponId].onHit, rng, def.name, events);
+    knockBack(state, target, def, rng, events);
   }
 }
 
 function resolveMonsterAttack(
   state: GameState,
   def: MonsterDef,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ) {
   const dmg = monsterAttackDamage(def, state.player);
   state.player.hp -= dmg;
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
   events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
   msg(events, `The ${def.name} hits you for ${dmg}.`);
+  if (state.player.hp > 0)
+    tryAfflict(state.player.effects, def.inflicts, rng, "You", events);
 }
 
 // ── player action ────────────────────────────────────────────────────────
@@ -263,8 +334,8 @@ function useItem(
       // auto-target fallback; the UI normally routes this to cursor targeting
       return throwFirebomb(state, entry, def, events, rng);
     case "blast":
-      // one-time burst centered on the player (3x3)
-      return detonateAt(state, entry, def, p.x, p.y, events, rng);
+      // one-time burst centered on the player (3x3); no lingering fire under you
+      return detonateAt(state, entry, def, p.x, p.y, events, rng, false);
     case "heal":
     case "greaterHeal": {
       const before = p.hp;
@@ -283,6 +354,18 @@ function useItem(
       msg(events, `Strength surges through your arm. (${p.effects.might} turns)`);
       consume();
       return true;
+    case "cleanse": {
+      const cleared = DAMAGING_STATUS.filter((k) => (p.effects[k] ?? 0) > 0);
+      for (const k of cleared) delete p.effects[k];
+      msg(
+        events,
+        cleared.length
+          ? "The draught scours the venom and fire from your veins."
+          : "The draught tastes of nothing in particular."
+      );
+      consume();
+      return true;
+    }
     case "detect":
       revealTraps(state);
       msg(events, "The floor's hidden teeth glimmer into sight.");
@@ -323,23 +406,165 @@ function senseTraps(state: GameState) {
   if (changed) state.knownTraps = Array.from(known);
 }
 
-/** Count down timed effects each turn; announce those that expire. */
+/** Count down the player's timed effects each turn: damaging debuffs bite
+ * (ignoring armor), then every timer decrements and expiries are announced. */
 function tickEffects(state: GameState, events: GameEvent[]) {
-  const e = state.player.effects;
+  const p = state.player;
+  const e = p.effects;
+
+  // damage-over-time (poison/bleed/burn) — a floating number tinted by kind
+  for (const k of Object.keys(e)) {
+    if (!isStatusKind(k)) continue;
+    const dmg = STATUS[k].dmgPerTurn;
+    if (dmg <= 0) continue;
+    p.hp -= dmg;
+    events.push({
+      kind: "damage",
+      x: p.x,
+      y: p.y,
+      amount: dmg,
+      toPlayer: true,
+      color: STATUS[k].hudColor,
+    });
+    if (p.hp <= 0) msg(events, `The ${k} claims you.`);
+  }
+
   for (const k of Object.keys(e)) {
     e[k] -= 1;
     if (e[k] <= 0) {
       delete e[k];
       if (k === "ward") msg(events, "Your warding fades.");
       else if (k === "might") msg(events, "Your strength fades.");
+      else if (isStatusKind(k)) msg(events, STATUS[k].onFade);
     }
   }
+}
+
+/** Set a tile alight: oil burns away to bare floor; floor/door/sprung-trap just
+ * carry flame; walls/water won't take. Returns whether it ignited. */
+function igniteTile(state: GameState, i: number, life: number): boolean {
+  const t = state.map.tiles[i];
+  if (t === "oil") state.map.tiles[i] = "floor"; // the slick is consumed
+  else if (t !== "floor" && t !== "trapSprung" && t !== "door") return false;
+  const ex = state.fireTiles.find((f) => f.i === i);
+  if (ex) ex.life = Math.max(ex.life, life);
+  else state.fireTiles.push({ i, life });
+  return true;
+}
+
+/** Lingering fire tiles sear anything standing in them (refreshing burn), then
+ * burn down — and spread one step across adjacent oil each turn. */
+function tickFires(state: GameState, events: GameEvent[]) {
+  if (state.fireTiles.length === 0) return;
+  const w = state.map.width;
+  const p = state.player;
+  const survivors: { i: number; life: number }[] = [];
+  for (const f of state.fireTiles) {
+    const fx = f.i % w;
+    const fy = Math.floor(f.i / w);
+    if (p.x === fx && p.y === fy) {
+      const had = (p.effects.burn ?? 0) > 0;
+      applyStatus(p.effects, "burn", CONFIG.fireBurnDuration);
+      if (!had) msg(events, STATUS.burn.onApply("You"));
+    }
+    for (const m of state.monsters) {
+      if (m.x === fx && m.y === fy) {
+        if (!m.effects) m.effects = {};
+        applyStatus(m.effects, "burn", CONFIG.fireBurnDuration);
+      }
+    }
+    f.life -= 1;
+    if (f.life > 0) survivors.push(f);
+  }
+  state.fireTiles = survivors;
+
+  // spread: any oil next to a still-burning tile catches this turn
+  const spread: number[] = [];
+  for (const f of state.fireTiles) {
+    const fx = f.i % w;
+    const fy = Math.floor(f.i / w);
+    for (const [dx, dy] of DIRS) {
+      const nx = fx + dx;
+      const ny = fy + dy;
+      if (!inBounds(state.map, nx, ny)) continue;
+      const ni = idx(nx, ny, w);
+      if (state.map.tiles[ni] === "oil") spread.push(ni);
+    }
+  }
+  let lit = false;
+  for (const ni of spread) if (igniteTile(state, ni, CONFIG.fire.duration)) lit = true;
+  if (lit) msg(events, "Fire races across the oil!");
+}
+
+/** Tick every monster's debuffs: DoT bites, timers count down, and any monster
+ * that dies to the damage is reaped (awarding coins/loot/kills). */
+function tickMonsterStatus(state: GameState, rng: Rng, events: GameEvent[]) {
+  const w = state.map.width;
+  const visible = new Set(state.visible);
+  let anyDead = false;
+  for (const m of state.monsters) {
+    const e = m.effects;
+    if (!e) continue;
+    let dot = 0;
+    for (const k of Object.keys(e)) if (isStatusKind(k)) dot += STATUS[k].dmgPerTurn;
+    if (dot > 0) {
+      m.hp -= dot;
+      if (visible.has(idx(m.x, m.y, w))) {
+        const tintKey = DAMAGING_STATUS.find((k) => (e[k] ?? 0) > 0);
+        events.push({
+          kind: "damage",
+          x: m.x,
+          y: m.y,
+          amount: dot,
+          toPlayer: false,
+          color: tintKey ? STATUS[tintKey].hudColor : undefined,
+        });
+      }
+      if (m.hp <= 0) anyDead = true;
+    }
+    for (const k of Object.keys(e)) {
+      e[k] -= 1;
+      if (e[k] <= 0) delete e[k];
+    }
+  }
+  if (!anyDead) return;
+  const survivors: MonsterInstance[] = [];
+  for (const m of state.monsters) {
+    if (m.hp <= 0) {
+      const md = monsterDef(m.defId);
+      awardKill(state, m, md, rng, events);
+      msg(events, `The ${md.name} succumbs.`);
+    } else survivors.push(m);
+  }
+  state.monsters = survivors;
 }
 
 /**
  * Detonate a firebomb at (tx,ty): full damage to that tile, splash (half,
  * rounded up) to the 3x3 around it. Consumes the item, awards coins for kills.
  */
+/** Scatter lingering fire across the walkable ground within a blast footprint.
+ * Oil always catches; bare ground catches on a chance. */
+function spawnFires(state: GameState, tx: number, ty: number, rng: Rng) {
+  const { map } = state;
+  const life = CONFIG.fire.duration;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const x = tx + dx;
+      const y = ty + dy;
+      if (!inBounds(map, x, y)) continue;
+      const i = idx(x, y, map.width);
+      const t = map.tiles[i];
+      if (t === "oil") igniteTile(state, i, life);
+      else if (
+        (t === "floor" || t === "trapSprung" || t === "door") &&
+        rng.chance(CONFIG.fire.spawnChance)
+      )
+        igniteTile(state, i, life);
+    }
+  }
+}
+
 function detonateAt(
   state: GameState,
   entry: { defId: string; count: number },
@@ -347,7 +572,8 @@ function detonateAt(
   tx: number,
   ty: number,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
+  spawnFire: boolean
 ): boolean {
   const p = state.player;
   events.push({
@@ -366,17 +592,37 @@ function detonateAt(
     m.hp -= dealt;
     events.push({ kind: "hit", x: m.x, y: m.y });
     events.push({ kind: "damage", x: m.x, y: m.y, amount: dealt, toPlayer: false });
+    // the flames cling to anything that survives the burst (player → monster)
+    if (m.hp > 0) {
+      if (!m.effects) m.effects = {};
+      applyStatus(m.effects, "burn", CONFIG.fireBurnDuration);
+    }
   }
+
+  // the blast blows open any cracked walls it touches (new shortcuts)
+  let opened = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const x = tx + dx;
+      const y = ty + dy;
+      if (!inBounds(state.map, x, y)) continue;
+      const i = idx(x, y, state.map.width);
+      if (state.map.tiles[i] === "crackedWall") {
+        state.map.tiles[i] = "floor";
+        opened++;
+      }
+    }
+  }
+  if (opened > 0)
+    msg(events, `The blast blows open ${opened > 1 ? "cracked walls" : "a cracked wall"}!`);
+
+  if (spawnFire) spawnFires(state, tx, ty, rng);
 
   let slain = 0;
   const survivors: MonsterInstance[] = [];
   for (const m of state.monsters) {
     if (m.hp <= 0) {
-      const md = monsterDef(m.defId);
-      if (md.coinReward > 0) addCoins(state, md.coinReward);
-      state.player.kills += 1;
-      state.levelKills += 1;
-      dropLoot(state, m.x, m.y, md, rng, events);
+      awardKill(state, m, monsterDef(m.defId), rng, events);
       slain++;
     } else {
       survivors.push(m);
@@ -415,7 +661,7 @@ function throwFirebomb(
     msg(events, `No target in sight for the ${def.name}.`);
     return false;
   }
-  return detonateAt(state, entry, def, target.x, target.y, events, rng);
+  return detonateAt(state, entry, def, target.x, target.y, events, rng, true);
 }
 
 /** Throw a firebomb at a chosen tile (cursor targeting). */
@@ -433,7 +679,7 @@ function throwFirebombAt(
   if (def.category !== "potion" || def.effect !== "bomb") return false;
   if (chebyshev(state.player.x, state.player.y, tx, ty) > CONFIG.throwRange)
     return false;
-  return detonateAt(state, entry, def, tx, ty, events, rng);
+  return detonateAt(state, entry, def, tx, ty, events, rng, true);
 }
 
 function equipFromBag(
@@ -480,10 +726,11 @@ function monsterMoveTo(
   def: MonsterDef,
   nx: number,
   ny: number,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ) {
   if (nx === state.player.x && ny === state.player.y) {
-    resolveMonsterAttack(state, def, events);
+    resolveMonsterAttack(state, def, events, rng);
     return;
   }
   if (!isWalkable(state.map, nx, ny)) return;
@@ -508,7 +755,7 @@ function moveRandom(
     const nx = m.x + dx;
     const ny = m.y + dy;
     if (nx === state.player.x && ny === state.player.y) {
-      resolveMonsterAttack(state, def, events);
+      resolveMonsterAttack(state, def, events, rng);
       return;
     }
     if (isWalkable(state.map, nx, ny) && !monsterAt(state, nx, ny, m.id)) {
@@ -523,21 +770,23 @@ function chaseStep(
   state: GameState,
   m: MonsterInstance,
   def: MonsterDef,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ) {
   const step = stepToward(
     state.map,
     { x: m.x, y: m.y },
     { x: state.player.x, y: state.player.y }
   );
-  if (step) monsterMoveTo(state, m, def, step.x, step.y, events);
+  if (step) monsterMoveTo(state, m, def, step.x, step.y, events, rng);
 }
 
 function rangedAttack(
   state: GameState,
   m: MonsterInstance,
   def: MonsterDef,
-  events: GameEvent[]
+  events: GameEvent[],
+  rng: Rng
 ) {
   const dmg = wardMitigate(
     state.player,
@@ -553,6 +802,8 @@ function rangedAttack(
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
   events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
   msg(events, `The ${def.name} hurls a bolt for ${dmg}.`);
+  if (state.player.hp > 0)
+    tryAfflict(state.player.effects, def.inflicts, rng, "You", events);
 }
 
 function actMonster(
@@ -564,6 +815,10 @@ function actMonster(
 ) {
   const def = monsterDef(m.defId);
   const p = state.player;
+
+  // Frozen solid: the monster forfeits its turn while chilled.
+  if ((m.effects?.chill ?? 0) > 0) return;
+
   const dist = chebyshev(m.x, m.y, p.x, p.y);
   const seen = visible.has(idx(m.x, m.y, state.map.width));
 
@@ -581,29 +836,29 @@ function actMonster(
     case "slowChase":
       // shambles: acts only every other turn
       if (state.turnCount % 2 === 1) return;
-      if (m.state === "chase") chaseStep(state, m, def, events);
+      if (m.state === "chase") chaseStep(state, m, def, events, rng);
       else moveRandom(state, m, def, rng, events);
       return;
     case "guardChase":
       // holds its ground until it spots you, then pursues relentlessly
-      if (m.state === "chase") chaseStep(state, m, def, events);
+      if (m.state === "chase") chaseStep(state, m, def, events, rng);
       return;
     case "ranged": {
       if (m.state !== "chase") return;
       const inRange = seen && dist <= (def.rangedRange ?? 4);
       if (!inRange) {
-        chaseStep(state, m, def, events); // close until the player is in range
+        chaseStep(state, m, def, events, rng); // close until the player is in range
       } else if ((m.cooldown ?? 0) > 0) {
         m.cooldown = (m.cooldown ?? 0) - 1; // reload — hold position, don't fire
       } else {
-        rangedAttack(state, m, def, events);
+        rangedAttack(state, m, def, events, rng);
         m.cooldown = def.rangedCooldown ?? 1;
       }
       return;
     }
     case "chase":
     default:
-      if (m.state === "chase") chaseStep(state, m, def, events);
+      if (m.state === "chase") chaseStep(state, m, def, events, rng);
       else moveRandom(state, m, def, rng, events);
       return;
   }
@@ -689,7 +944,9 @@ export function resolveTurn(
   state.player.totalTurns += 1; // run stat (across all levels)
   state.turnsLeft -= 1;
   tickTorch(state, events);
-  tickEffects(state, events);
+  tickFires(state, events); // fire sears whoever stands in it, refreshing burn
+  tickEffects(state, events); // then the player's DoTs/buffs tick
+  tickMonsterStatus(state, rng, events); // and every monster's debuffs tick
   recomputeFOV(state);
   senseTraps(state);
 

@@ -7,11 +7,13 @@ import type { GameEvent } from "./events";
 // ── Map / tiles ────────────────────────────────────────────────────────────
 export type TileType =
   | "wall"
+  | "crackedWall" // a wall, but an explosion blows it open into floor
   | "floor"
   | "door"
   | "exit"
   | "trap" // armed, hidden (renders as floor) until stepped on
   | "trapSprung" // triggered, visible, harmless
+  | "oil" // walkable slick; fire ignites it and races across it
   | "water"; // impassable but transparent (chasm / water)
 
 export interface GameMap {
@@ -47,6 +49,19 @@ export type MonsterBehavior =
   | "slowChase"
   | "ranged";
 
+// ── Status effects ──────────────────────────────────────────────────────────
+// Timed conditions stored in an `effects` bag (key -> turns remaining). `ward`
+// and `might` are player buffs; the rest are debuffs that afflict whoever holds
+// them (player OR monster). See `status.ts` for their behavior table.
+export type StatusKind = "poison" | "bleed" | "burn" | "chill";
+
+/** A chance-on-hit affliction carried by a monster attack or a weapon. */
+export interface StatusApplication {
+  effect: StatusKind;
+  chance: number; // 0–1
+  duration: number; // turns
+}
+
 export interface MonsterDef {
   id: string;
   name: string;
@@ -67,6 +82,8 @@ export interface MonsterDef {
   rangedCooldown?: number;
   /** ignores this much of the player's armor when attacking (wraith) */
   armorPierce?: number;
+  /** chance-on-hit affliction inflicted on the player (spider poison, etc.) */
+  inflicts?: StatusApplication;
   /** loot dropped on death: `chance` (0–1) to drop one weighted item */
   loot?: { chance: number; table: { itemId: string; weight: number }[] };
 }
@@ -86,6 +103,7 @@ export type PotionEffect =
   | "blast" // one-time burst around the player
   | "ward" // temporary damage reduction
   | "might" // temporary weapon-power boost
+  | "cleanse" // clear damaging debuffs (poison/bleed/burn)
   | "detect"; // reveal every trap on the level
 
 export interface ItemDef {
@@ -96,6 +114,8 @@ export interface ItemDef {
   category: ItemCategory;
   stackable: boolean;
   power?: number; // weapon
+  /** weapon: tiles a struck monster is shoved back (into hazards = a kill) */
+  knockback?: number;
   reduction?: number; // armor
   value?: number; // coin base value
   effect?: PotionEffect; // potion
@@ -104,6 +124,8 @@ export interface ItemDef {
   lightBonus?: number; // torch
   fuel?: number; // torch: turns of light before it burns out
   duration?: number; // potion: turns a timed effect (ward/might) lasts
+  /** weapon: chance-on-hit affliction inflicted on the struck monster */
+  onHit?: StatusApplication;
 }
 
 export interface Palette {
@@ -141,6 +163,10 @@ export interface LevelConfig {
   trapCount?: number;
   /** impassable water/chasm tiles, placed as blobs (default 0) */
   waterCount?: number;
+  /** walkable oil slicks that fire ignites and spreads across (default 0) */
+  oilCount?: number;
+  /** destructible cracked walls bordering rooms (default 0) */
+  crackedWallCount?: number;
   goal: GoalConfig;
   /** Transition narration shown after completing this level. */
   narration: string;
@@ -160,6 +186,8 @@ export interface MonsterInstance {
   cooldown?: number;
   /** flagged as the killTarget for the current level's goal */
   isGoalTarget?: boolean;
+  /** active timed debuffs afflicting this monster (poison/bleed/burn/chill) */
+  effects?: Record<string, number>;
 }
 
 export interface ItemInstance {
@@ -221,6 +249,8 @@ export interface GameState {
   questProgress: Record<string, number>;
   /** armed trap tiles the player is aware of (sensed or detected) */
   knownTraps: number[];
+  /** lingering fire tiles (from firebombs): tile index -> turns remaining */
+  fireTiles: { i: number; life: number }[];
   /** currently in FOV (recomputed every player turn) — set of tile indices */
   visible: number[];
   /** seen before (fog memory) — set of tile indices */

@@ -8,6 +8,7 @@ import { Rng } from "@/game/core/rng";
 import { isGoalComplete } from "@/game/core/goals";
 import { idx, isWalkable, tileAt } from "@/game/core/grid";
 import { monsterAttackDamage } from "@/game/core/combat";
+import { STATUS } from "@/game/core/status";
 import { MONSTERS } from "@/content/monsters";
 import type { GameMap, Pos } from "@/game/core/types";
 
@@ -432,16 +433,17 @@ console.log("\n[15] Ranged attackers reload (fire every other turn)");
   g.monsters = [
     { id: "i1", defId: "imp", x: p.x + 2, y: p.y, hp: 5, state: "chase" },
   ];
-  let hitTurns = 0;
+  // count actual shots (projectile events) — HP-drop is confounded by the
+  // imp's poison DoT, which ticks even on reload turns
+  let fireTurns = 0;
   for (let t = 0; t < 4; t++) {
-    const before = g.player.hp;
-    resolveTurn(g, { type: "wait" }, new Rng(20 + t));
-    if (g.player.hp < before) hitTurns++;
+    const res = resolveTurn(g, { type: "wait" }, new Rng(20 + t));
+    if (res.events.some((e) => e.kind === "projectile")) fireTurns++;
   }
   check(
     "imp fires on a reload cadence, not every turn",
-    hitTurns > 0 && hitTurns < 4,
-    `(hit on ${hitTurns}/4 turns)`
+    fireTurns > 0 && fireTurns < 4,
+    `(fired on ${fireTurns}/4 turns)`
   );
 }
 
@@ -549,6 +551,203 @@ console.log("\n[18] Trap-free route to objectives");
     bad === 0,
     `(${bad}/${checked} required a trap)`
   );
+}
+
+// ─── 19. Status effects, cures & environmental fire ─────────────────────────
+console.log("\n[19] Status effects, cures & fire");
+{
+  const DIRS = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const adjacentWalkable = (g: ReturnType<typeof beginLevel>): Pos => {
+    for (const [dx, dy] of DIRS) {
+      const x = g.player.x + dx;
+      const y = g.player.y + dy;
+      if (isWalkable(g.map, x, y)) return { x, y };
+    }
+    throw new Error("player has no walkable neighbor");
+  };
+
+  // poison bites through armor and expires on schedule
+  {
+    const game = beginLevel("status-seed", 0, createPlayer());
+    game.monsters = [];
+    game.player.armorReduction = 10;
+    game.player.effects.poison = 2;
+    const before = game.player.hp;
+    const rng = new Rng(1);
+    resolveTurn(game, { type: "wait" }, rng);
+    check("poison ticks full damage despite armor", game.player.hp === before - STATUS.poison.dmgPerTurn);
+    check("poison timer counts down", (game.player.effects.poison ?? 0) === 1);
+    resolveTurn(game, { type: "wait" }, rng);
+    check("poison expires when its timer ends", !("poison" in game.player.effects));
+  }
+
+  // a status tick can be lethal (routes through the death path)
+  {
+    const game = beginLevel("status-seed", 0, createPlayer());
+    game.monsters = [];
+    game.player.hp = 1;
+    game.player.effects.bleed = 3;
+    const res = resolveTurn(game, { type: "wait" }, new Rng(1));
+    check("a status tick can kill the player", res.playerDied);
+  }
+
+  // antidote clears damaging debuffs but leaves buffs alone
+  {
+    const game = beginLevel("status-seed", 0, createPlayer());
+    game.monsters = [];
+    Object.assign(game.player.effects, { poison: 4, bleed: 4, burn: 4, ward: 5 });
+    game.player.bag.push({ defId: "p_antidote", count: 1 });
+    resolveTurn(game, { type: "useItem", defId: "p_antidote" }, new Rng(1));
+    const e = game.player.effects;
+    check(
+      "antidote cures poison/bleed/burn",
+      !("poison" in e) && !("bleed" in e) && !("burn" in e)
+    );
+    check("antidote leaves buffs (ward) intact", (e.ward ?? 0) > 0);
+  }
+
+  // fire under an entity inflicts burn and burns down each turn
+  {
+    const game = beginLevel("status-seed", 0, createPlayer());
+    game.monsters = [];
+    game.fireTiles = [{ i: idx(game.player.x, game.player.y, game.map.width), life: 2 }];
+    const before = game.player.hp;
+    resolveTurn(game, { type: "wait" }, new Rng(1));
+    check("standing in fire inflicts burn", (game.player.effects.burn ?? 0) > 0);
+    check("fire deals burn damage", game.player.hp < before);
+    check("a fire tile burns down each turn", (game.fireTiles[0]?.life ?? 0) === 1);
+  }
+
+  // a chilled monster forfeits its turn (no attack)
+  {
+    const game = beginLevel("status-seed", 0, createPlayer());
+    const spot = adjacentWalkable(game);
+    game.monsters = [
+      { id: "frozey", defId: "spider", x: spot.x, y: spot.y, hp: 6, state: "chase", effects: { chill: 3 } },
+    ];
+    const before = game.player.hp;
+    resolveTurn(game, { type: "wait" }, new Rng(1));
+    check("a chilled monster cannot attack", game.player.hp === before);
+    check("chill counts down while frozen", (game.monsters[0]?.effects?.chill ?? 0) === 2);
+  }
+
+  // a thrown firebomb sears monsters that survive the blast (player → monster)
+  {
+    const game = beginLevel("status-seed", 0, createPlayer());
+    const spot = adjacentWalkable(game);
+    game.monsters = [
+      { id: "tank", defId: "frost_troll", x: spot.x, y: spot.y, hp: 40, state: "idle" },
+    ];
+    game.player.bag.push({ defId: "p_bomb", count: 1 });
+    resolveTurn(game, { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y }, new Rng(1));
+    const tank = game.monsters.find((m) => m.id === "tank");
+    check("firebomb burns a monster that survives the blast", !!tank && (tank.effects?.burn ?? 0) > 0);
+  }
+}
+
+// ─── 20. Environmental interplay: knockback / oil / cracked walls ────────────
+console.log("\n[20] Environmental interplay");
+{
+  const DIRS = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+
+  // knockback shoves a surviving monster into water — an instant kill
+  {
+    const game = beginLevel("env-seed", 0, createPlayer());
+    const w = game.map.width;
+    const h = game.map.height;
+    const px = game.player.x;
+    const py = game.player.y;
+    game.player.weaponId = "w_mace"; // power 6, knockback 1
+    game.player.weaponPower = 6;
+    let dir: number[] | null = null;
+    let spot: Pos | null = null;
+    let far: Pos | null = null;
+    for (const [dx, dy] of DIRS) {
+      const sx = px + dx;
+      const sy = py + dy;
+      const fx = px + 2 * dx;
+      const fy = py + 2 * dy;
+      if (isWalkable(game.map, sx, sy) && fx > 0 && fy > 0 && fx < w - 1 && fy < h - 1) {
+        dir = [dx, dy];
+        spot = { x: sx, y: sy };
+        far = { x: fx, y: fy };
+        break;
+      }
+    }
+    if (!dir || !spot || !far) throw new Error("no knockback lane found");
+    game.map.tiles[idx(far.x, far.y, w)] = "water";
+    game.monsters = [
+      { id: "kb", defId: "skeleton", x: spot.x, y: spot.y, hp: 12, state: "chase" },
+    ];
+    const killsBefore = game.player.kills;
+    resolveTurn(game, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
+    check("knockback shoves a survivor into water", !game.monsters.some((m) => m.id === "kb"));
+    check("the drowned monster counts as a kill", game.player.kills === killsBefore + 1);
+  }
+
+  // a firebomb blows open a cracked wall
+  {
+    const game = beginLevel("env-seed", 0, createPlayer());
+    const w = game.map.width;
+    const h = game.map.height;
+    game.monsters = [];
+    let spot: Pos | null = null;
+    for (const [dx, dy] of DIRS) {
+      const x = game.player.x + dx;
+      const y = game.player.y + dy;
+      if (x > 0 && y > 0 && x < w - 1 && y < h - 1) {
+        spot = { x, y };
+        break;
+      }
+    }
+    if (!spot) throw new Error("no adjacent tile");
+    game.map.tiles[idx(spot.x, spot.y, w)] = "crackedWall";
+    game.player.bag.push({ defId: "p_bomb", count: 1 });
+    resolveTurn(game, { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y }, new Rng(1));
+    check("a firebomb blows open a cracked wall", game.map.tiles[idx(spot.x, spot.y, w)] === "floor");
+  }
+
+  // fire ignites and spreads across adjacent oil
+  {
+    const game = beginLevel("env-seed", 0, createPlayer());
+    const w = game.map.width;
+    game.monsters = [];
+    const pIdx = idx(game.player.x, game.player.y, w);
+    let a = -1;
+    let b = -1;
+    for (let i = 0; i < game.map.tiles.length && a < 0; i++) {
+      if (game.map.tiles[i] !== "floor" || i === pIdx) continue;
+      const x = i % w;
+      const y = Math.floor(i / w);
+      for (const [dx, dy] of DIRS) {
+        const ni = (y + dy) * w + (x + dx);
+        if (game.map.tiles[ni] === "floor" && ni !== pIdx) {
+          a = i;
+          b = ni;
+          break;
+        }
+      }
+    }
+    if (a < 0) throw new Error("no adjacent floor pair");
+    game.map.tiles[a] = "oil";
+    game.map.tiles[b] = "oil";
+    game.fireTiles = [{ i: a, life: 4 }];
+    resolveTurn(game, { type: "wait" }, new Rng(1));
+    check(
+      "fire spreads onto adjacent oil (which burns to floor)",
+      game.map.tiles[b] === "floor" && game.fireTiles.some((f) => f.i === b)
+    );
+  }
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

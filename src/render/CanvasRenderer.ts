@@ -1,7 +1,9 @@
 import * as ROT from "rot-js";
-import type { GameState } from "@/game/core/types";
+import type { GameState, GameMap } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
 import { idx, chebyshev } from "@/game/core/grid";
+import { STATUS } from "@/game/core/status";
+import type { StatusKind } from "@/game/core/types";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
@@ -30,6 +32,46 @@ const RING_MS = 300; // firebomb / Ruin expanding blast ring
 const EDGE_MIN_TERRAIN = 0.4;
 const EDGE_MIN_ENTITY = 0.62;
 const AMBIENT_MS = 66; // ~15fps flicker redraw
+
+// Which debuff colors an afflicted entity's glyph (first match wins).
+const TINT_ORDER: StatusKind[] = ["burn", "poison", "bleed", "chill"];
+function statusTint(effects?: Record<string, number>): string | null {
+  if (!effects) return null;
+  for (const k of TINT_ORDER) if ((effects[k] ?? 0) > 0) return STATUS[k].tint;
+  return null;
+}
+
+/** Paint a deterministic jagged fissure (in the already-set strokeStyle) across
+ * the cell at (ox,oy) sized (cw,ch). `seed` fixes the shape so it never flickers. */
+function drawFissure(
+  ctx: CanvasRenderingContext2D,
+  ox: number,
+  oy: number,
+  cw: number,
+  ch: number,
+  seed: number
+) {
+  const rnd = (n: number) => {
+    const x = Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  ctx.lineWidth = Math.max(1, cw * 0.1);
+  // main fissure: top → jagged middle → bottom, wandering across the glyph
+  const topX = ox + cw * (0.32 + 0.36 * rnd(1));
+  const midX = ox + cw * (0.28 + 0.44 * rnd(2));
+  const botX = ox + cw * (0.32 + 0.36 * rnd(3));
+  const midY = oy + ch * (0.42 + 0.16 * rnd(6));
+  ctx.beginPath();
+  ctx.moveTo(topX, oy + ch * 0.12);
+  ctx.lineTo(midX, midY);
+  ctx.lineTo(botX, oy + ch * 0.88);
+  ctx.stroke();
+  // a short branch off the middle
+  ctx.beginPath();
+  ctx.moveTo(midX, midY);
+  ctx.lineTo(ox + cw * (0.2 + 0.6 * rnd(4)), oy + ch * (0.25 + 0.5 * rnd(5)));
+  ctx.stroke();
+}
 
 const clamp = (v: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, v));
@@ -74,6 +116,12 @@ export class CanvasRenderer {
   private lastCamX = 0;
   private lastCamY = 0;
   private camPrimed = false;
+  // overlay canvas for cracked-wall knockout fissures (painted, not glyphs)
+  private crack: HTMLCanvasElement | null = null;
+  // cache: which map we last scanned, and whether it has any cracked walls, so
+  // levels without them skip the overlay entirely
+  private crackMap: GameMap | null = null;
+  private crackAny = false;
 
   constructor(host: HTMLElement) {
     this.host = host;
@@ -83,6 +131,15 @@ export class CanvasRenderer {
       container.style.display = "block";
       host.appendChild(container);
     }
+    // A transparent overlay canvas sitting exactly atop the rot.js canvas.
+    // Cracked walls are "knocked out" here — fissures painted in the background
+    // color that cut through the wall glyph so it reads as broken, not X'd.
+    const crack = document.createElement("canvas");
+    crack.style.position = "absolute";
+    crack.style.pointerEvents = "none";
+    crack.style.display = "block";
+    host.appendChild(crack);
+    this.crack = crack;
     this.reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
@@ -110,6 +167,10 @@ export class CanvasRenderer {
     if (container && container.parentNode === this.host) {
       this.host.removeChild(container);
     }
+    if (this.crack && this.crack.parentNode === this.host) {
+      this.host.removeChild(this.crack);
+    }
+    this.crack = null;
   }
 
   /** Size the viewport grid to fill the host at a readable, square cell size. */
@@ -156,12 +217,18 @@ export class CanvasRenderer {
     if (this.reduceMotion || Math.abs(dcx) + Math.abs(dcy) !== 1) return;
     const cw = canvas.clientWidth / this.cols;
     const ch = canvas.clientHeight / this.rows;
-    // start shifted to the old position, then transition to identity
-    canvas.style.transition = "none";
-    canvas.style.transform = `translate(${dcx * cw}px, ${dcy * ch}px)`;
+    // start shifted to the old position, then transition to identity — the
+    // crack overlay rides along so its fissures stay aligned to their walls
+    const layers = [canvas, this.crack].filter(Boolean) as HTMLElement[];
+    for (const el of layers) {
+      el.style.transition = "none";
+      el.style.transform = `translate(${dcx * cw}px, ${dcy * ch}px)`;
+    }
     requestAnimationFrame(() => {
-      canvas.style.transition = "transform 110ms ease-out";
-      canvas.style.transform = "translate(0px, 0px)";
+      for (const el of layers) {
+        el.style.transition = "transform 110ms ease-out";
+        el.style.transform = "translate(0px, 0px)";
+      }
     });
   }
 
@@ -214,7 +281,7 @@ export class CanvasRenderer {
           dur: RING_MS,
         });
       } else if (e.kind === "damage") {
-        this.spawnDamageNumber(e.x, e.y, e.amount, e.toPlayer);
+        this.spawnDamageNumber(e.x, e.y, e.amount, e.toPlayer, e.color);
       }
     }
     if (this.fx.length && this.rafId == null) {
@@ -223,7 +290,13 @@ export class CanvasRenderer {
   }
 
   /** A small number that floats up off a tile and fades (DOM overlay). */
-  private spawnDamageNumber(wx: number, wy: number, amount: number, toPlayer: boolean) {
+  private spawnDamageNumber(
+    wx: number,
+    wy: number,
+    amount: number,
+    toPlayer: boolean,
+    color?: string
+  ) {
     if (this.reduceMotion) return;
     const canvas = this.display.getContainer();
     if (!canvas) return;
@@ -237,7 +310,7 @@ export class CanvasRenderer {
     el.textContent = String(amount);
     el.style.left = `${canvas.offsetLeft + sx * cw + cw / 2}px`;
     el.style.top = `${canvas.offsetTop + sy * ch}px`;
-    el.style.color = toPlayer ? "#ff6a6a" : "#ffe14d";
+    el.style.color = color ?? (toPlayer ? "#ff6a6a" : "#ffe14d");
     el.style.fontSize = `${Math.max(11, Math.round(cw * 0.7))}px`;
     el.addEventListener("animationend", () => el.remove());
     this.host.appendChild(el);
@@ -366,6 +439,22 @@ export class CanvasRenderer {
       }
     }
 
+    // lingering fire (over terrain, beneath entities)
+    for (const f of state.fireTiles) {
+      if (!visible.has(f.i)) continue;
+      const fx = f.i % map.width;
+      const fy = Math.floor(f.i / map.width);
+      const sx = fx - camX;
+      const sy = fy - camY;
+      if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
+      const flick = this.reduceMotion
+        ? 0.85
+        : 0.6 + 0.4 * Math.abs(Math.sin(now * 0.02 + f.i));
+      const glyph = !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? "*" : "▴";
+      const base = f.life <= 1 ? "#ff5a3c" : "#ff9d3c";
+      this.display.draw(sx, sy, glyph, dim(base, flick), null);
+    }
+
     // items (only where currently visible)
     for (const it of state.items) {
       if (!visible.has(idx(it.x, it.y, map.width))) continue;
@@ -390,7 +479,7 @@ export class CanvasRenderer {
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const def = MONSTERS[m.defId];
       const color = this.lit(
-        def.color,
+        statusTint(m.effects) ?? def.color,
         chebyshev(m.x, m.y, player.x, player.y),
         effR,
         EDGE_MIN_ENTITY
@@ -398,13 +487,71 @@ export class CanvasRenderer {
       this.display.draw(sx, sy, def.glyph, color, null);
     }
 
-    // player (always drawn; camera guarantees it's on-screen)
+    // player (always drawn; camera guarantees it's on-screen) — glyph takes on
+    // the color of whatever debuff currently afflicts them
     this.display.draw(
       player.x - camX,
       player.y - camY,
       PLAYER_GLYPH,
-      PLAYER_COLOR,
+      statusTint(player.effects) ?? PLAYER_COLOR,
       null
     );
+
+    this.paintCracks(state, camX, camY, visible, explored);
+  }
+
+  /**
+   * Paint knockout fissures for cracked walls onto the overlay canvas. Each
+   * crack is a jagged line in the background color that cuts through the wall
+   * glyph beneath — so the wall reads as fractured rather than marked. The
+   * shape is deterministic per tile (no flicker) and the overlay is kept
+   * exactly aligned with (and scrolled in lockstep with) the rot.js canvas.
+   */
+  private paintCracks(
+    state: GameState,
+    camX: number,
+    camY: number,
+    visible: Set<number>,
+    explored: Set<number>
+  ) {
+    const cvs = this.display.getContainer() as HTMLCanvasElement | null;
+    const crack = this.crack;
+    if (!cvs || !crack) return;
+    // rescan only when the level's map changes; most levels have no cracks
+    if (state.map !== this.crackMap) {
+      this.crackMap = state.map;
+      this.crackAny = state.map.tiles.includes("crackedWall");
+      crack.getContext("2d")?.clearRect(0, 0, crack.width, crack.height);
+    }
+    if (!this.crackAny) return;
+    crack.style.left = `${cvs.offsetLeft}px`;
+    crack.style.top = `${cvs.offsetTop}px`;
+    crack.style.width = `${cvs.clientWidth}px`;
+    crack.style.height = `${cvs.clientHeight}px`;
+    if (crack.width !== cvs.width || crack.height !== cvs.height) {
+      crack.width = cvs.width;
+      crack.height = cvs.height;
+    }
+    const ctx = crack.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, crack.width, crack.height);
+
+    const { map } = state;
+    const cw = crack.width / this.cols;
+    const ch = crack.height / this.rows;
+    ctx.strokeStyle = "#0d0d0d"; // the display background — a true knockout
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (let sy = 0; sy < this.rows; sy++) {
+      for (let sx = 0; sx < this.cols; sx++) {
+        const wx = sx + camX;
+        const wy = sy + camY;
+        if (wx < 0 || wy < 0 || wx >= map.width || wy >= map.height) continue;
+        const i = wy * map.width + wx;
+        if (map.tiles[i] !== "crackedWall") continue;
+        if (!visible.has(i) && !explored.has(i)) continue;
+        drawFissure(ctx, sx * cw, sy * ch, cw, ch, i);
+      }
+    }
   }
 }

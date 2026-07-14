@@ -20,8 +20,17 @@ export const CONFIG = {
   mightBonus: 4,
   /** armed traps within this many tiles are sensed (revealed as a faint ^) */
   trapSenseRadius: 1,
+  /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
+  fireBurnDuration: 2,
+  /** lingering fire tiles left by a thrown firebomb */
+  fire: {
+    /** turns a fire tile keeps burning */
+    duration: 4,
+    /** per-tile chance to catch fire within the blast footprint */
+    spawnChance: 0.6,
+  },
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "2",
+  contentVersion: "4",
 };

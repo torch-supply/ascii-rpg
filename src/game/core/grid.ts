@@ -17,7 +17,7 @@ export function tileAt(map: GameMap, x: number, y: number): TileType {
   return map.tiles[idx(x, y, map.width)];
 }
 
-/** Can an actor stand here? Water/chasm and walls block; traps are walkable. */
+/** Can an actor stand here? Water/chasm and walls block; traps/oil are walkable. */
 export function isWalkable(map: GameMap, x: number, y: number): boolean {
   const t = tileAt(map, x, y);
   return (
@@ -25,13 +25,16 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
     t === "door" ||
     t === "exit" ||
     t === "trap" ||
-    t === "trapSprung"
+    t === "trapSprung" ||
+    t === "oil"
   );
 }
 
-/** Does light/vision pass through here? Only walls block (you see across water). */
+/** Does light/vision pass through here? Walls (incl. cracked) block; you see
+ * across water and oil. */
 export function isTransparent(map: GameMap, x: number, y: number): boolean {
-  return tileAt(map, x, y) !== "wall";
+  const t = tileAt(map, x, y);
+  return t !== "wall" && t !== "crackedWall";
 }
 
 export function chebyshev(ax: number, ay: number, bx: number, by: number): number {

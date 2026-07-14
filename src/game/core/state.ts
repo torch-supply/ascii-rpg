@@ -73,6 +73,7 @@ export function beginLevel(
   p.x = data.playerStart.x;
   p.y = data.playerStart.y;
   p.hp = p.maxHp; // fresh HP at the start of each level
+  p.effects = {}; // a fresh start sheds any lingering ward/poison/etc.
   p.baseLightRadius = config.baseLightRadius;
   recomputeLight(p);
 
@@ -89,6 +90,7 @@ export function beginLevel(
     levelKills: 0,
     questProgress: {},
     knownTraps: [],
+    fireTiles: [],
     visible: [],
     explored: [],
     status: "playing",

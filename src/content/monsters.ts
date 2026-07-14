@@ -41,6 +41,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 6,
     speed: 1,
     coinReward: 2,
+    inflicts: { effect: "poison", chance: 0.4, duration: 6 },
   },
   imp: {
     id: "imp",
@@ -56,6 +57,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     coinReward: 3,
     rangedDmg: 3,
     rangedRange: 4,
+    inflicts: { effect: "poison", chance: 0.3, duration: 5 },
   },
   goblin: {
     id: "goblin",
@@ -118,6 +120,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 8,
     armorPierce: 2, // its touch slips past armor
+    inflicts: { effect: "bleed", chance: 0.5, duration: 4 },
     loot: {
       chance: 0.25,
       table: [

@@ -5,8 +5,9 @@ export const ITEMS: Record<string, ItemDef> = {
   // ── weapons ──
   w_dagger: { id: "w_dagger", name: "Rusty Dagger", glyph: "/", color: "#b0b0b0", category: "weapon", stackable: false, power: 3 },
   w_short: { id: "w_short", name: "Short Sword", glyph: "/", color: "#e0e0e0", category: "weapon", stackable: false, power: 5 },
-  w_mace: { id: "w_mace", name: "Flanged Mace", glyph: "/", color: "#c9c9d2", category: "weapon", stackable: false, power: 6 },
+  w_mace: { id: "w_mace", name: "Flanged Mace", glyph: "/", color: "#c9c9d2", category: "weapon", stackable: false, power: 6, knockback: 1 },
   w_axe: { id: "w_axe", name: "War Axe", glyph: "/", color: "#f0d0a0", category: "weapon", stackable: false, power: 8 },
+  w_frost: { id: "w_frost", name: "Frostbrand", glyph: "/", color: "#a9e0ff", category: "weapon", stackable: false, power: 7, onHit: { effect: "chill", chance: 0.5, duration: 3 } },
   w_ench: { id: "w_ench", name: "Enchanted Blade", glyph: "/", color: "#9fdfff", category: "weapon", stackable: false, power: 12 },
   w_sun: { id: "w_sun", name: "The Sunblade", glyph: "/", color: "#ffe14d", category: "weapon", stackable: false, power: 18, questTag: "sunblade" },
 
@@ -24,6 +25,7 @@ export const ITEMS: Record<string, ItemDef> = {
   p_ruin: { id: "p_ruin", name: "Vial of Ruin", glyph: "!", color: "#ff5a3c", category: "potion", stackable: true, effect: "blast", magnitude: 14 },
   p_ward: { id: "p_ward", name: "Potion of Warding", glyph: "!", color: "#7fb0ff", category: "potion", stackable: true, effect: "ward", duration: 12 },
   p_might: { id: "p_might", name: "Elixir of Might", glyph: "!", color: "#ff9d3c", category: "potion", stackable: true, effect: "might", duration: 12 },
+  p_antidote: { id: "p_antidote", name: "Antidote", glyph: "!", color: "#7fdf6a", category: "potion", stackable: true, effect: "cleanse" },
   p_detect: { id: "p_detect", name: "Draught of Seeing", glyph: "!", color: "#c86bff", category: "potion", stackable: true, effect: "detect" },
 
   // ── coins ──
@@ -64,11 +66,12 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
     { itemId: "w_mace", price: 24 },
     { itemId: "a_leather", price: 12 },
     { itemId: "p_heal", price: 8, maxQty: 3 },
-    { itemId: "p_detect", price: 12, maxQty: 2 },
+    { itemId: "p_antidote", price: 10, maxQty: 2 },
     { itemId: "p_bomb", price: 20, maxQty: 2 },
   ],
   3: [
     { itemId: "w_axe", price: 34 },
+    { itemId: "w_frost", price: 28 },
     { itemId: "a_chain", price: 25 },
     { itemId: "i_lantern", price: 30 },
     { itemId: "p_gheal", price: 18, maxQty: 2 },
@@ -84,6 +87,7 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
   5: [
     { itemId: "a_scale", price: 38 },
     { itemId: "p_might", price: 16, maxQty: 2 },
+    { itemId: "p_antidote", price: 10, maxQty: 2 },
     { itemId: "p_gheal", price: 18, maxQty: 3 },
     { itemId: "p_bomb", price: 20, maxQty: 3 },
   ],

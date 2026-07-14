@@ -98,6 +98,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 6,
     trapCount: 6,
     waterCount: 46,
+    oilCount: 16,
     goal: { type: "reachLocation" },
     narration:
       "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into ice and bare rock — the Frostspine Pass — and something enormous is breathing on the wind.",
@@ -157,6 +158,7 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.3,
     baseLightRadius: 5,
     trapCount: 5,
+    crackedWallCount: 4,
     goal: { type: "killCount", count: 8 },
     narration:
       "The last of the gate's wardens falls and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
@@ -187,6 +189,8 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.4,
     baseLightRadius: 5,
     trapCount: 4,
+    oilCount: 12,
+    crackedWallCount: 4,
     goal: { type: "collectX", questTag: "sigil", count: 3 },
     narration:
       "The three dusk-sigils lock into the crypt door and it swings inward on a breath of grave-air. Down there, the last kings hid the one blade that can still cut the night: the Sunblade.",
@@ -217,6 +221,8 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.5,
     baseLightRadius: 3,
     trapCount: 8,
+    oilCount: 10,
+    crackedWallCount: 3,
     goal: { type: "findItem", questTag: "sunblade" },
     narration:
       "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. There is no way up but the ramparts — open to the dead sky, and to whatever wheels across it.",
@@ -276,6 +282,7 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.8,
     baseLightRadius: 5,
     trapCount: 3,
+    crackedWallCount: 3,
     goal: { type: "killTarget", monsterId: "herald" },
     narration:
       "The Herald falls to ash and the black door yields. Beyond, a stair of black marble climbs to the Throne of Dusk. Malachar is waiting. End this.",

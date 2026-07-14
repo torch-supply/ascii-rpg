@@ -6,6 +6,7 @@ import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
 import { idx } from "@/game/core/grid";
+import { STATUS, STATUS_KEYS } from "@/game/core/status";
 import { goalLabel } from "@/game/core/goals";
 
 /** Top status bar — rendered in normal flow above the canvas region. */
@@ -93,6 +94,14 @@ export function HudBar() {
           )}
           {(p.effects.might ?? 0) > 0 && (
             <span style={{ color: "#ff9d3c" }}> · ⚔ might {p.effects.might}</span>
+          )}
+          {STATUS_KEYS.map((k) =>
+            (p.effects[k] ?? 0) > 0 ? (
+              <span key={k} style={{ color: STATUS[k].hudColor }}>
+                {" "}
+                · {STATUS[k].hudGlyph} {k} {p.effects[k]}
+              </span>
+            ) : null
           )}
         </span>
         <span style={{ color: level.palette.accent }}>✦ {goalLabel(game)}</span>
