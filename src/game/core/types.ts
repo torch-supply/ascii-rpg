@@ -68,6 +68,18 @@ export interface StatusApplication {
 //   volatile — bursts on death, damaging anything adjacent
 export type EliteKind = "brute" | "swift" | "volatile";
 
+// A shrine's pre-rolled bargain (deterministic at generation, saved). Costs are
+// paid in blood or gold; see `core/altar.ts` for the numbers + apply logic.
+export type AltarKind = "vigor" | "warblood" | "hoard";
+
+export interface AltarInstance {
+  id: string;
+  x: number;
+  y: number;
+  kind: AltarKind;
+  used: boolean;
+}
+
 export interface MonsterDef {
   id: string;
   name: string;
@@ -100,7 +112,8 @@ export type ItemCategory =
   | "coin"
   | "potion"
   | "quest"
-  | "torch";
+  | "torch"
+  | "ammo";
 
 export type PotionEffect =
   | "heal"
@@ -132,6 +145,8 @@ export interface ItemDef {
   duration?: number; // potion: turns a timed effect (ward/might) lasts
   /** weapon: chance-on-hit affliction inflicted on the struck monster */
   onHit?: StatusApplication;
+  /** weapon: makes it a ranged weapon (fired at range, consuming `ammoId`) */
+  ranged?: { range: number; ammoId: string };
 }
 
 export interface Palette {
@@ -175,6 +190,8 @@ export interface LevelConfig {
   crackedWallCount?: number;
   /** per-monster chance to spawn as an elite/champion (0–1, default 0) */
   eliteChance?: number;
+  /** risk/reward shrines placed on open floor (default 0) */
+  altarCount?: number;
   goal: GoalConfig;
   /** Transition narration shown after completing this level. */
   narration: string;
@@ -224,6 +241,8 @@ export interface PlayerState {
   weaponId: string;
   armorId: string;
   weaponPower: number;
+  /** permanent bonus damage from altar boons (survives re-equipping) */
+  weaponBonus: number;
   armorReduction: number;
   coins: number;
   bag: BagEntry[];
@@ -261,6 +280,8 @@ export interface GameState {
   knownTraps: number[];
   /** lingering fire tiles (from firebombs): tile index -> turns remaining */
   fireTiles: { i: number; life: number }[];
+  /** risk/reward shrines on the level */
+  altars: AltarInstance[];
   /** currently in FOV (recomputed every player turn) — set of tile indices */
   visible: number[];
   /** seen before (fog memory) — set of tile indices */
@@ -276,7 +297,8 @@ export type PlayerAction =
   | { type: "wait" }
   | { type: "equip"; defId: string }
   | { type: "useItem"; defId: string }
-  | { type: "throwAt"; defId: string; x: number; y: number };
+  | { type: "throwAt"; defId: string; x: number; y: number }
+  | { type: "shootAt"; x: number; y: number };
 
 // ── Turn resolution result ─────────────────────────────────────────────────
 export interface TurnResult {

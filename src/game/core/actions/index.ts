@@ -107,6 +107,12 @@ function pickUp(state: GameState, events: GameEvent[]) {
       msg(events, `You pick up a ${def.name}.`);
       break;
     }
+    case "ammo": {
+      const n = def.value ?? 1;
+      addToBag(p, def.id, n);
+      msg(events, `You gather ${n} ${def.name}.`);
+      break;
+    }
     case "torch": {
       p.hasTorch = true;
       p.torchFuel = def.fuel ?? CONFIG.torchFuel;
@@ -251,7 +257,8 @@ function resolvePlayerAttack(
   state: GameState,
   target: MonsterInstance,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
+  ranged = false
 ) {
   const def = monsterDef(target.defId);
   const em = eliteMod(target);
@@ -263,6 +270,13 @@ function resolvePlayerAttack(
   const sneak = canAlert && target.state === "idle";
   if (sneak) dmg = Math.round(dmg * CONFIG.sneakMultiplier);
   target.hp -= dmg;
+  if (ranged)
+    events.push({
+      kind: "projectile",
+      from: { x: state.player.x, y: state.player.y },
+      to: { x: target.x, y: target.y },
+      glyph: "»",
+    });
   events.push({ kind: "hit", x: target.x, y: target.y });
   events.push({ kind: "damage", x: target.x, y: target.y, amount: dmg, toPlayer: false });
   if (target.hp <= 0) {
@@ -280,8 +294,71 @@ function resolvePlayerAttack(
     // the wielded weapon may sear/chill/poison what it strikes (player → monster)
     if (!target.effects) target.effects = {};
     tryAfflict(target.effects, ITEMS[state.player.weaponId].onHit, rng, def.name, events);
-    knockBack(state, target, def, rng, events);
+    if (!ranged) knockBack(state, target, def, rng, events); // arrows don't shove
   }
+}
+
+/** Spend one unit of ammo from the bag. Returns false if the quiver is empty. */
+function consumeAmmo(p: PlayerState, ammoId: string): boolean {
+  const entry = p.bag.find((b) => b.defId === ammoId);
+  if (!entry || entry.count <= 0) return false;
+  entry.count -= 1;
+  if (entry.count <= 0) p.bag = p.bag.filter((b) => b !== entry);
+  return true;
+}
+
+/** A feeble melee jab when a bow-wielder is out of arrows (1 damage). */
+function improvisedJab(
+  state: GameState,
+  target: MonsterInstance,
+  events: GameEvent[],
+  rng: Rng
+) {
+  const def = monsterDef(target.defId);
+  target.hp -= 1;
+  events.push({ kind: "hit", x: target.x, y: target.y });
+  events.push({ kind: "damage", x: target.x, y: target.y, amount: 1, toPlayer: false });
+  if (target.hp <= 0) {
+    msg(events, `You batter down the ${def.name} with your bow.`);
+    awardKill(state, target, def, rng, events);
+    state.monsters = state.monsters.filter((m) => m.id !== target.id);
+  } else {
+    if (def.behavior !== "wander" && def.behavior !== "erratic") target.state = "chase";
+    msg(events, `Out of arrows — you jab the ${def.name} for 1.`);
+  }
+}
+
+/** Fire the equipped ranged weapon at a chosen tile (line of sight + in range).
+ * Consumes one arrow; a shot into an empty tile is a wasted arrow + turn. */
+function resolvePlayerShot(
+  state: GameState,
+  tx: number,
+  ty: number,
+  events: GameEvent[],
+  rng: Rng
+): boolean {
+  const p = state.player;
+  const wpn = ITEMS[p.weaponId];
+  if (!wpn.ranged) return false; // no ranged weapon equipped
+  if (chebyshev(p.x, p.y, tx, ty) > wpn.ranged.range) return false;
+  if (!state.visible.includes(idx(tx, ty, state.map.width))) return false; // need LOS
+  if (!consumeAmmo(p, wpn.ranged.ammoId)) {
+    msg(events, "You have no arrows.");
+    return false;
+  }
+  const target = monsterAt(state, tx, ty);
+  if (target) {
+    resolvePlayerAttack(state, target, events, rng, true);
+  } else {
+    events.push({
+      kind: "projectile",
+      from: { x: p.x, y: p.y },
+      to: { x: tx, y: ty },
+      glyph: "»",
+    });
+    msg(events, "Your arrow clatters off the stone.");
+  }
+  return true;
 }
 
 function resolveMonsterAttack(
@@ -314,7 +391,14 @@ function movePlayer(
 
   const target = monsterAt(state, nx, ny);
   if (target) {
-    resolvePlayerAttack(state, target, events, rng);
+    const wpn = ITEMS[p.weaponId];
+    if (wpn.ranged) {
+      // point-blank shot with the equipped bow (feeble jab if out of arrows)
+      if (consumeAmmo(p, wpn.ranged.ammoId)) resolvePlayerAttack(state, target, events, rng, true);
+      else improvisedJab(state, target, events, rng);
+    } else {
+      resolvePlayerAttack(state, target, events, rng);
+    }
     return true; // attacking costs a turn
   }
   if (!isWalkable(state.map, nx, ny)) {
@@ -758,6 +842,8 @@ function applyPlayerAction(
       return useItem(state, action.defId, events, rng);
     case "throwAt":
       return throwFirebombAt(state, action.defId, action.x, action.y, events, rng);
+    case "shootAt":
+      return resolvePlayerShot(state, action.x, action.y, events, rng);
   }
 }
 

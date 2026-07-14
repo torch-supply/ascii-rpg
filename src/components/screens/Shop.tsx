@@ -11,10 +11,13 @@ function statLabel(itemId: string): string {
   switch (d.category) {
     case "weapon": {
       const bits = [`power ${d.power}`];
+      if (d.ranged) bits.push(`ranged ${d.ranged.range}`);
       if (d.onHit) bits.push(`${d.onHit.effect}s`);
       if (d.knockback) bits.push("knockback");
       return bits.join(" · ");
     }
+    case "ammo":
+      return `${d.value ?? 0} arrows`;
     case "armor":
       return `armor ${d.reduction}`;
     case "torch":

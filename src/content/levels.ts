@@ -100,6 +100,7 @@ export const LEVELS: LevelConfig[] = [
     waterCount: 46,
     oilCount: 16,
     eliteChance: 0.1,
+    altarCount: 1,
     goal: { type: "reachLocation" },
     narration:
       "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into ice and bare rock — the Frostspine Pass — and something enormous is breathing on the wind.",
@@ -162,6 +163,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 5,
     crackedWallCount: 4,
     eliteChance: 0.15,
+    altarCount: 1,
     goal: { type: "killCount", count: 8 },
     narration:
       "The last of the gate's wardens falls and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
@@ -195,6 +197,7 @@ export const LEVELS: LevelConfig[] = [
     oilCount: 12,
     crackedWallCount: 4,
     eliteChance: 0.15,
+    altarCount: 2,
     goal: { type: "collectX", questTag: "sigil", count: 3 },
     narration:
       "The three dusk-sigils lock into the crypt door and it swings inward on a breath of grave-air. Down there, the last kings hid the one blade that can still cut the night: the Sunblade.",
@@ -228,6 +231,7 @@ export const LEVELS: LevelConfig[] = [
     oilCount: 10,
     crackedWallCount: 3,
     eliteChance: 0.18,
+    altarCount: 1,
     goal: { type: "findItem", questTag: "sunblade" },
     narration:
       "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. There is no way up but the ramparts — open to the dead sky, and to whatever wheels across it.",
@@ -259,6 +263,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 2,
     waterCount: 8,
     eliteChance: 0.2,
+    altarCount: 1,
     goal: { type: "survive", turns: 35 },
     narration:
       "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",

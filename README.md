@@ -28,7 +28,7 @@ npm run test:core  # pure-engine checks (determinism, goals, combat, connectivit
 ## How to play
 
 - **Move / attack:** arrow keys, `hjkl`, or `wasd` — walk into a monster to attack it (bump combat)
-- **Wait:** `.` or space  ·  **Inventory:** `i`  ·  **Pause:** `p` / `Esc`  ·  **Help:** `?`
+- **Fire bow:** `f` (aim, then `Enter`)  ·  **Wait:** `.` or space  ·  **Inventory:** `i`  ·  **Pause:** `p` / `Esc`  ·  **Help:** `?`
 - Number keys use/equip a bag item; firebombs open a **cursor targeting** mode (aim, `Enter` to throw, `Esc` to cancel)
 - You have 3 lives and a per-level **turn budget** — running out of either costs a life and restarts the level. Progress, gear, and coins carry over. Zero lives ends the run.
 
@@ -43,6 +43,8 @@ shrinks, monsters toughen, and the light dwindles.
 - Hidden spike traps (with an awareness sense and a guaranteed trap-free route to every objective), impassable water/chasm terrain, and torch fuel
 - **Status effects** — poison, bleed, and burn (damage-over-time) plus chill; monsters afflict you, and your firebombs and the Frostbrand weapon afflict them. Cure debuffs with an Antidote.
 - **Environmental interplay** — shove enemies into chasms with a knockback weapon (instant kill), set oil slicks alight and watch the fire spread, and blast open cracked walls for new shortcuts
+- **Elite champions & stealth** — buffed monsters (brute / swift / volatile-explodes) with better loot; light-gated detection so you can creep through the dark and land bonus **sneak attacks**
+- **Ranged combat & shrines** — an equipped bow with arrows (aim with `f`); risk/reward altars that trade blood or gold for lasting boons
 - Monster loot drops, potions (heal, warding, might, firebomb, ruin, seeing, antidote), a five-tier shop, and juice: floating damage numbers, blast/projectile FX, a boss health bar, and per-level intro cards
 
 ## Project layout

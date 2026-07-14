@@ -9,7 +9,7 @@ export function playerAttackDamage(
   target: MonsterDef
 ): number {
   const might = (player.effects.might ?? 0) > 0 ? CONFIG.mightBonus : 0;
-  return Math.max(1, player.weaponPower + might - target.armor);
+  return Math.max(1, player.weaponPower + player.weaponBonus + might - target.armor);
 }
 
 /** Reduce incoming damage while the Ward effect is active (halve, min 1). */

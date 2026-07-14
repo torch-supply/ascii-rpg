@@ -455,6 +455,21 @@ export class CanvasRenderer {
       this.display.draw(sx, sy, glyph, dim(base, flick), null);
     }
 
+    // altars/shrines (drawn from memory too, so you can navigate back to one)
+    for (const a of state.altars) {
+      const i = idx(a.x, a.y, map.width);
+      const isVis = visible.has(i);
+      if (!isVis && !explored.has(i)) continue;
+      const sx = a.x - camX;
+      const sy = a.y - camY;
+      if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
+      const base = a.used ? "#6a6a6a" : "#d6a4ff";
+      const color = isVis
+        ? this.lit(base, chebyshev(a.x, a.y, player.x, player.y), effR, EDGE_MIN_ENTITY)
+        : dim(base, FOG_DIM);
+      this.display.draw(sx, sy, "‡", color, null);
+    }
+
     // items (only where currently visible)
     for (const it of state.items) {
       if (!visible.has(idx(it.x, it.y, map.width))) continue;

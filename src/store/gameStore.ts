@@ -1,9 +1,10 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 
-import type { GameState, PlayerAction } from "@/game/core/types";
+import type { GameState, PlayerAction, AltarInstance } from "@/game/core/types";
 import { Rng } from "@/game/core/rng";
 import { resolveTurn } from "@/game/core/actions";
+import { applyAltar } from "@/game/core/altar";
 import { beginLevel, createPlayer, clonePlayer } from "@/game/core/state";
 import { giveItem } from "@/game/core/inventory";
 import { LEVELS } from "@/content/levels";
@@ -31,10 +32,13 @@ export type UIMode =
   | "narration"
   | "shop"
   | "targeting"
+  | "altar"
   | "gameover"
   | "victory";
 
 export interface TargetingData {
+  /** "firebomb" throws the potion `defId`; "ranged" fires the equipped bow */
+  kind: "firebomb" | "ranged";
   defId: string;
   x: number;
   y: number;
@@ -69,8 +73,10 @@ export interface GameStore {
   narration: NarrationData | null;
   /** how many of each item bought during the current shop visit */
   shopPurchases: Record<string, number>;
-  /** active firebomb targeting cursor (null unless mode === "targeting") */
+  /** active targeting cursor (null unless mode === "targeting") */
   targeting: TargetingData | null;
+  /** the shrine being contemplated (null unless mode === "altar") */
+  activeAltar: AltarInstance | null;
   /** stats captured when a run ends (shown on victory / game-over) */
   runResult: RunResult | null;
 
@@ -84,11 +90,16 @@ export interface GameStore {
   buyShopEntry: (entry: ShopEntry) => void;
   leaveShop: () => void;
 
-  // firebomb targeting
+  // cursor targeting (firebomb throw + ranged fire share the cursor)
   beginTargeting: (defId: string) => void;
+  beginRangedTargeting: () => void;
   moveCursor: (dx: number, dy: number) => void;
   confirmTarget: () => void;
   cancelTarget: () => void;
+
+  // altar / shrine interaction
+  acceptAltar: () => void;
+  declineAltar: () => void;
 
   // the turn-based LoopDriver entry point (the seam)
   submitAction: (action: PlayerAction) => void;
@@ -222,6 +233,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     narration: null,
     shopPurchases: {},
     targeting: null,
+    activeAltar: null,
     runResult: null,
 
     init: () => {
@@ -285,6 +297,17 @@ export const gameStore = createStore<GameStore>((set, get) => {
     submitAction: (action: PlayerAction) => {
       const { mode, game, rng } = get();
       if (mode !== "playing" || !game || !rng) return;
+
+      // Walking into an unspent shrine opens its bargain instead of a turn.
+      if (action.type === "move") {
+        const nx = game.player.x + action.dx;
+        const ny = game.player.y + action.dy;
+        const altar = game.altars.find((a) => !a.used && a.x === nx && a.y === ny);
+        if (altar) {
+          set({ mode: "altar", activeAltar: altar });
+          return;
+        }
+      }
 
       const res = resolveTurn(game, action, rng);
       if (!res.tookTurn) {
@@ -451,7 +474,37 @@ export const gameStore = createStore<GameStore>((set, get) => {
       }
       set({
         mode: "targeting",
-        targeting: { defId, x: cx, y: cy, range: CONFIG.throwRange },
+        targeting: { kind: "firebomb", defId, x: cx, y: cy, range: CONFIG.throwRange },
+      });
+    },
+
+    beginRangedTargeting: () => {
+      const { game } = get();
+      if (!game) return;
+      const p = game.player;
+      const wpn = ITEMS[p.weaponId];
+      if (!wpn.ranged) return; // no bow equipped
+      const ammo = p.bag.find((b) => b.defId === wpn.ranged!.ammoId);
+      if (!ammo || ammo.count <= 0) return; // no arrows
+      const range = wpn.ranged.range;
+      const w = game.map.width;
+      const visible = new Set(game.visible);
+      // start on the nearest visible monster within range, else on yourself
+      let cx = p.x;
+      let cy = p.y;
+      let best = Infinity;
+      for (const m of game.monsters) {
+        if (!visible.has(m.y * w + m.x)) continue;
+        const d = Math.max(Math.abs(p.x - m.x), Math.abs(p.y - m.y));
+        if (d <= range && d < best) {
+          best = d;
+          cx = m.x;
+          cy = m.y;
+        }
+      }
+      set({
+        mode: "targeting",
+        targeting: { kind: "ranged", defId: p.weaponId, x: cx, y: cy, range },
       });
     },
 
@@ -471,12 +524,24 @@ export const gameStore = createStore<GameStore>((set, get) => {
     confirmTarget: () => {
       const { targeting } = get();
       if (!targeting) return;
-      const { defId, x, y } = targeting;
+      const { kind, defId, x, y } = targeting;
       set({ mode: "playing", targeting: null });
-      get().submitAction({ type: "throwAt", defId, x, y });
+      if (kind === "ranged") get().submitAction({ type: "shootAt", x, y });
+      else get().submitAction({ type: "throwAt", defId, x, y });
     },
 
     cancelTarget: () => set({ mode: "playing", targeting: null }),
+
+    acceptAltar: () => {
+      const { game, activeAltar } = get();
+      if (!game || !activeAltar) return;
+      const result = applyAltar(game, activeAltar); // pays cost + grants boon in-place
+      if (result == null) return; // can't afford — keep the modal open
+      set({ game: { ...game }, mode: "playing", activeAltar: null });
+      persist();
+    },
+
+    declineAltar: () => set({ mode: "playing", activeAltar: null }),
 
     setMode: (mode: UIMode) => set({ mode }),
 
@@ -506,8 +571,13 @@ export const gameStore = createStore<GameStore>((set, get) => {
         case "pause":
           if (mode === "playing") set({ mode: "paused" });
           else if (mode === "targeting") get().cancelTarget();
+          else if (mode === "altar") get().declineAltar();
           else if (mode === "paused" || mode === "inventory" || mode === "help")
             set({ mode: "playing" });
+          break;
+        case "fire":
+          if (mode === "playing") get().beginRangedTargeting();
+          else if (mode === "targeting") get().confirmTarget();
           break;
         case "inventory":
           if (mode === "playing") set({ mode: "inventory" });
@@ -521,6 +591,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
           if (mode === "narration") get().continueNarration();
           else if (mode === "shop") get().leaveShop();
           else if (mode === "targeting") get().confirmTarget();
+          else if (mode === "altar") get().acceptAltar();
           else if (mode === "gameover" || mode === "victory")
             get().quitToTitle();
           else if (mode === "paused" || mode === "inventory" || mode === "help")
@@ -528,6 +599,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
           break;
         case "cancel":
           if (mode === "targeting") get().cancelTarget();
+          else if (mode === "altar") get().declineAltar();
           else if (mode === "paused" || mode === "inventory" || mode === "help")
             set({ mode: "playing" });
           break;

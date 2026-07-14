@@ -18,6 +18,10 @@ export function HudBar() {
   const level = LEVELS[game.currentLevel];
   const weapon = ITEMS[p.weaponId];
   const armor = ITEMS[p.armorId];
+  const powerLabel = p.weaponBonus > 0 ? `${p.weaponPower}+${p.weaponBonus}` : `${p.weaponPower}`;
+  const ammo = weapon.ranged
+    ? p.bag.find((b) => b.defId === weapon.ranged!.ammoId)?.count ?? 0
+    : null;
   const hpPct = Math.max(0, Math.round((p.hp / p.maxHp) * 100));
   // On "survive" levels the timer counts down toward zero remaining hold-time.
   const survive = level.goal.type === "survive";
@@ -80,7 +84,10 @@ export function HudBar() {
       <div className="mt-1 flex items-center justify-between gap-4 text-dim">
         <span>
           <span className="text-fg">⚔ {weapon.name}</span>
-          <span className="text-dim"> ({weapon.power})</span>
+          <span className="text-dim"> ({powerLabel})</span>
+          {ammo !== null && (
+            <span className={ammo > 0 ? "text-gold" : "text-hp"}> · » {ammo}</span>
+          )}
           <span className="text-fg"> · ▣ {armor.name}</span>
           <span className="text-dim"> ({armor.reduction})</span>
           {p.hasTorch && p.torchFuel > 0 && (
@@ -209,7 +216,7 @@ export function HudFooter() {
       </div>
 
       <div className="shrink-0 whitespace-nowrap text-[11px] text-dim">
-        move ↑↓←→ / hjkl · bump = attack · [i]nv · [p]ause · [?]help
+        move ↑↓←→ / hjkl · bump = attack · [f]ire · [i]nv · [p]ause · [?]help
       </div>
     </div>
   );

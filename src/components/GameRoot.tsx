@@ -14,6 +14,7 @@ import Victory from "@/components/screens/Victory";
 import PauseModal from "@/components/overlays/PauseModal";
 import HelpModal from "@/components/overlays/HelpModal";
 import InventoryModal from "@/components/overlays/InventoryModal";
+import AltarModal from "@/components/overlays/AltarModal";
 
 const CANVAS_MODES = new Set([
   "playing",
@@ -21,10 +22,12 @@ const CANVAS_MODES = new Set([
   "inventory",
   "help",
   "targeting",
+  "altar",
 ]);
 
 export default function GameRoot() {
   const mode = useGameStore((s) => s.mode);
+  const targetingKind = useGameStore((s) => s.targeting?.kind ?? null);
 
   useEffect(() => {
     // detect an existing save (client-only — safe in an effect)
@@ -64,7 +67,9 @@ export default function GameRoot() {
             {mode === "targeting" && (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
                 <span className="border border-gold/50 bg-panel/90 px-3 py-1 text-xs text-gold">
-                  Aim the firebomb — move cursor · Enter to throw · Esc to cancel
+                  {targetingKind === "ranged"
+                    ? "Take aim — move cursor · Enter to loose an arrow · Esc to cancel"
+                    : "Aim the firebomb — move cursor · Enter to throw · Esc to cancel"}
                 </span>
               </div>
             )}
@@ -81,6 +86,7 @@ export default function GameRoot() {
       {mode === "paused" && <PauseModal />}
       {mode === "inventory" && <InventoryModal />}
       {mode === "help" && <HelpModal />}
+      {mode === "altar" && <AltarModal />}
     </div>
   );
 }

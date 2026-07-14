@@ -19,16 +19,16 @@ export function equipArmor(p: PlayerState, defId: string) {
   p.armorReduction = def.reduction ?? 0;
 }
 
-export function addToBag(p: PlayerState, defId: string) {
+export function addToBag(p: PlayerState, defId: string, count = 1) {
   const def = ITEMS[defId];
   if (def.stackable) {
     const entry = p.bag.find((b) => b.defId === defId);
     if (entry) {
-      entry.count += 1;
+      entry.count += count;
       return;
     }
   }
-  p.bag.push({ defId, count: 1 });
+  p.bag.push({ defId, count });
 }
 
 /**
@@ -51,6 +51,9 @@ export function giveItem(p: PlayerState, defId: string) {
       p.hasTorch = true;
       p.torchFuel = def.fuel ?? CONFIG.torchFuel;
       recomputeLight(p);
+      break;
+    case "ammo":
+      addToBag(p, defId, def.value ?? 1); // `value` = arrows per bundle
       break;
     default:
       addToBag(p, defId);

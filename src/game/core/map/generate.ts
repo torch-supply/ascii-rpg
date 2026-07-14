@@ -1,5 +1,6 @@
 import * as ROT from "rot-js";
 import type {
+  AltarInstance,
   GameMap,
   ItemInstance,
   LevelConfig,
@@ -9,6 +10,7 @@ import type {
 } from "@/game/core/types";
 import { idx, manhattan, isWalkable } from "@/game/core/grid";
 import { seedMapGen, mapInt, mapWeighted } from "@/game/core/rng";
+import { ALTAR_KINDS } from "@/game/core/altar";
 import { levelSeed } from "@/lib/hash";
 import { CONFIG } from "@/content/config";
 import { ITEMS } from "@/content/items";
@@ -18,6 +20,7 @@ export interface LevelData {
   map: GameMap;
   monsters: MonsterInstance[];
   items: ItemInstance[];
+  altars: AltarInstance[];
   playerStart: Pos;
 }
 
@@ -300,6 +303,36 @@ function placeCrackedWalls(
   for (let n = 0; n < count && n < cands.length; n++) tiles[cands[n]] = "crackedWall";
 }
 
+/** Place risk/reward shrines on free floor (in the reachable region), each with
+ * a pre-rolled bargain. They sit on walkable floor — the player interacts by
+ * bumping; monsters ignore them. */
+function placeAltars(
+  config: LevelConfig,
+  floors: number[],
+  occupied: Set<number>,
+  w: number,
+  levelIndex: number
+): AltarInstance[] {
+  const count = config.altarCount ?? 0;
+  const altars: AltarInstance[] = [];
+  let attempts = 0;
+  while (altars.length < count && attempts < count * 20 + 20) {
+    attempts++;
+    const i = floors[mapInt(0, floors.length - 1)];
+    if (occupied.has(i)) continue;
+    occupied.add(i);
+    const kind = ALTAR_KINDS[mapInt(0, ALTAR_KINDS.length - 1)];
+    altars.push({
+      id: `altar${levelIndex}_${altars.length}`,
+      x: i % w,
+      y: Math.floor(i / w),
+      kind,
+      used: false,
+    });
+  }
+  return altars;
+}
+
 /** Tiles reachable from `from` WITHOUT stepping on an (armed) trap. */
 function trapFreeReachable(map: GameMap, from: Pos): Set<number> {
   const w = map.width;
@@ -543,6 +576,9 @@ export function generateLevel(
   placeOil(config, tiles, occupied, w, h);
   placeCrackedWalls(config, tiles, w, h);
 
+  // Risk/reward shrines on open floor.
+  const altars = placeAltars(config, floors, occupied, w, levelIndex);
+
   // Fairness: guarantee a trap-free route to every objective.
   const objectives: Pos[] = [];
   if (map.exit) objectives.push(map.exit);
@@ -550,5 +586,5 @@ export function generateLevel(
   for (const it of items) if (it.questTag) objectives.push({ x: it.x, y: it.y });
   ensureTrapFreeRoutes(map, playerStart, objectives);
 
-  return { map, monsters, items, playerStart };
+  return { map, monsters, items, altars, playerStart };
 }

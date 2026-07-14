@@ -9,6 +9,7 @@ import { isGoalComplete } from "@/game/core/goals";
 import { idx, isWalkable, tileAt } from "@/game/core/grid";
 import { monsterAttackDamage } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
+import { applyAltar } from "@/game/core/altar";
 import { MONSTERS, ELITE } from "@/content/monsters";
 import { CONFIG } from "@/content/config";
 import type { GameMap, Pos } from "@/game/core/types";
@@ -826,6 +827,100 @@ console.log("\n[21] Elites & stealth");
     stepInto(g, s);
     check("elite pays double coins", g.player.coins === coins0 + MONSTERS.skeleton.coinReward * 2);
     check("elite always drops loot", g.items.some((it) => it.x === s.x && it.y === s.y));
+  }
+}
+
+// ─── 22. Ranged weapon + altars ─────────────────────────────────────────────
+console.log("\n[22] Ranged weapon & altars");
+{
+  const DIRS = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const adj = (g: ReturnType<typeof beginLevel>): Pos => {
+    for (const [dx, dy] of DIRS) {
+      const x = g.player.x + dx;
+      const y = g.player.y + dy;
+      if (isWalkable(g.map, x, y)) return { x, y };
+    }
+    throw new Error("no walkable neighbor");
+  };
+  const equipBow = (g: ReturnType<typeof beginLevel>) => {
+    g.player.weaponId = "w_bow";
+    g.player.weaponPower = 6;
+  };
+
+  // firing the bow consumes an arrow and wounds a target in range + LOS
+  {
+    const g = beginLevel("ranged-seed", 0, createPlayer());
+    g.monsters = [];
+    equipBow(g);
+    g.player.bag.push({ defId: "am_arrow", count: 5 });
+    const s = adj(g);
+    const ti = idx(s.x, s.y, g.map.width);
+    if (!g.visible.includes(ti)) g.visible.push(ti);
+    g.monsters = [{ id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" }];
+    const res = resolveTurn(g, { type: "shootAt", x: s.x, y: s.y }, new Rng(1));
+    check("firing the bow takes a turn", res.tookTurn);
+    check("the arrow wounds the target", g.monsters[0].hp < 20);
+    check("firing consumes one arrow", (g.player.bag.find((b) => b.defId === "am_arrow")?.count ?? 0) === 4);
+  }
+
+  // an empty quiver refuses the shot (no turn spent)
+  {
+    const g = beginLevel("ranged-seed", 0, createPlayer());
+    g.monsters = [];
+    equipBow(g);
+    const s = adj(g);
+    const ti = idx(s.x, s.y, g.map.width);
+    if (!g.visible.includes(ti)) g.visible.push(ti);
+    g.monsters = [{ id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" }];
+    const res = resolveTurn(g, { type: "shootAt", x: s.x, y: s.y }, new Rng(1));
+    check("firing with no arrows spends no turn", !res.tookTurn);
+    check("an empty quiver leaves the target unharmed", g.monsters[0].hp === 20);
+  }
+
+  // a bow-wielder out of arrows falls back to a 1-damage jab on a bump
+  {
+    const g = beginLevel("ranged-seed", 0, createPlayer());
+    g.monsters = [];
+    equipBow(g);
+    const s = adj(g);
+    g.monsters = [{ id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" }];
+    resolveTurn(g, { type: "move", dx: s.x - g.player.x, dy: s.y - g.player.y }, new Rng(1));
+    check("out of arrows, a bow bump jabs for 1", 20 - g.monsters[0].hp === 1);
+  }
+
+  // altar: vigor pays gold for max HP + a full heal
+  {
+    const g = beginLevel("altar-seed", 0, createPlayer());
+    g.player.coins = 40;
+    g.player.maxHp = 20;
+    g.player.hp = 10;
+    const m = applyAltar(g, { id: "a", x: 0, y: 0, kind: "vigor", used: false });
+    check(
+      "vigor altar grants max HP + full heal for gold",
+      m != null && g.player.maxHp === 26 && g.player.hp === 26 && g.player.coins === 0
+    );
+  }
+
+  // altar: warblood trades permanent max HP for permanent weapon power
+  {
+    const g = beginLevel("altar-seed", 0, createPlayer());
+    g.player.maxHp = 20;
+    g.player.hp = 20;
+    applyAltar(g, { id: "b", x: 0, y: 0, kind: "warblood", used: false });
+    check("warblood altar trades blood for lasting power", g.player.maxHp === 14 && g.player.weaponBonus === 3);
+  }
+
+  // altar: an unaffordable bargain is a no-op
+  {
+    const g = beginLevel("altar-seed", 0, createPlayer());
+    g.player.coins = 10;
+    const m = applyAltar(g, { id: "c", x: 0, y: 0, kind: "vigor", used: false });
+    check("an unaffordable altar changes nothing", m === null && g.player.coins === 10);
   }
 }
 
