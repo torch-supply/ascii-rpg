@@ -72,6 +72,10 @@ export type EliteKind = "brute" | "swift" | "volatile";
 // paid in blood or gold; see `core/altar.ts` for the numbers + apply logic.
 export type AltarKind = "vigor" | "warblood" | "hoard";
 
+// Lasting cosmetic stains on the floor: scorch where fire burned out, blood
+// where a monster fell. Rendered as a per-cell background tint.
+export type DecalKind = "scorch" | "blood";
+
 export interface AltarInstance {
   id: string;
   x: number;
@@ -282,6 +286,8 @@ export interface GameState {
   fireTiles: { i: number; life: number }[];
   /** melee-bash progress on cracked walls: tile index -> hits taken so far */
   crackedWallHits: Record<number, number>;
+  /** lasting floor stains: tile index -> decal kind (scorch / blood) */
+  decals: Record<number, DecalKind>;
   /** risk/reward shrines on the level */
   altars: AltarInstance[];
   /** currently in FOV (recomputed every player turn) — set of tile indices */

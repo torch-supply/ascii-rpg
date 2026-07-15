@@ -8,21 +8,17 @@ A running list of ideas to implement later. ⭐ = high-impact / recommended-firs
 
 ### Overlay-canvas effects
 
-_A transparent RGBA canvas now sits atop the rot.js grid (added for the cracked-wall knockout fissures). It supports alpha, gradients, blend modes, blur, and sub-cell drawing — none of which the cell grid can do. It rides the existing render/scroll loops. Caveat: it composites **on top** of glyphs (use additive/`screen` blend for light so it brightens rather than paints over), and full-canvas gradient repaints are heavier than the cheap crack strokes, so throttle/cache the expensive ones._
+_A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintOverlay`) — already used for torch-glow, per-biome weather, cracked-wall fissures, and blood/scorch decals. It supports alpha, gradients, blend modes, blur, and sub-cell drawing — none of which the cell grid can do. Caveat: it composites **on top** of glyphs (use additive/`screen` blend for light so it brightens rather than paints over), and full-canvas gradient repaints are heavier than cheap strokes, so throttle/cache the expensive ones._
 
-- ~~⭐ **Soft torch-glow lighting**~~ **(shipped)** — a warm radial glow around the player + additive flickering pools under fire tiles, on the overlay canvas. Tunables in `CanvasRenderer`: `GLOW_RADIUS_SCALE` + the gradient alpha stops in `paintGlow`.
-- ~~**Atmospheric fog / mist**~~ **(shipped)** — drifting mist blobs in the Mire + Crypt, as part of the per-biome atmosphere system below.
-- ~~**Per-biome weather**~~ **(shipped)** — `BIOME_ATMOSPHERE` in `tiles.ts` (+ `paintAtmosphere`): mist (marsh/crypt), snow (mountain), embers (throne), dust (castle). Clipped to visible, off under reduced-motion. Easy to add more biomes/kinds or bump `count`/`alpha`.
 - **Bloom / glow** — `shadowBlur` on the Sunblade, magic bolts, and bosses so bright things actually radiate.
 - **Screen feedback** — a red vignette pulse when low-HP or poisoned, a white flash on a firebomb, subtle screen-shake (transform the layers, like the smooth-scroll already does).
 - **Smooth AoE telegraphs** — a clean glowing circle/cone for blast radius or an incoming boss attack, instead of blocky highlighted cells.
-- **Persistent decals** — scorch marks under burnt oil, blood splatter — sub-cell and lasting.
 
 ## Gameplay depth
 
 - ⭐ **Active abilities with cooldowns** — a dash, a cleave (hit all adjacent), a short blink — tactical tools separate from consumables. Pairs great with classes.
 - ⭐ **Character classes / starting kits** — Warrior (melee+armor), Rogue (stealth+crit), Pyromancer (bombs+bolts). Big replay boost, picked on the splash.
-- **Weapon properties** — reach (hit 2 tiles), cleave, lifesteal, crit chance — so weapons aren't just "bigger number." _(Knockback, on-hit status, and ranged already shipped; reach/cleave/lifesteal/crit remain.)_
+- **Weapon properties** — the remaining ones: reach (hit 2 tiles), cleave (hit all adjacent), lifesteal, crit chance. (Knockback, on-hit status, and ranged already shipped.)
 
 ## Systems / meta / replay
 

@@ -137,6 +137,16 @@ function eliteMod(m: MonsterInstance): EliteMod | null {
   return m.elite ? ELITE[m.elite] : null;
 }
 
+/** Stamp a lasting floor decal (latest wins), bounded so a level can't grow an
+ * unlimited number of stains. */
+function addDecal(state: GameState, i: number, kind: "scorch" | "blood") {
+  if (!(i in state.decals)) {
+    const keys = Object.keys(state.decals);
+    if (keys.length >= CONFIG.maxDecals) delete state.decals[Number(keys[0])];
+  }
+  state.decals[i] = kind;
+}
+
 /** Roll a monster's loot table and drop one item on its tile (if free).
  * `guaranteed` (elites) forces a drop, falling back to a potion with no table. */
 function dropLoot(
@@ -204,6 +214,7 @@ function awardKill(
   if (coin > 0) addCoins(state, coin);
   state.player.kills += 1;
   state.levelKills += 1;
+  addDecal(state, idx(m.x, m.y, state.map.width), "blood"); // a lasting stain
   dropLoot(state, m.x, m.y, def, rng, events, em != null);
   if (em?.explodes) explodeOnDeath(state, m, events);
 }
@@ -639,6 +650,7 @@ function tickFires(state: GameState, events: GameEvent[]) {
     }
     f.life -= 1;
     if (f.life > 0) survivors.push(f);
+    else addDecal(state, f.i, "scorch"); // burnt-out fire leaves a scorch mark
   }
   state.fireTiles = survivors;
 

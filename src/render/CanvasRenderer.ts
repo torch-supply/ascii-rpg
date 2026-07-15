@@ -3,7 +3,7 @@ import type { GameState, GameMap } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
 import { idx, chebyshev } from "@/game/core/grid";
 import { STATUS } from "@/game/core/status";
-import type { StatusKind, Biome } from "@/game/core/types";
+import type { StatusKind, Biome, DecalKind } from "@/game/core/types";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
 import { MONSTERS, ELITE } from "@/content/monsters";
@@ -58,6 +58,58 @@ function rgba(hex: string, a: number): string {
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+/** Draw a persistent floor stain as a soft, seeded organic blob — an oval
+ * pool (rotated, squashed) with a couple of splatter droplets for blood. All
+ * deterministic from `seed` (tile index) so it never shifts frame to frame. */
+function drawDecal(
+  ctx: CanvasRenderingContext2D,
+  kind: DecalKind,
+  seed: number,
+  ox: number,
+  oy: number,
+  cw: number,
+  ch: number
+) {
+  const conf =
+    kind === "blood"
+      ? { color: "#8f1e1e", alpha: 0.32, reach: 0.42, drops: 2 }
+      : { color: "#120d08", alpha: 0.5, reach: 0.5, drops: 0 };
+  const cx = ox + cw * 0.5 + (frac(seed + 1) - 0.5) * cw * 0.16;
+  const cy = oy + ch * 0.5 + (frac(seed + 2) - 0.5) * ch * 0.16;
+  const r = cw * conf.reach * (0.85 + 0.3 * frac(seed + 5));
+
+  // main pool: a rotated, squashed radial gradient reads as an oval puddle
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(frac(seed) * Math.PI);
+  ctx.scale(1, 0.6 + 0.3 * frac(seed + 3));
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+  g.addColorStop(0, rgba(conf.color, conf.alpha));
+  g.addColorStop(0.65, rgba(conf.color, conf.alpha * 0.7));
+  g.addColorStop(1, rgba(conf.color, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // scattered droplets around the pool (blood)
+  for (let d = 0; d < conf.drops; d++) {
+    const a = frac(seed + 10 + d) * Math.PI * 2;
+    const dist = cw * (0.28 + 0.2 * frac(seed + 20 + d));
+    const dr = cw * 0.09 * (0.6 + frac(seed + 30 + d));
+    const dx = cx + Math.cos(a) * dist;
+    const dy = cy + Math.sin(a) * dist;
+    const dg = ctx.createRadialGradient(dx, dy, 0, dx, dy, dr);
+    dg.addColorStop(0, rgba(conf.color, conf.alpha * 0.9));
+    dg.addColorStop(1, rgba(conf.color, 0));
+    ctx.fillStyle = dg;
+    ctx.beginPath();
+    ctx.arc(dx, dy, dr, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /** Paint a deterministic jagged fissure (in the already-set strokeStyle)
@@ -590,6 +642,7 @@ export class CanvasRenderer {
     // together so neither bleeds into the dark past the walls
     this.paintGlow(ctx, state, camX, camY, effR, visible, cw, ch);
     this.paintAtmosphere(ctx, LEVELS[state.currentLevel].biome, cw, ch, overlay.width, overlay.height);
+    this.paintDecals(ctx, state, camX, camY, visible, cw, ch);
     this.clipToVisible(ctx, camX, camY, visible, cw, ch, state.map.width, state.map.height);
 
     // 2) cracked-wall knockout fissures (only on levels that have them)
@@ -716,6 +769,28 @@ export class CanvasRenderer {
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+  }
+
+  /** Draw persistent floor stains as soft organic blobs (only the visible,
+   * on-screen ones), so they read as pooled liquid rather than a filled cell. */
+  private paintDecals(
+    ctx: CanvasRenderingContext2D,
+    state: GameState,
+    camX: number,
+    camY: number,
+    visible: Set<number>,
+    cw: number,
+    ch: number
+  ) {
+    const w = state.map.width;
+    for (const key in state.decals) {
+      const i = Number(key);
+      if (!visible.has(i)) continue;
+      const sx = (i % w) - camX;
+      const sy = Math.floor(i / w) - camY;
+      if (sx < 0 || sy < 0 || sx >= this.cols || sy >= this.rows) continue;
+      drawDecal(ctx, state.decals[i], i, sx * cw, sy * ch, cw, ch);
+    }
   }
 
   /** Keep only the overlay pixels over currently-visible tiles (one fill, so

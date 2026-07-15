@@ -999,5 +999,47 @@ console.log("\n[23] Cracked-wall demolition");
   }
 }
 
+// ─── 24. Persistent decals (blood on kills, scorch on burnout) ──────────────
+console.log("\n[24] Persistent decals");
+{
+  const DIRS = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const adj = (g: ReturnType<typeof beginLevel>): Pos => {
+    for (const [dx, dy] of DIRS) {
+      const x = g.player.x + dx;
+      const y = g.player.y + dy;
+      if (isWalkable(g.map, x, y)) return { x, y };
+    }
+    throw new Error("no walkable neighbor");
+  };
+
+  // a slain monster leaves a blood stain on its tile
+  {
+    const g = beginLevel("decal-seed", 0, createPlayer());
+    g.monsters = [];
+    g.player.weaponPower = 50;
+    const s = adj(g);
+    g.monsters = [{ id: "d", defId: "rat", x: s.x, y: s.y, hp: 2, state: "chase" }];
+    resolveTurn(g, { type: "move", dx: s.x - g.player.x, dy: s.y - g.player.y }, new Rng(1));
+    check("a slain monster leaves a blood stain", g.decals[idx(s.x, s.y, g.map.width)] === "blood");
+  }
+
+  // a fire tile that burns out leaves a scorch mark
+  {
+    const g = beginLevel("decal-seed", 0, createPlayer());
+    g.monsters = [];
+    const s = adj(g);
+    const fi = idx(s.x, s.y, g.map.width);
+    g.fireTiles = [{ i: fi, life: 1 }];
+    resolveTurn(g, { type: "wait" }, new Rng(1));
+    check("burnt-out fire leaves a scorch mark", g.decals[fi] === "scorch");
+    check("the spent fire tile is cleared", !g.fireTiles.some((f) => f.i === fi));
+  }
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

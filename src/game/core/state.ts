@@ -93,6 +93,7 @@ export function beginLevel(
     knownTraps: [],
     fireTiles: [],
     crackedWallHits: {},
+    decals: {},
     altars: data.altars,
     visible: [],
     explored: [],

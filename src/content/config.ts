@@ -26,6 +26,8 @@ export const CONFIG = {
   eliteExplodeDamage: 6,
   /** melee bumps needed to smash open a cracked wall (knockback breaks instantly) */
   crackedWallToughness: 4,
+  /** cap on persistent floor decals per level (drops oldest beyond this) */
+  maxDecals: 220,
   /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
   fireBurnDuration: 2,
   /** lingering fire tiles left by a thrown firebomb */
@@ -38,5 +40,5 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "7",
+  contentVersion: "8",
 };
