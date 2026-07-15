@@ -35,7 +35,7 @@ export function HudBar() {
   const lowTurns = !survive && game.turnsLeft <= 40;
 
   return (
-    <div className="z-10 shrink-0 border-b border-edge bg-panel/95 px-4 py-2 text-[13px]">
+    <div className="z-10 shrink-0 border-b border-edge bg-panel/95 px-4 py-2 text-[15px]">
       <div className="flex items-center justify-between">
         <span className="text-dim">
           <span style={{ color: level.palette.accent }}>◈</span> Level{" "}
@@ -202,7 +202,7 @@ export function HudFooter() {
   ];
 
   return (
-    <div className="z-10 flex shrink-0 items-end justify-between gap-4 border-t border-edge bg-panel/95 px-4 py-1.5 text-[12px]">
+    <div className="z-10 flex shrink-0 items-end justify-between gap-4 border-t border-edge bg-panel/95 px-4 py-1.5 text-[14px]">
       <div className="flex min-w-0 flex-col gap-0.5">
         {log.map((line, i) => (
           <span
@@ -215,7 +215,7 @@ export function HudFooter() {
         ))}
       </div>
 
-      <div className="shrink-0 whitespace-nowrap text-[11px] text-dim">
+      <div className="shrink-0 whitespace-nowrap text-[13px] text-dim">
         move ↑↓←→ / hjkl · bump = attack · [f]ire · [i]nv · [p]ause · [?]help
       </div>
     </div>
