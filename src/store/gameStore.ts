@@ -1,7 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 
-import type { GameState, PlayerAction, AltarInstance } from "@/game/core/types";
+import type { GameState, PlayerAction, AltarInstance, TurnResult } from "@/game/core/types";
 import { Rng } from "@/game/core/rng";
 import { resolveTurn } from "@/game/core/actions";
 import { applyAltar } from "@/game/core/altar";
@@ -10,9 +10,11 @@ import { giveItem } from "@/game/core/inventory";
 import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
 import { ITEMS, SHOP_TIERS, type ShopEntry } from "@/content/items";
+import { MONSTERS } from "@/content/monsters";
 import { OPENING, BIOME_SCENE } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
 import { emitEffects } from "@/lib/effectBus";
+import { initSound, isSoundOn, setSoundOn, playSfx } from "@/lib/sound";
 import type { InputCommand } from "@/game/input/keymap";
 import { serialize } from "@/save/serialize";
 import {
@@ -79,6 +81,8 @@ export interface GameStore {
   activeAltar: AltarInstance | null;
   /** stats captured when a run ends (shown on victory / game-over) */
   runResult: RunResult | null;
+  /** global SFX toggle (persisted across sessions) */
+  soundOn: boolean;
 
   // lifecycle
   init: () => void;
@@ -111,6 +115,7 @@ export interface GameStore {
   // input + ui
   handleCommand: (cmd: InputCommand) => void;
   setMode: (mode: UIMode) => void;
+  toggleSound: () => void;
   continueNarration: () => void;
   useBagSlot: (n: number) => void;
 
@@ -133,6 +138,46 @@ function flushPlaytime() {
   const now = Date.now();
   runPlayMs += Math.max(0, now - sessionStartMs);
   sessionStartMs = now;
+}
+
+/** Turn a turn's cosmetic events into (at most a couple of) SFX cues. Taking
+ * damage always announces itself; you only hear your own hit on a clean blow. */
+function playTurnSfx(events: TurnResult["events"]) {
+  const has = (k: string) => events.some((e) => e.kind === k);
+  const tookDmg = events.some((e) => e.kind === "damage" && e.toPlayer);
+  const dealtDmg = events.some((e) => e.kind === "damage" && !e.toPlayer);
+  if (has("coin")) playSfx("coin");
+  if (has("pickup")) playSfx("pickup");
+  if (has("quaff")) playSfx("quaff");
+  if (has("shoot")) playSfx("shoot");
+  if (has("thud")) playSfx("thud");
+  if (has("crumble")) playSfx("crumble");
+  if (has("blast")) playSfx("blast");
+  // a trap's snap stands in for the generic hurt on that turn
+  if (has("trap")) playSfx("trap");
+  else if (tookDmg) playSfx("hurt");
+  else if (dealtDmg && !has("blast")) playSfx("hit");
+  if (has("step")) playSfx("step");
+}
+
+// Boss sting: play once when a boss first enters view, tracked per level.
+let bossStingLevel = -1;
+let bossStingSeen = new Set<string>();
+function playBossSting(game: GameState) {
+  if (game.currentLevel !== bossStingLevel) {
+    bossStingLevel = game.currentLevel;
+    bossStingSeen = new Set();
+  }
+  const w = game.map.width;
+  const visible = new Set(game.visible);
+  for (const m of game.monsters) {
+    if (!MONSTERS[m.defId].isBoss) continue;
+    if (bossStingSeen.has(m.id)) continue;
+    if (visible.has(m.y * w + m.x)) {
+      bossStingSeen.add(m.id);
+      playSfx("boss");
+    }
+  }
 }
 
 export const gameStore = createStore<GameStore>((set, get) => {
@@ -167,6 +212,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
 
   const handleLevelComplete = () => {
     const game = get().game!;
+    playSfx("levelClear");
     const isLast = game.currentLevel >= LEVELS.length - 1;
     if (isLast) {
       clearSave();
@@ -199,6 +245,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
 
   const handleDeath = () => {
     const game = get().game!;
+    playSfx("death");
     game.player.lives -= 1;
     if (game.player.lives <= 0) {
       clearSave();
@@ -235,10 +282,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
     targeting: null,
     activeAltar: null,
     runResult: null,
+    soundOn: true,
 
     init: () => {
+      initSound(); // load the persisted SFX preference (client-only)
       const info = peekSaveInfo();
-      set({ hasSave: !!info, saveInfo: info });
+      set({ hasSave: !!info, saveInfo: info, soundOn: isSoundOn() });
     },
 
     newGame: (seed?: string) => {
@@ -313,6 +362,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
       }
       commit();
       emitEffects(res.events); // cosmetic hit/projectile animations
+      playTurnSfx(res.events); // SFX cues off the same events
+      playBossSting(game); // ominous sting when a boss first comes into view
       persist();
       // Stepping onto an unspent shrine offers its bargain — AFTER the move
       // resolves, so an altar never blocks a route (decline = walk on past it).
@@ -368,6 +419,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       if (game.player.coins < entry.price) return;
       game.player.coins -= entry.price;
       giveItem(game.player, entry.itemId);
+      playSfx("coin"); // gold changing hands
       set({
         game: { ...game },
         shopPurchases: { ...shopPurchases, [entry.itemId]: bought + 1 },
@@ -532,6 +584,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       if (!game || !activeAltar) return;
       const result = applyAltar(game, activeAltar); // pays cost + grants boon in-place
       if (result == null) return; // can't afford — keep the modal open
+      playSfx("altar");
       set({ game: { ...game }, mode: "playing", activeAltar: null });
       persist();
     },
@@ -539,6 +592,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
     declineAltar: () => set({ mode: "playing", activeAltar: null }),
 
     setMode: (mode: UIMode) => set({ mode }),
+
+    toggleSound: () => {
+      const on = !get().soundOn;
+      setSoundOn(on); // persists to localStorage
+      set({ soundOn: on });
+    },
 
     persist,
 
@@ -564,39 +623,75 @@ export const gameStore = createStore<GameStore>((set, get) => {
       // cmd.kind === "ui"
       switch (cmd.cmd) {
         case "pause":
-          if (mode === "playing") set({ mode: "paused" });
-          else if (mode === "targeting") get().cancelTarget();
-          else if (mode === "altar") get().declineAltar();
-          else if (mode === "paused" || mode === "inventory" || mode === "help")
+          if (mode === "playing") {
+            playSfx("uiSelect");
+            set({ mode: "paused" });
+          } else if (mode === "targeting") {
+            playSfx("uiBack");
+            get().cancelTarget();
+          } else if (mode === "altar") {
+            playSfx("uiBack");
+            get().declineAltar();
+          } else if (mode === "paused" || mode === "inventory" || mode === "help") {
+            playSfx("uiBack");
             set({ mode: "playing" });
+          }
           break;
         case "fire":
           if (mode === "playing") get().beginRangedTargeting();
           else if (mode === "targeting") get().confirmTarget();
           break;
         case "inventory":
-          if (mode === "playing") set({ mode: "inventory" });
-          else if (mode === "inventory") set({ mode: "playing" });
+          if (mode === "playing") {
+            playSfx("uiSelect");
+            set({ mode: "inventory" });
+          } else if (mode === "inventory") {
+            playSfx("uiBack");
+            set({ mode: "playing" });
+          }
           break;
         case "help":
-          if (mode === "playing") set({ mode: "help" });
-          else if (mode === "help") set({ mode: "playing" });
+          if (mode === "playing") {
+            playSfx("uiSelect");
+            set({ mode: "help" });
+          } else if (mode === "help") {
+            playSfx("uiBack");
+            set({ mode: "playing" });
+          }
           break;
         case "confirm":
-          if (mode === "narration") get().continueNarration();
-          else if (mode === "shop") get().leaveShop();
-          else if (mode === "targeting") get().confirmTarget();
-          else if (mode === "altar") get().acceptAltar();
-          else if (mode === "gameover" || mode === "victory")
+          if (mode === "narration") {
+            playSfx("uiSelect");
+            get().continueNarration();
+          } else if (mode === "shop") {
+            playSfx("uiSelect");
+            get().leaveShop();
+          } else if (mode === "targeting") {
+            get().confirmTarget(); // its own shoot/blast SFX
+          } else if (mode === "altar") {
+            get().acceptAltar(); // its own chime
+          } else if (mode === "gameover" || mode === "victory") {
+            playSfx("uiSelect");
             get().quitToTitle();
-          else if (mode === "paused" || mode === "inventory" || mode === "help")
+          } else if (mode === "paused" || mode === "inventory" || mode === "help") {
+            playSfx("uiBack");
             set({ mode: "playing" });
+          }
           break;
         case "cancel":
-          if (mode === "targeting") get().cancelTarget();
-          else if (mode === "altar") get().declineAltar();
-          else if (mode === "paused" || mode === "inventory" || mode === "help")
+          if (mode === "targeting") {
+            playSfx("uiBack");
+            get().cancelTarget();
+          } else if (mode === "altar") {
+            playSfx("uiBack");
+            get().declineAltar();
+          } else if (mode === "paused" || mode === "inventory" || mode === "help") {
+            playSfx("uiBack");
             set({ mode: "playing" });
+          }
+          break;
+        case "mute":
+          get().toggleSound(); // global — works in any mode
           break;
         case "debugSkip":
           if (DEV && mode === "playing") get().debugSkipLevel();

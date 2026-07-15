@@ -128,6 +128,7 @@ function pickUp(state: GameState, events: GameEvent[]) {
     }
   }
 
+  events.push({ kind: def.category === "coin" ? "coin" : "pickup" }); // SFX cue
   state.items = state.items.filter((i) => i.id !== it.id);
 }
 
@@ -264,6 +265,7 @@ function knockBack(
       const i = idx(nx, ny, w);
       state.map.tiles[i] = "floor";
       delete state.crackedWallHits[i];
+      events.push({ kind: "crumble" });
       events.push({ kind: "hit", x: nx, y: ny });
       msg(events, `You smash the ${def.name} clean through a cracked wall!`);
     }
@@ -288,6 +290,7 @@ function bashCrackedWall(
   if (hits >= CONFIG.crackedWallToughness) {
     state.map.tiles[i] = "floor";
     delete state.crackedWallHits[i];
+    events.push({ kind: "crumble" });
     msg(events, "The cracked wall crumbles to rubble!");
   } else {
     state.crackedWallHits[i] = hits;
@@ -390,6 +393,7 @@ function resolvePlayerShot(
     msg(events, "You have no arrows.");
     return false;
   }
+  events.push({ kind: "shoot" }); // bow twang
   const target = monsterAt(state, tx, ty);
   if (target) {
     resolvePlayerAttack(state, target, events, rng, true);
@@ -400,6 +404,7 @@ function resolvePlayerShot(
       to: { x: tx, y: ty },
       glyph: "»",
     });
+    events.push({ kind: "thud" }); // struck stone
     msg(events, "Your arrow clatters off the stone.");
   }
   return true;
@@ -438,8 +443,10 @@ function movePlayer(
     const wpn = ITEMS[p.weaponId];
     if (wpn.ranged) {
       // point-blank shot with the equipped bow (feeble jab if out of arrows)
-      if (consumeAmmo(p, wpn.ranged.ammoId)) resolvePlayerAttack(state, target, events, rng, true);
-      else improvisedJab(state, target, events, rng);
+      if (consumeAmmo(p, wpn.ranged.ammoId)) {
+        events.push({ kind: "shoot" });
+        resolvePlayerAttack(state, target, events, rng, true);
+      } else improvisedJab(state, target, events, rng);
     } else {
       resolvePlayerAttack(state, target, events, rng);
     }
@@ -455,6 +462,7 @@ function movePlayer(
   }
   p.x = nx;
   p.y = ny;
+  events.push({ kind: "step" }); // footfall SFX cue
   springTrap(state, events);
   pickUp(state, events);
   return true;
@@ -470,6 +478,7 @@ function springTrap(state: GameState, events: GameEvent[]) {
     Math.max(1, CONFIG.trapDamage - state.player.armorReduction)
   );
   state.player.hp -= dmg;
+  events.push({ kind: "trap" }); // SFX cue (a sharp snap, in place of the generic hurt)
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
   events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
   msg(events, `A hidden spike trap! You take ${dmg} damage.`);
@@ -502,6 +511,7 @@ function useItem(
   const consume = () => {
     entry.count -= 1;
     if (entry.count <= 0) p.bag = p.bag.filter((b) => b !== entry);
+    events.push({ kind: "quaff" }); // only drink potions call consume(); SFX cue
   };
 
   switch (def.effect) {
@@ -789,8 +799,10 @@ function detonateAt(
       }
     }
   }
-  if (opened > 0)
+  if (opened > 0) {
+    events.push({ kind: "crumble" });
     msg(events, `The blast blows open ${opened > 1 ? "cracked walls" : "a cracked wall"}!`);
+  }
 
   if (spawnFire) spawnFires(state, tx, ty, rng);
 

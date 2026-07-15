@@ -215,9 +215,32 @@ export function HudFooter() {
         ))}
       </div>
 
-      <div className="shrink-0 whitespace-nowrap text-[13px] text-dim">
-        move ↑↓←→ / hjkl · bump = attack · [f]ire · [i]nv · [p]ause · [?]help
+      <div className="flex shrink-0 items-end gap-3">
+        <span className="whitespace-nowrap text-[13px] text-dim">
+          move ↑↓←→ / hjkl · bump = attack · [f]ire · [i]nv · [p]ause · [?]help
+        </span>
+        <SoundToggle />
       </div>
     </div>
+  );
+}
+
+/** Global SFX on/off toggle (preference persists across sessions). */
+function SoundToggle() {
+  const soundOn = useGameStore((s) => s.soundOn);
+  const toggleSound = useGameStore((s) => s.toggleSound);
+  return (
+    <button
+      onClick={toggleSound}
+      title={`Sound ${soundOn ? "on" : "off"} — click or press [m]`}
+      aria-label={`Sound ${soundOn ? "on" : "off"}`}
+      className={`shrink-0 border px-2 py-0.5 text-[13px] transition-colors ${
+        soundOn
+          ? "border-gold/50 text-gold hover:bg-gold/15"
+          : "border-edge text-edge hover:text-dim"
+      }`}
+    >
+      {soundOn ? "♪ on" : "♪ off"}
+    </button>
   );
 }

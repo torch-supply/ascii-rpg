@@ -28,7 +28,7 @@ npm run test:core  # pure-engine checks (determinism, goals, combat, connectivit
 ## How to play
 
 - **Move / attack:** arrow keys, `hjkl`, or `wasd` — walk into a monster to attack it (bump combat)
-- **Fire bow:** `f` (aim, then `Enter`)  ·  **Wait:** `.` or space  ·  **Inventory:** `i`  ·  **Pause:** `p` / `Esc`  ·  **Help:** `?`
+- **Fire bow:** `f` (aim, then `Enter`)  ·  **Wait:** `.` or space  ·  **Inventory:** `i`  ·  **Pause:** `p` / `Esc`  ·  **Mute:** `m`  ·  **Help:** `?`
 - Number keys use/equip a bag item; firebombs open a **cursor targeting** mode (aim, `Enter` to throw, `Esc` to cancel)
 - You have 3 lives and a per-level **turn budget** — running out of either costs a life and restarts the level. Progress, gear, and coins carry over. Zero lives ends the run.
 
@@ -46,6 +46,7 @@ shrinks, monsters toughen, and the light dwindles.
 - **Elite champions & stealth** — buffed monsters (brute / swift / volatile-explodes) with better loot; light-gated detection so you can creep through the dark and land bonus **sneak attacks**
 - **Ranged combat & shrines** — an equipped bow with arrows (aim with `f`); risk/reward altars that trade blood or gold for lasting boons
 - **Atmosphere** — a soft torch-glow that hugs your field of view, and per-biome weather: mist in the mire & crypt, snow on the frostspine, embers in the throne, dust in the castle
+- **Minimal synthesized SFX** — hit / pickup / level-clear cues (Web Audio, no asset files); toggle with `m` or the HUD button (preference persists)
 - Monster loot drops, potions (heal, warding, might, firebomb, ruin, seeing, antidote), a five-tier shop, and juice: floating damage numbers, blast/projectile FX, a boss health bar, and per-level intro cards
 
 ## Project layout
