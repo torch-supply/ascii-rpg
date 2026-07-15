@@ -27,6 +27,7 @@ export function createPlayer(): PlayerState {
     baseLightRadius: 8,
     lightRadius: 8,
     hasTorch: false,
+    torchId: null,
     torchFuel: 0,
     effects: {},
   };
@@ -39,7 +40,8 @@ export function clonePlayer(p: PlayerState): PlayerState {
 /** Light radius = base (from level) + torch bonus while a torch is lit. */
 export function recomputeLight(p: PlayerState): void {
   const lit = p.hasTorch && p.torchFuel > 0;
-  const torchBonus = lit ? ITEMS["i_torch"].lightBonus ?? 0 : 0;
+  const src = p.torchId ? ITEMS[p.torchId] : null;
+  const torchBonus = lit ? src?.lightBonus ?? 0 : 0;
   p.lightRadius = p.baseLightRadius + torchBonus;
 }
 

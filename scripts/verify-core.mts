@@ -11,6 +11,7 @@ import { monsterAttackDamage } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
 import { MONSTERS, ELITE } from "@/content/monsters";
+import { ITEMS } from "@/content/items";
 import { CONFIG } from "@/content/config";
 import type { GameMap, Pos } from "@/game/core/types";
 
@@ -318,13 +319,27 @@ console.log("\n[12] Torch fuel");
   g.monsters = [];
   const base = g.player.baseLightRadius;
   g.player.hasTorch = true;
+  g.player.torchId = "i_torch";
   g.player.torchFuel = 3;
   recomputeLight(g.player);
-  check("a lit torch widens the light radius", g.player.lightRadius > base);
+  check("a lit torch widens the light radius", g.player.lightRadius === base + (ITEMS.i_torch.lightBonus ?? 0));
   const rng = new Rng(6);
   for (let i = 0; i < 3; i++) resolveTurn(g, { type: "wait" }, rng);
   check("torch burns out at 0 fuel", !g.player.hasTorch && g.player.torchFuel === 0);
   check("light reverts to base once unlit", g.player.lightRadius === base);
+
+  // the lantern grants its OWN (larger) bonus, not the torch's
+  const lp = createPlayer();
+  lp.baseLightRadius = 5;
+  lp.hasTorch = true;
+  lp.torchFuel = 10;
+  lp.torchId = "i_lantern";
+  recomputeLight(lp);
+  check(
+    "lantern grants its own light bonus (not the torch's)",
+    lp.lightRadius === 5 + (ITEMS.i_lantern.lightBonus ?? 0) &&
+      (ITEMS.i_lantern.lightBonus ?? 0) > (ITEMS.i_torch.lightBonus ?? 0)
+  );
 }
 
 // ─── 13. Cursor firebomb throw ──────────────────────────────────────────────

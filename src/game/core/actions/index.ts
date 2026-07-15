@@ -115,6 +115,7 @@ function pickUp(state: GameState, events: GameEvent[]) {
     }
     case "torch": {
       p.hasTorch = true;
+      p.torchId = def.id;
       p.torchFuel = def.fuel ?? CONFIG.torchFuel;
       recomputeLight(p);
       msg(events, `You light a ${def.name}. The dark pulls back.`);

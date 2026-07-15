@@ -93,7 +93,7 @@ export function HudBar() {
           {p.hasTorch && p.torchFuel > 0 && (
             <span className={p.torchFuel <= 20 ? "text-hp" : "text-gold"}>
               {" "}
-              · ( torch {p.torchFuel}
+              · ( {p.torchId ? ITEMS[p.torchId].name : "Torch"} {p.torchFuel}
             </span>
           )}
           {(p.effects.ward ?? 0) > 0 && (

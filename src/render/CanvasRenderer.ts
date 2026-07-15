@@ -1,23 +1,28 @@
-import * as ROT from "rot-js";
-import type { GameState, GameMap } from "@/game/core/types";
-import type { GameEvent } from "@/game/core/events";
-import { idx, chebyshev } from "@/game/core/grid";
-import { STATUS } from "@/game/core/status";
-import type { StatusKind, Biome, DecalKind } from "@/game/core/types";
-import { LEVELS } from "@/content/levels";
-import { ITEMS } from "@/content/items";
-import { MONSTERS, ELITE } from "@/content/monsters";
-import { createDisplay } from "./Display";
+import { ITEMS } from '@/content/items';
+import { LEVELS } from '@/content/levels';
+import { ELITE, MONSTERS } from '@/content/monsters';
+import type { GameEvent } from '@/game/core/events';
+import { chebyshev, idx } from '@/game/core/grid';
+import { STATUS } from '@/game/core/status';
+import type {
+  Biome,
+  DecalKind,
+  GameMap,
+  GameState,
+  StatusKind,
+} from '@/game/core/types';
+import * as ROT from 'rot-js';
+import { createDisplay } from './Display';
 import {
-  terrainGlyph,
-  PLAYER_GLYPH,
-  PLAYER_COLOR,
-  FOG_DIM,
-  terrainColor,
-  dim,
   BIOME_ATMOSPHERE,
   CRACKED_WALL_CRACK_DIM,
-} from "./tiles";
+  dim,
+  FOG_DIM,
+  PLAYER_COLOR,
+  PLAYER_GLYPH,
+  terrainColor,
+  terrainGlyph,
+} from './tiles';
 
 // Aim to show roughly this many tiles vertically; cell size derives from it.
 const TARGET_ROWS = 26;
@@ -34,10 +39,12 @@ const RING_MS = 300; // firebomb / Ruin expanding blast ring
 const EDGE_MIN_TERRAIN = 0.4;
 const EDGE_MIN_ENTITY = 0.62;
 const AMBIENT_MS = 66; // ~15fps flicker redraw
-const GLOW_RADIUS_SCALE = 1.0; // torch-glow reach relative to the light radius
+const GLOW_RADIUS_SCALE = 0.85; // torch-glow reach relative to the light radius
+// how much of the glow survives with no torch lit (base light = a faint ember)
+const GLOW_UNLIT = 0.4;
 
 // Which debuff colors an afflicted entity's glyph (first match wins).
-const TINT_ORDER: StatusKind[] = ["burn", "poison", "bleed", "chill"];
+const TINT_ORDER: StatusKind[] = ['burn', 'poison', 'bleed', 'chill'];
 function statusTint(effects?: Record<string, number>): string | null {
   if (!effects) return null;
   for (const k of TINT_ORDER) if ((effects[k] ?? 0) > 0) return STATUS[k].tint;
@@ -53,7 +60,7 @@ function frac(n: number): number {
 
 /** "#rrggbb" + alpha → an `rgba(...)` string (for gradient stops). */
 function rgba(hex: string, a: number): string {
-  const h = hex.replace("#", "");
+  const h = hex.replace('#', '');
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
@@ -70,12 +77,12 @@ function drawDecal(
   ox: number,
   oy: number,
   cw: number,
-  ch: number
+  ch: number,
 ) {
   const conf =
-    kind === "blood"
-      ? { color: "#8f1e1e", alpha: 0.32, reach: 0.42, drops: 2 }
-      : { color: "#120d08", alpha: 0.5, reach: 0.5, drops: 0 };
+    kind === 'blood'
+      ? { color: '#8f1e1e', alpha: 0.32, reach: 0.42, drops: 2 }
+      : { color: '#120d08', alpha: 0.5, reach: 0.5, drops: 0 };
   const cx = ox + cw * 0.5 + (frac(seed + 1) - 0.5) * cw * 0.16;
   const cy = oy + ch * 0.5 + (frac(seed + 2) - 0.5) * ch * 0.16;
   const r = cw * conf.reach * (0.85 + 0.3 * frac(seed + 5));
@@ -121,7 +128,7 @@ function drawFissure(
   oy: number,
   cw: number,
   ch: number,
-  seed: number
+  seed: number,
 ) {
   const rnd = (n: number) => frac(seed * 3.1 + n * 7.7);
   ctx.lineWidth = Math.max(1.4, cw * 0.14);
@@ -164,7 +171,7 @@ const clamp = (v: number, lo: number, hi: number) =>
 
 type Fx =
   | {
-      kind: "projectile";
+      kind: 'projectile';
       fromX: number;
       fromY: number;
       toX: number;
@@ -173,8 +180,15 @@ type Fx =
       t0: number;
       dur: number;
     }
-  | { kind: "hit"; x: number; y: number; t0: number; dur: number }
-  | { kind: "ring"; x: number; y: number; radius: number; t0: number; dur: number };
+  | { kind: 'hit'; x: number; y: number; t0: number; dur: number }
+  | {
+      kind: 'ring';
+      x: number;
+      y: number;
+      radius: number;
+      t0: number;
+      dur: number;
+    };
 
 /**
  * Owns the rot.js Display. Renders a VIEWPORT window at a fixed, readable cell
@@ -214,21 +228,21 @@ export class CanvasRenderer {
     this.display = createDisplay(1, 1);
     const container = this.display.getContainer();
     if (container) {
-      container.style.display = "block";
+      container.style.display = 'block';
       host.appendChild(container);
     }
     // A transparent overlay canvas sitting exactly atop the rot.js canvas.
     // Cracked walls are "knocked out" here — fissures painted in the background
     // color that cut through the wall glyph so it reads as broken, not X'd.
-    const crack = document.createElement("canvas");
-    crack.style.position = "absolute";
-    crack.style.pointerEvents = "none";
-    crack.style.display = "block";
+    const crack = document.createElement('canvas');
+    crack.style.position = 'absolute';
+    crack.style.pointerEvents = 'none';
+    crack.style.display = 'block';
     host.appendChild(crack);
     this.crack = crack;
     this.reduceMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
     // gentle torchlight flicker: re-render the base on a throttled ambient loop
     if (!this.reduceMotion) {
       this.ambientId = requestAnimationFrame(this.ambientTick);
@@ -307,13 +321,13 @@ export class CanvasRenderer {
     // crack overlay rides along so its fissures stay aligned to their walls
     const layers = [canvas, this.crack].filter(Boolean) as HTMLElement[];
     for (const el of layers) {
-      el.style.transition = "none";
+      el.style.transition = 'none';
       el.style.transform = `translate(${dcx * cw}px, ${dcy * ch}px)`;
     }
     requestAnimationFrame(() => {
       for (const el of layers) {
-        el.style.transition = "transform 110ms ease-out";
-        el.style.transform = "translate(0px, 0px)";
+        el.style.transition = 'transform 110ms ease-out';
+        el.style.transform = 'translate(0px, 0px)';
       }
     });
   }
@@ -326,8 +340,8 @@ export class CanvasRenderer {
         this.drawCell(
           tx + dx,
           ty + dy,
-          center ? "X" : "+",
-          center ? "#ffdd55" : "#ff7a3c"
+          center ? 'X' : '+',
+          center ? '#ffdd55' : '#ff7a3c',
         );
       }
     }
@@ -338,9 +352,9 @@ export class CanvasRenderer {
     if (!this.lastState) return;
     const now = performance.now();
     for (const e of events) {
-      if (e.kind === "projectile") {
+      if (e.kind === 'projectile') {
         this.fx.push({
-          kind: "projectile",
+          kind: 'projectile',
           fromX: e.from.x,
           fromY: e.from.y,
           toX: e.to.x,
@@ -349,24 +363,24 @@ export class CanvasRenderer {
           t0: now,
           dur: PROJECTILE_MS,
         });
-      } else if (e.kind === "hit") {
+      } else if (e.kind === 'hit') {
         this.fx.push({
-          kind: "hit",
+          kind: 'hit',
           x: e.x,
           y: e.y,
           t0: now + HIT_DELAY_MS,
           dur: HIT_MS,
         });
-      } else if (e.kind === "blast") {
+      } else if (e.kind === 'blast') {
         this.fx.push({
-          kind: "ring",
+          kind: 'ring',
           x: e.x,
           y: e.y,
           radius: e.radius,
           t0: now,
           dur: RING_MS,
         });
-      } else if (e.kind === "damage") {
+      } else if (e.kind === 'damage') {
         this.spawnDamageNumber(e.x, e.y, e.amount, e.toPlayer, e.color);
       }
     }
@@ -381,7 +395,7 @@ export class CanvasRenderer {
     wy: number,
     amount: number,
     toPlayer: boolean,
-    color?: string
+    color?: string,
   ) {
     if (this.reduceMotion) return;
     const canvas = this.display.getContainer();
@@ -391,14 +405,14 @@ export class CanvasRenderer {
     if (sx < 0 || sy < 0 || sx >= this.cols || sy >= this.rows) return;
     const cw = canvas.clientWidth / this.cols;
     const ch = canvas.clientHeight / this.rows;
-    const el = document.createElement("div");
-    el.className = "dmg-num";
+    const el = document.createElement('div');
+    el.className = 'dmg-num';
     el.textContent = String(amount);
     el.style.left = `${canvas.offsetLeft + sx * cw + cw / 2}px`;
     el.style.top = `${canvas.offsetTop + sy * ch}px`;
-    el.style.color = color ?? (toPlayer ? "#ff6a6a" : "#ffe14d");
+    el.style.color = color ?? (toPlayer ? '#ff6a6a' : '#ffe14d');
     el.style.fontSize = `${Math.max(11, Math.round(cw * 0.7))}px`;
-    el.addEventListener("animationend", () => el.remove());
+    el.addEventListener('animationend', () => el.remove());
     this.host.appendChild(el);
   }
 
@@ -413,28 +427,28 @@ export class CanvasRenderer {
     for (const f of this.fx) {
       if (now < f.t0) continue; // not started yet (delayed flash)
       const p = clamp((now - f.t0) / f.dur, 0, 1);
-      if (f.kind === "projectile") {
+      if (f.kind === 'projectile') {
         // head + a short fading trail behind it
         for (let k = 0; k < 3; k++) {
           const pk = p - k * 0.16;
           if (pk < 0) continue;
           const wx = Math.round(f.fromX + (f.toX - f.fromX) * pk);
           const wy = Math.round(f.fromY + (f.toY - f.fromY) * pk);
-          this.drawCell(wx, wy, f.glyph, dim("#ff9d3c", 1 - k * 0.34));
+          this.drawCell(wx, wy, f.glyph, dim('#ff9d3c', 1 - k * 0.34));
         }
-      } else if (f.kind === "ring") {
+      } else if (f.kind === 'ring') {
         // an expanding ring of sparks over the blast radius
         const front = p * (f.radius + 1);
         for (let dy = -f.radius; dy <= f.radius; dy++) {
           for (let dx = -f.radius; dx <= f.radius; dx++) {
             const d = Math.max(Math.abs(dx), Math.abs(dy));
             if (d > f.radius || Math.abs(front - d) > 0.9) continue;
-            this.drawCell(f.x + dx, f.y + dy, "*", dim("#ffb347", 1 - p * 0.6));
+            this.drawCell(f.x + dx, f.y + dy, '*', dim('#ffb347', 1 - p * 0.6));
           }
         }
       } else {
         // hit flash: a bright spark on the struck tile, white → ember
-        this.drawCell(f.x, f.y, "*", p < 0.45 ? "#ffffff" : "#ff6a3c");
+        this.drawCell(f.x, f.y, '*', p < 0.45 ? '#ffffff' : '#ff6a3c');
       }
     }
 
@@ -442,7 +456,8 @@ export class CanvasRenderer {
       this.rafId = requestAnimationFrame(this.tick);
     } else {
       this.renderBase(state); // clean final frame
-      if (this.targeting) this.drawTargeting(this.targeting.x, this.targeting.y);
+      if (this.targeting)
+        this.drawTargeting(this.targeting.x, this.targeting.y);
     }
   };
 
@@ -467,12 +482,12 @@ export class CanvasRenderer {
     this.camX = clamp(
       player.x - Math.floor(cols / 2),
       0,
-      Math.max(0, map.width - cols)
+      Math.max(0, map.width - cols),
     );
     this.camY = clamp(
       player.y - Math.floor(rows / 2),
       0,
-      Math.max(0, map.height - rows)
+      Math.max(0, map.height - rows),
     );
     const camX = this.camX;
     const camY = this.camY;
@@ -507,18 +522,23 @@ export class CanvasRenderer {
         let glyph = terrainGlyph(t, level.biome);
         let color = terrainColor(t, palette);
         // a sensed/detected (but still armed) trap shows as a faint warning ^
-        if (t === "trap" && knownTraps.has(i)) {
-          glyph = "^";
-          color = "#e0904a";
+        if (t === 'trap' && knownTraps.has(i)) {
+          glyph = '^';
+          color = '#e0904a';
         }
         color = isVis
-          ? this.lit(color, chebyshev(wx, wy, player.x, player.y), effR, EDGE_MIN_TERRAIN)
+          ? this.lit(
+              color,
+              chebyshev(wx, wy, player.x, player.y),
+              effR,
+              EDGE_MIN_TERRAIN,
+            )
           : dim(color, FOG_DIM);
         // living terrain: water shimmers, marsh reeds sway (per-tile phase)
         if (isVis && !this.reduceMotion) {
-          if (t === "water")
+          if (t === 'water')
             color = dim(color, 0.82 + 0.18 * Math.sin(now * 0.004 + i * 0.9));
-          else if (level.biome === "marsh" && t === "wall")
+          else if (level.biome === 'marsh' && t === 'wall')
             color = dim(color, 0.9 + 0.1 * Math.sin(now * 0.0035 + i * 0.6));
         }
         this.display.draw(sx, sy, glyph, color, null);
@@ -536,8 +556,9 @@ export class CanvasRenderer {
       const flick = this.reduceMotion
         ? 0.85
         : 0.6 + 0.4 * Math.abs(Math.sin(now * 0.02 + f.i));
-      const glyph = !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? "*" : "▴";
-      const base = f.life <= 1 ? "#ff5a3c" : "#ff9d3c";
+      const glyph =
+        !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? '*' : '▴';
+      const base = f.life <= 1 ? '#ff5a3c' : '#ff9d3c';
       this.display.draw(sx, sy, glyph, dim(base, flick), null);
     }
 
@@ -549,11 +570,16 @@ export class CanvasRenderer {
       const sx = a.x - camX;
       const sy = a.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
-      const base = a.used ? "#6a6a6a" : "#d6a4ff";
+      const base = a.used ? '#6a6a6a' : '#d6a4ff';
       const color = isVis
-        ? this.lit(base, chebyshev(a.x, a.y, player.x, player.y), effR, EDGE_MIN_ENTITY)
+        ? this.lit(
+            base,
+            chebyshev(a.x, a.y, player.x, player.y),
+            effR,
+            EDGE_MIN_ENTITY,
+          )
         : dim(base, FOG_DIM);
-      this.display.draw(sx, sy, "‡", color, null);
+      this.display.draw(sx, sy, '‡', color, null);
     }
 
     // items (only where currently visible)
@@ -567,7 +593,7 @@ export class CanvasRenderer {
         def.color,
         chebyshev(it.x, it.y, player.x, player.y),
         effR,
-        EDGE_MIN_ENTITY
+        EDGE_MIN_ENTITY,
       );
       this.display.draw(sx, sy, def.glyph, color, null);
     }
@@ -587,7 +613,7 @@ export class CanvasRenderer {
         baseColor,
         chebyshev(m.x, m.y, player.x, player.y),
         effR,
-        EDGE_MIN_ENTITY
+        EDGE_MIN_ENTITY,
       );
       this.display.draw(sx, sy, def.glyph, color, null);
     }
@@ -599,7 +625,7 @@ export class CanvasRenderer {
       player.y - camY,
       PLAYER_GLYPH,
       statusTint(player.effects) ?? PLAYER_COLOR,
-      null
+      null,
     );
 
     this.paintOverlay(state, camX, camY, effR, visible, explored);
@@ -618,7 +644,7 @@ export class CanvasRenderer {
     camY: number,
     effR: number,
     visible: Set<number>,
-    explored: Set<number>
+    explored: Set<number>,
   ) {
     const cvs = this.display.getContainer() as HTMLCanvasElement | null;
     const overlay = this.crack;
@@ -631,7 +657,7 @@ export class CanvasRenderer {
       overlay.width = cvs.width;
       overlay.height = cvs.height;
     }
-    const ctx = overlay.getContext("2d");
+    const ctx = overlay.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, overlay.width, overlay.height);
 
@@ -641,35 +667,56 @@ export class CanvasRenderer {
     // 1) soft torch-glow + biome atmosphere, then clipped to the visible area
     // together so neither bleeds into the dark past the walls
     this.paintGlow(ctx, state, camX, camY, effR, visible, cw, ch);
-    this.paintAtmosphere(ctx, LEVELS[state.currentLevel].biome, cw, ch, overlay.width, overlay.height);
+    this.paintAtmosphere(
+      ctx,
+      LEVELS[state.currentLevel].biome,
+      cw,
+      ch,
+      overlay.width,
+      overlay.height,
+    );
     this.paintDecals(ctx, state, camX, camY, visible, cw, ch);
-    this.clipToVisible(ctx, camX, camY, visible, cw, ch, state.map.width, state.map.height);
+    this.clipToVisible(
+      ctx,
+      camX,
+      camY,
+      visible,
+      cw,
+      ch,
+      state.map.width,
+      state.map.height,
+    );
 
     // 2) cracked-wall knockout fissures (only on levels that have them)
     if (state.map !== this.crackMap) {
       this.crackMap = state.map;
-      this.crackAny = state.map.tiles.includes("crackedWall");
+      this.crackAny = state.map.tiles.includes('crackedWall');
     }
     if (this.crackAny) {
       const { map } = state;
       const palette = LEVELS[state.currentLevel].palette;
-      const wallBase = terrainColor("crackedWall", palette);
+      const wallBase = terrainColor('crackedWall', palette);
       const player = state.player;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
       for (let sy = 0; sy < this.rows; sy++) {
         for (let sx = 0; sx < this.cols; sx++) {
           const wx = sx + camX;
           const wy = sy + camY;
           if (wx < 0 || wy < 0 || wx >= map.width || wy >= map.height) continue;
           const i = wy * map.width + wx;
-          if (map.tiles[i] !== "crackedWall") continue;
+          if (map.tiles[i] !== 'crackedWall') continue;
           const isVis = visible.has(i);
           if (!isVis && !explored.has(i)) continue;
           // the crack is the wall's own color, darker — a shadowed fracture
           // that stays legible under the torch glow (vs. a flat knockout)
           const shown = isVis
-            ? this.lit(wallBase, chebyshev(wx, wy, player.x, player.y), effR, EDGE_MIN_TERRAIN)
+            ? this.lit(
+                wallBase,
+                chebyshev(wx, wy, player.x, player.y),
+                effR,
+                EDGE_MIN_TERRAIN,
+              )
             : dim(wallBase, FOG_DIM);
           ctx.strokeStyle = dim(shown, CRACKED_WALL_CRACK_DIM);
           drawFissure(ctx, sx * cw, sy * ch, cw, ch, i);
@@ -688,23 +735,27 @@ export class CanvasRenderer {
     effR: number,
     visible: Set<number>,
     cw: number,
-    ch: number
+    ch: number,
   ) {
     const now = this.reduceMotion ? 0 : performance.now();
     const player = state.player;
     ctx.save();
-    ctx.globalCompositeOperation = "lighter"; // light adds, it doesn't occlude
+    ctx.globalCompositeOperation = 'lighter'; // light adds, it doesn't occlude
 
     const px = (player.x - camX + 0.5) * cw;
     const py = (player.y - camY + 0.5) * ch;
     const flick = this.reduceMotion
       ? 1
       : 0.94 + 0.06 * Math.sin(now * 0.006) + 0.04 * Math.sin(now * 0.017);
-    const radius = Math.max(cw * 2, effR * cw * GLOW_RADIUS_SCALE * flick);
-    const g = ctx.createRadialGradient(px, py, cw * 0.4, px, py, radius);
-    g.addColorStop(0, "rgba(255, 178, 102, 0.10)");
-    g.addColorStop(0.5, "rgba(255, 150, 70, 0.035)");
-    g.addColorStop(1, "rgba(255, 140, 60, 0)");
+    // a lit torch makes the glow bloom brighter/warmer; bare light is a faint ember
+    const boost = player.hasTorch ? 1 : GLOW_UNLIT;
+    const radius = Math.max(cw * 2.5, effR * cw * GLOW_RADIUS_SCALE * flick);
+    const g = ctx.createRadialGradient(px, py, cw * 0.3, px, py, radius);
+    // concentrated near the player, falling off fast so distance reads clearly
+    g.addColorStop(0, `rgba(255, 182, 108, ${0.17 * boost})`);
+    g.addColorStop(0.4, `rgba(255, 150, 72, ${0.055 * boost})`);
+    g.addColorStop(0.75, `rgba(255, 140, 60, ${0.012 * boost})`);
+    g.addColorStop(1, 'rgba(255, 140, 60, 0)');
     ctx.fillStyle = g;
     ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
 
@@ -713,11 +764,13 @@ export class CanvasRenderer {
       if (!visible.has(f.i)) continue;
       const fx = ((f.i % w) - camX + 0.5) * cw;
       const fy = (Math.floor(f.i / w) - camY + 0.5) * ch;
-      const wob = this.reduceMotion ? 0 : 0.5 * Math.abs(Math.sin(now * 0.02 + f.i));
+      const wob = this.reduceMotion
+        ? 0
+        : 0.5 * Math.abs(Math.sin(now * 0.02 + f.i));
       const fr = cw * (1.7 + wob);
       const fg = ctx.createRadialGradient(fx, fy, cw * 0.2, fx, fy, fr);
-      fg.addColorStop(0, "rgba(255, 140, 50, 0.18)");
-      fg.addColorStop(1, "rgba(255, 120, 40, 0)");
+      fg.addColorStop(0, 'rgba(255, 140, 50, 0.18)');
+      fg.addColorStop(1, 'rgba(255, 120, 40, 0)');
       ctx.fillStyle = fg;
       ctx.fillRect(fx - fr, fy - fr, fr * 2, fr * 2);
     }
@@ -733,7 +786,7 @@ export class CanvasRenderer {
     cw: number,
     ch: number,
     W: number,
-    H: number
+    H: number,
   ) {
     if (this.reduceMotion) return;
     const atm = BIOME_ATMOSPHERE[biome];
@@ -741,9 +794,10 @@ export class CanvasRenderer {
     const now = performance.now();
     ctx.save();
 
-    if (atm.kind === "mist") {
+    if (atm.kind === 'mist') {
       for (let i = 0; i < atm.count; i++) {
-        const drift = Math.sin(now * 0.00006 * (1 + (i % 3)) + i * 1.7) * W * 0.25;
+        const drift =
+          Math.sin(now * 0.00006 * (1 + (i % 3)) + i * 1.7) * W * 0.25;
         const x = (((frac(i) * W + drift) % W) + W) % W;
         const y = frac(i + 41) * H + Math.sin(now * 0.0001 + i) * ch * 0.5;
         const r = cw * (3.5 + (i % 3));
@@ -755,8 +809,8 @@ export class CanvasRenderer {
       }
     } else {
       const size = Math.max(1.5, cw * 0.14);
-      const rising = atm.kind === "embers";
-      const fall = atm.kind === "snow" ? 0.03 : rising ? 0.02 : 0.012;
+      const rising = atm.kind === 'embers';
+      const fall = atm.kind === 'snow' ? 0.03 : rising ? 0.02 : 0.012;
       ctx.fillStyle = atm.color;
       for (let i = 0; i < atm.count; i++) {
         const sway = Math.sin(now * 0.001 + i * 2.3) * cw * 0.5;
@@ -780,7 +834,7 @@ export class CanvasRenderer {
     camY: number,
     visible: Set<number>,
     cw: number,
-    ch: number
+    ch: number,
   ) {
     const w = state.map.width;
     for (const key in state.decals) {
@@ -803,11 +857,11 @@ export class CanvasRenderer {
     cw: number,
     ch: number,
     mapW: number,
-    mapH: number
+    mapH: number,
   ) {
     ctx.save();
-    ctx.globalCompositeOperation = "destination-in";
-    ctx.fillStyle = "#fff";
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = '#fff';
     ctx.beginPath();
     for (let sy = 0; sy < this.rows; sy++) {
       for (let sx = 0; sx < this.cols; sx++) {

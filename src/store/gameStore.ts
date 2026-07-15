@@ -458,6 +458,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         { defId: "p_detect", count: 2 },
       ];
       player.hasTorch = true;
+      player.torchId = "i_lantern";
       player.torchFuel = ITEMS["i_lantern"].fuel ?? 200;
       const rng = new Rng(gameplaySeed(masterSeed));
       const game = beginLevel(masterSeed, levelIndex, player);

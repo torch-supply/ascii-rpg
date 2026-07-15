@@ -257,6 +257,8 @@ export interface PlayerState {
   baseLightRadius: number;
   lightRadius: number;
   hasTorch: boolean;
+  /** which light source is held (its `lightBonus`/`fuel` apply); null = none */
+  torchId: string | null;
   /** turns of torch light remaining; 0 = unlit */
   torchFuel: number;
   /** active timed effects: id -> turns remaining (e.g. ward, might) */

@@ -49,6 +49,7 @@ export function giveItem(p: PlayerState, defId: string) {
       break;
     case "torch":
       p.hasTorch = true;
+      p.torchId = defId;
       p.torchFuel = def.fuel ?? CONFIG.torchFuel;
       recomputeLight(p);
       break;

@@ -40,5 +40,5 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "8",
+  contentVersion: "9",
 };
