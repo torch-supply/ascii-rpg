@@ -10,9 +10,9 @@ A running list of ideas to implement later. ⭐ = high-impact / recommended-firs
 
 _A transparent RGBA canvas now sits atop the rot.js grid (added for the cracked-wall knockout fissures). It supports alpha, gradients, blend modes, blur, and sub-cell drawing — none of which the cell grid can do. It rides the existing render/scroll loops. Caveat: it composites **on top** of glyphs (use additive/`screen` blend for light so it brightens rather than paints over), and full-canvas gradient repaints are heavier than the cheap crack strokes, so throttle/cache the expensive ones._
 
-- ⭐ **Soft torch-glow lighting** — a warm radial glow around the player (and colored, flickering light pools cast by fire tiles) layered over the existing per-cell distance-dim, for a much softer falloff. Natural first use of the overlay.
-- **Atmospheric fog / mist** — drifting translucent wisps (radial gradients + low alpha) instead of flat dimming; great for the Mire and crypt.
-- **Per-biome weather** — snow on Frostspine, drifting embers/ash in the Throne, rain streaks — sub-cell particles the grid can't render.
+- ~~⭐ **Soft torch-glow lighting**~~ **(shipped)** — a warm radial glow around the player + additive flickering pools under fire tiles, on the overlay canvas. Tunables in `CanvasRenderer`: `GLOW_RADIUS_SCALE` + the gradient alpha stops in `paintGlow`.
+- ~~**Atmospheric fog / mist**~~ **(shipped)** — drifting mist blobs in the Mire + Crypt, as part of the per-biome atmosphere system below.
+- ~~**Per-biome weather**~~ **(shipped)** — `BIOME_ATMOSPHERE` in `tiles.ts` (+ `paintAtmosphere`): mist (marsh/crypt), snow (mountain), embers (throne), dust (castle). Clipped to visible, off under reduced-motion. Easy to add more biomes/kinds or bump `count`/`alpha`.
 - **Bloom / glow** — `shadowBlur` on the Sunblade, magic bolts, and bosses so bright things actually radiate.
 - **Screen feedback** — a red vignette pulse when low-HP or poisoned, a white flash on a firebomb, subtle screen-shake (transform the layers, like the smooth-scroll already does).
 - **Smooth AoE telegraphs** — a clean glowing circle/cone for blast radius or an incoming boss attack, instead of blocky highlighted cells.

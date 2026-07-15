@@ -924,5 +924,80 @@ console.log("\n[22] Ranged weapon & altars");
   }
 }
 
+// ─── 23. Cracked-wall demolition (knockback + melee bash) ───────────────────
+console.log("\n[23] Cracked-wall demolition");
+{
+  const DIRS = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+
+  // knockback smashes a monster clean through a cracked wall
+  {
+    const g = beginLevel("cw-seed", 0, createPlayer());
+    const w = g.map.width;
+    const h = g.map.height;
+    const px = g.player.x;
+    const py = g.player.y;
+    g.player.weaponId = "w_mace"; // knockback 1
+    g.player.weaponPower = 6;
+    let dir: number[] | null = null;
+    let spot: Pos | null = null;
+    let far: Pos | null = null;
+    for (const [dx, dy] of DIRS) {
+      const sx = px + dx;
+      const sy = py + dy;
+      const fx = px + 2 * dx;
+      const fy = py + 2 * dy;
+      if (isWalkable(g.map, sx, sy) && fx > 0 && fy > 0 && fx < w - 1 && fy < h - 1) {
+        dir = [dx, dy];
+        spot = { x: sx, y: sy };
+        far = { x: fx, y: fy };
+        break;
+      }
+    }
+    if (!dir || !spot || !far) throw new Error("no knockback lane");
+    g.map.tiles[idx(far.x, far.y, w)] = "crackedWall";
+    g.monsters = [{ id: "k", defId: "skeleton", x: spot.x, y: spot.y, hp: 100, state: "chase" }];
+    resolveTurn(g, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
+    check("knockback shatters a cracked wall", g.map.tiles[idx(far.x, far.y, w)] === "floor");
+    check("the slammed monster survives (driven through, not killed)", g.monsters.some((m) => m.id === "k"));
+  }
+
+  // melee bash: it takes `crackedWallToughness` bumps to break
+  {
+    const g = beginLevel("cw-seed", 0, createPlayer());
+    const w = g.map.width;
+    const h = g.map.height;
+    const px = g.player.x;
+    const py = g.player.y;
+    g.monsters = [];
+    let spot: Pos | null = null;
+    let dir: number[] | null = null;
+    for (const [dx, dy] of DIRS) {
+      const sx = px + dx;
+      const sy = py + dy;
+      if (sx > 0 && sy > 0 && sx < w - 1 && sy < h - 1) {
+        spot = { x: sx, y: sy };
+        dir = [dx, dy];
+        break;
+      }
+    }
+    if (!spot || !dir) throw new Error("no adjacent tile");
+    g.map.tiles[idx(spot.x, spot.y, w)] = "crackedWall";
+    const T = CONFIG.crackedWallToughness;
+    for (let n = 0; n < T - 1; n++)
+      resolveTurn(g, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
+    check("cracked wall withstands the first blows", g.map.tiles[idx(spot.x, spot.y, w)] === "crackedWall");
+    const res = resolveTurn(g, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
+    check(
+      "a final bash crumbles it to floor",
+      res.tookTurn && g.map.tiles[idx(spot.x, spot.y, w)] === "floor"
+    );
+  }
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

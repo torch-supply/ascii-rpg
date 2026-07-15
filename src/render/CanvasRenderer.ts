@@ -3,7 +3,7 @@ import type { GameState, GameMap } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
 import { idx, chebyshev } from "@/game/core/grid";
 import { STATUS } from "@/game/core/status";
-import type { StatusKind } from "@/game/core/types";
+import type { StatusKind, Biome } from "@/game/core/types";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
 import { MONSTERS, ELITE } from "@/content/monsters";
@@ -15,6 +15,8 @@ import {
   FOG_DIM,
   terrainColor,
   dim,
+  BIOME_ATMOSPHERE,
+  CRACKED_WALL_CRACK_DIM,
 } from "./tiles";
 
 // Aim to show roughly this many tiles vertically; cell size derives from it.
@@ -32,6 +34,7 @@ const RING_MS = 300; // firebomb / Ruin expanding blast ring
 const EDGE_MIN_TERRAIN = 0.4;
 const EDGE_MIN_ENTITY = 0.62;
 const AMBIENT_MS = 66; // ~15fps flicker redraw
+const GLOW_RADIUS_SCALE = 1.0; // torch-glow reach relative to the light radius
 
 // Which debuff colors an afflicted entity's glyph (first match wins).
 const TINT_ORDER: StatusKind[] = ["burn", "poison", "bleed", "chill"];
@@ -41,8 +44,25 @@ function statusTint(effects?: Record<string, number>): string | null {
   return null;
 }
 
-/** Paint a deterministic jagged fissure (in the already-set strokeStyle) across
- * the cell at (ox,oy) sized (cw,ch). `seed` fixes the shape so it never flickers. */
+/** Deterministic pseudo-random in [0,1) from an integer — for stable particle
+ * seeds without any stored state. */
+function frac(n: number): number {
+  const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+/** "#rrggbb" + alpha → an `rgba(...)` string (for gradient stops). */
+function rgba(hex: string, a: number): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+/** Paint a deterministic jagged fissure (in the already-set strokeStyle)
+ * centered on the cell's glyph, at a per-tile angle with 1–2 branches — so it
+ * clearly cuts through the wall. `seed` fixes the shape so it never flickers. */
 function drawFissure(
   ctx: CanvasRenderingContext2D,
   ox: number,
@@ -51,26 +71,40 @@ function drawFissure(
   ch: number,
   seed: number
 ) {
-  const rnd = (n: number) => {
-    const x = Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453;
-    return x - Math.floor(x);
-  };
-  ctx.lineWidth = Math.max(1, cw * 0.1);
-  // main fissure: top → jagged middle → bottom, wandering across the glyph
-  const topX = ox + cw * (0.32 + 0.36 * rnd(1));
-  const midX = ox + cw * (0.28 + 0.44 * rnd(2));
-  const botX = ox + cw * (0.32 + 0.36 * rnd(3));
-  const midY = oy + ch * (0.42 + 0.16 * rnd(6));
+  const rnd = (n: number) => frac(seed * 3.1 + n * 7.7);
+  ctx.lineWidth = Math.max(1.4, cw * 0.14);
+
+  // A main fracture through (near) the glyph's center at a seeded angle,
+  // spanning most of the glyph, with a jagged kink at the middle.
+  const cx = ox + cw * 0.5 + (rnd(1) - 0.5) * cw * 0.14;
+  const cy = oy + ch * 0.5 + (rnd(2) - 0.5) * ch * 0.14;
+  const ang = rnd(3) * Math.PI; // 0–180°, so it reads as a diagonal/vertical split
+  const half = cw * (0.34 + 0.08 * rnd(4));
+  const dx = Math.cos(ang);
+  const dy = Math.sin(ang);
+  const px = -dy;
+  const py = dx;
+  const jag = (rnd(5) - 0.5) * cw * 0.3; // perpendicular offset of the mid kink
+  const ax = cx - dx * half;
+  const ay = cy - dy * half;
+  const bx = cx + dx * half;
+  const by = cy + dy * half;
   ctx.beginPath();
-  ctx.moveTo(topX, oy + ch * 0.12);
-  ctx.lineTo(midX, midY);
-  ctx.lineTo(botX, oy + ch * 0.88);
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(cx + px * jag, cy + py * jag);
+  ctx.lineTo(bx, by);
   ctx.stroke();
-  // a short branch off the middle
-  ctx.beginPath();
-  ctx.moveTo(midX, midY);
-  ctx.lineTo(ox + cw * (0.2 + 0.6 * rnd(4)), oy + ch * (0.25 + 0.5 * rnd(5)));
-  ctx.stroke();
+
+  // 1–2 branch cracks splintering off the center
+  const branches = 1 + (rnd(6) > 0.5 ? 1 : 0);
+  for (let k = 0; k < branches; k++) {
+    const ba = ang + (k === 0 ? 1 : -1) * (0.5 + rnd(10 + k) * 0.7);
+    const bl = half * (0.5 + rnd(20 + k) * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(ba) * bl, cy + Math.sin(ba) * bl);
+    ctx.stroke();
+  }
 }
 
 const clamp = (v: number, lo: number, hi: number) =>
@@ -516,61 +550,199 @@ export class CanvasRenderer {
       null
     );
 
-    this.paintCracks(state, camX, camY, visible, explored);
+    this.paintOverlay(state, camX, camY, effR, visible, explored);
   }
 
   /**
-   * Paint knockout fissures for cracked walls onto the overlay canvas. Each
-   * crack is a jagged line in the background color that cuts through the wall
-   * glyph beneath — so the wall reads as fractured rather than marked. The
-   * shape is deterministic per tile (no flicker) and the overlay is kept
-   * exactly aligned with (and scrolled in lockstep with) the rot.js canvas.
+   * The transparent overlay atop the rot.js canvas carries two effects, painted
+   * each frame and kept aligned/scrolled with the base:
+   *   1. a soft warm torch-glow around the player + pools cast by fire tiles
+   *      (additive light — softens the hard per-cell falloff), then
+   *   2. cracked-wall knockout fissures in the background color (see below).
    */
-  private paintCracks(
+  private paintOverlay(
     state: GameState,
     camX: number,
     camY: number,
+    effR: number,
     visible: Set<number>,
     explored: Set<number>
   ) {
     const cvs = this.display.getContainer() as HTMLCanvasElement | null;
-    const crack = this.crack;
-    if (!cvs || !crack) return;
-    // rescan only when the level's map changes; most levels have no cracks
+    const overlay = this.crack;
+    if (!cvs || !overlay) return;
+    overlay.style.left = `${cvs.offsetLeft}px`;
+    overlay.style.top = `${cvs.offsetTop}px`;
+    overlay.style.width = `${cvs.clientWidth}px`;
+    overlay.style.height = `${cvs.clientHeight}px`;
+    if (overlay.width !== cvs.width || overlay.height !== cvs.height) {
+      overlay.width = cvs.width;
+      overlay.height = cvs.height;
+    }
+    const ctx = overlay.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    const cw = overlay.width / this.cols;
+    const ch = overlay.height / this.rows;
+
+    // 1) soft torch-glow + biome atmosphere, then clipped to the visible area
+    // together so neither bleeds into the dark past the walls
+    this.paintGlow(ctx, state, camX, camY, effR, visible, cw, ch);
+    this.paintAtmosphere(ctx, LEVELS[state.currentLevel].biome, cw, ch, overlay.width, overlay.height);
+    this.clipToVisible(ctx, camX, camY, visible, cw, ch, state.map.width, state.map.height);
+
+    // 2) cracked-wall knockout fissures (only on levels that have them)
     if (state.map !== this.crackMap) {
       this.crackMap = state.map;
       this.crackAny = state.map.tiles.includes("crackedWall");
-      crack.getContext("2d")?.clearRect(0, 0, crack.width, crack.height);
     }
-    if (!this.crackAny) return;
-    crack.style.left = `${cvs.offsetLeft}px`;
-    crack.style.top = `${cvs.offsetTop}px`;
-    crack.style.width = `${cvs.clientWidth}px`;
-    crack.style.height = `${cvs.clientHeight}px`;
-    if (crack.width !== cvs.width || crack.height !== cvs.height) {
-      crack.width = cvs.width;
-      crack.height = cvs.height;
+    if (this.crackAny) {
+      const { map } = state;
+      const palette = LEVELS[state.currentLevel].palette;
+      const wallBase = terrainColor("crackedWall", palette);
+      const player = state.player;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      for (let sy = 0; sy < this.rows; sy++) {
+        for (let sx = 0; sx < this.cols; sx++) {
+          const wx = sx + camX;
+          const wy = sy + camY;
+          if (wx < 0 || wy < 0 || wx >= map.width || wy >= map.height) continue;
+          const i = wy * map.width + wx;
+          if (map.tiles[i] !== "crackedWall") continue;
+          const isVis = visible.has(i);
+          if (!isVis && !explored.has(i)) continue;
+          // the crack is the wall's own color, darker — a shadowed fracture
+          // that stays legible under the torch glow (vs. a flat knockout)
+          const shown = isVis
+            ? this.lit(wallBase, chebyshev(wx, wy, player.x, player.y), effR, EDGE_MIN_TERRAIN)
+            : dim(wallBase, FOG_DIM);
+          ctx.strokeStyle = dim(shown, CRACKED_WALL_CRACK_DIM);
+          drawFissure(ctx, sx * cw, sy * ch, cw, ch, i);
+        }
+      }
     }
-    const ctx = crack.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, crack.width, crack.height);
+  }
 
-    const { map } = state;
-    const cw = crack.width / this.cols;
-    const ch = crack.height / this.rows;
-    ctx.strokeStyle = "#0d0d0d"; // the display background — a true knockout
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+  /** A warm radial glow on the player (scaled to their light radius) plus a
+   * smaller pool under each visible fire tile, blended additively. */
+  private paintGlow(
+    ctx: CanvasRenderingContext2D,
+    state: GameState,
+    camX: number,
+    camY: number,
+    effR: number,
+    visible: Set<number>,
+    cw: number,
+    ch: number
+  ) {
+    const now = this.reduceMotion ? 0 : performance.now();
+    const player = state.player;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter"; // light adds, it doesn't occlude
+
+    const px = (player.x - camX + 0.5) * cw;
+    const py = (player.y - camY + 0.5) * ch;
+    const flick = this.reduceMotion
+      ? 1
+      : 0.94 + 0.06 * Math.sin(now * 0.006) + 0.04 * Math.sin(now * 0.017);
+    const radius = Math.max(cw * 2, effR * cw * GLOW_RADIUS_SCALE * flick);
+    const g = ctx.createRadialGradient(px, py, cw * 0.4, px, py, radius);
+    g.addColorStop(0, "rgba(255, 178, 102, 0.10)");
+    g.addColorStop(0.5, "rgba(255, 150, 70, 0.035)");
+    g.addColorStop(1, "rgba(255, 140, 60, 0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
+
+    const w = state.map.width;
+    for (const f of state.fireTiles) {
+      if (!visible.has(f.i)) continue;
+      const fx = ((f.i % w) - camX + 0.5) * cw;
+      const fy = (Math.floor(f.i / w) - camY + 0.5) * ch;
+      const wob = this.reduceMotion ? 0 : 0.5 * Math.abs(Math.sin(now * 0.02 + f.i));
+      const fr = cw * (1.7 + wob);
+      const fg = ctx.createRadialGradient(fx, fy, cw * 0.2, fx, fy, fr);
+      fg.addColorStop(0, "rgba(255, 140, 50, 0.18)");
+      fg.addColorStop(1, "rgba(255, 120, 40, 0)");
+      ctx.fillStyle = fg;
+      ctx.fillRect(fx - fr, fy - fr, fr * 2, fr * 2);
+    }
+    ctx.restore();
+  }
+
+  /** Per-biome ambient particles (drifting mist blobs, or many small moving
+   * motes for snow/embers/dust). Procedural from the clock — no stored state —
+   * and skipped entirely under reduced-motion. */
+  private paintAtmosphere(
+    ctx: CanvasRenderingContext2D,
+    biome: Biome,
+    cw: number,
+    ch: number,
+    W: number,
+    H: number
+  ) {
+    if (this.reduceMotion) return;
+    const atm = BIOME_ATMOSPHERE[biome];
+    if (!atm) return;
+    const now = performance.now();
+    ctx.save();
+
+    if (atm.kind === "mist") {
+      for (let i = 0; i < atm.count; i++) {
+        const drift = Math.sin(now * 0.00006 * (1 + (i % 3)) + i * 1.7) * W * 0.25;
+        const x = (((frac(i) * W + drift) % W) + W) % W;
+        const y = frac(i + 41) * H + Math.sin(now * 0.0001 + i) * ch * 0.5;
+        const r = cw * (3.5 + (i % 3));
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, rgba(atm.color, atm.alpha));
+        g.addColorStop(1, rgba(atm.color, 0));
+        ctx.fillStyle = g;
+        ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+    } else {
+      const size = Math.max(1.5, cw * 0.14);
+      const rising = atm.kind === "embers";
+      const fall = atm.kind === "snow" ? 0.03 : rising ? 0.02 : 0.012;
+      ctx.fillStyle = atm.color;
+      for (let i = 0; i < atm.count; i++) {
+        const sway = Math.sin(now * 0.001 + i * 2.3) * cw * 0.5;
+        const drift = now * fall * (0.6 + frac(i + 7)) * (rising ? -1 : 1);
+        const x = (((frac(i) * W + sway) % W) + W) % W;
+        const y = (((frac(i + 41) * H + drift) % H) + H) % H;
+        ctx.globalAlpha = atm.alpha * (0.55 + 0.45 * frac(i + 13));
+        ctx.fillRect(x, y, size, size);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  /** Keep only the overlay pixels over currently-visible tiles (one fill, so
+   * `destination-in` clips to the whole FOV rather than erasing per rect). */
+  private clipToVisible(
+    ctx: CanvasRenderingContext2D,
+    camX: number,
+    camY: number,
+    visible: Set<number>,
+    cw: number,
+    ch: number,
+    mapW: number,
+    mapH: number
+  ) {
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
     for (let sy = 0; sy < this.rows; sy++) {
       for (let sx = 0; sx < this.cols; sx++) {
         const wx = sx + camX;
         const wy = sy + camY;
-        if (wx < 0 || wy < 0 || wx >= map.width || wy >= map.height) continue;
-        const i = wy * map.width + wx;
-        if (map.tiles[i] !== "crackedWall") continue;
-        if (!visible.has(i) && !explored.has(i)) continue;
-        drawFissure(ctx, sx * cw, sy * ch, cw, ch, i);
+        if (wx < 0 || wy < 0 || wx >= mapW || wy >= mapH) continue;
+        if (visible.has(wy * mapW + wx)) ctx.rect(sx * cw, sy * ch, cw, ch);
       }
     }
+    ctx.fill();
+    ctx.restore();
   }
 }

@@ -280,6 +280,8 @@ export interface GameState {
   knownTraps: number[];
   /** lingering fire tiles (from firebombs): tile index -> turns remaining */
   fireTiles: { i: number; life: number }[];
+  /** melee-bash progress on cracked walls: tile index -> hits taken so far */
+  crackedWallHits: Record<number, number>;
   /** risk/reward shrines on the level */
   altars: AltarInstance[];
   /** currently in FOV (recomputed every player turn) — set of tile indices */

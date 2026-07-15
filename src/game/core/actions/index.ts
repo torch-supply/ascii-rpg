@@ -236,6 +236,7 @@ function knockBack(
   const dx = Math.sign(target.x - state.player.x);
   const dy = Math.sign(target.y - state.player.y);
   if (dx === 0 && dy === 0) return;
+  const w = state.map.width;
   for (let s = 0; s < dist; s++) {
     const nx = target.x + dx;
     const ny = target.y + dy;
@@ -246,11 +247,43 @@ function knockBack(
       state.monsters = state.monsters.filter((m) => m.id !== target.id);
       return;
     }
-    if (!isWalkable(state.map, nx, ny)) return; // slams into a wall
+    // A full-force slam shatters a cracked wall outright, and the body is
+    // driven on into the opening.
+    if (tileAt(state.map, nx, ny) === "crackedWall") {
+      const i = idx(nx, ny, w);
+      state.map.tiles[i] = "floor";
+      delete state.crackedWallHits[i];
+      events.push({ kind: "hit", x: nx, y: ny });
+      msg(events, `You smash the ${def.name} clean through a cracked wall!`);
+    }
+    if (!isWalkable(state.map, nx, ny)) return; // slams into a solid wall
     if (monsterAt(state, nx, ny, target.id)) return; // blocked by another body
     target.x = nx;
     target.y = ny;
   }
+}
+
+/** Hack at an adjacent cracked wall; it crumbles after a few blows. Costs a
+ * turn (monsters close in while you demolish). Weapon-agnostic. */
+function bashCrackedWall(
+  state: GameState,
+  x: number,
+  y: number,
+  events: GameEvent[]
+): boolean {
+  const i = idx(x, y, state.map.width);
+  const hits = (state.crackedWallHits[i] ?? 0) + 1;
+  events.push({ kind: "hit", x, y });
+  if (hits >= CONFIG.crackedWallToughness) {
+    state.map.tiles[i] = "floor";
+    delete state.crackedWallHits[i];
+    msg(events, "The cracked wall crumbles to rubble!");
+  } else {
+    state.crackedWallHits[i] = hits;
+    const left = CONFIG.crackedWallToughness - hits;
+    msg(events, `You hack at the cracked wall. (${left} more)`);
+  }
+  return true; // bashing spends the turn
 }
 
 function resolvePlayerAttack(
@@ -402,7 +435,12 @@ function movePlayer(
     return true; // attacking costs a turn
   }
   if (!isWalkable(state.map, nx, ny)) {
-    return false; // bumped a wall / water — no turn spent
+    // bumping a cracked wall hacks at it (costs a turn); any other wall/water
+    // is a dead bump (no turn spent)
+    if (tileAt(state.map, nx, ny) === "crackedWall") {
+      return bashCrackedWall(state, nx, ny, events);
+    }
+    return false;
   }
   p.x = nx;
   p.y = ny;

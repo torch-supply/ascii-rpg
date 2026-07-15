@@ -92,6 +92,7 @@ export function beginLevel(
     questProgress: {},
     knownTraps: [],
     fireTiles: [],
+    crackedWallHits: {},
     altars: data.altars,
     visible: [],
     explored: [],

@@ -42,9 +42,10 @@ shrinks, monsters toughen, and the light dwindles.
 - Six goal types (reach / collect / find / kill-boss / cull N monsters / survive N turns)
 - Hidden spike traps (with an awareness sense and a guaranteed trap-free route to every objective), impassable water/chasm terrain, and torch fuel
 - **Status effects** — poison, bleed, and burn (damage-over-time) plus chill; monsters afflict you, and your firebombs and the Frostbrand weapon afflict them. Cure debuffs with an Antidote.
-- **Environmental interplay** — shove enemies into chasms with a knockback weapon (instant kill), set oil slicks alight and watch the fire spread, and blast open cracked walls for new shortcuts
+- **Environmental interplay** — shove enemies into chasms with a knockback weapon (instant kill), set oil slicks alight and watch the fire spread, and open cracked-wall shortcuts three ways (an explosion, slamming a monster through, or bashing it down over several turns)
 - **Elite champions & stealth** — buffed monsters (brute / swift / volatile-explodes) with better loot; light-gated detection so you can creep through the dark and land bonus **sneak attacks**
 - **Ranged combat & shrines** — an equipped bow with arrows (aim with `f`); risk/reward altars that trade blood or gold for lasting boons
+- **Atmosphere** — a soft torch-glow that hugs your field of view, and per-biome weather: mist in the mire & crypt, snow on the frostspine, embers in the throne, dust in the castle
 - Monster loot drops, potions (heal, warding, might, firebomb, ruin, seeing, antidote), a five-tier shop, and juice: floating damage numbers, blast/projectile FX, a boss health bar, and per-level intro cards
 
 ## Project layout
