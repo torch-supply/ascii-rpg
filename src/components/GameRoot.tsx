@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import { gameStore, useGameStore } from "@/store/gameStore";
+import { gameStore, useGameStore, type GameStore } from "@/store/gameStore";
 import { KeyboardInput } from "@/game/input/KeyboardInput";
+import { LEVELS } from "@/content/levels";
+import { playMusic, stopMusic } from "@/lib/music";
 
 import GameCanvas from "@/components/GameCanvas";
 import { HudBar, HudFooter, BossBar, LevelIntro } from "@/components/hud/Hud";
@@ -45,10 +47,27 @@ export default function GameRoot() {
     window.addEventListener("beforeunload", saveOnExit);
     document.addEventListener("visibilitychange", saveOnExit);
 
+    // background music: pick a track from mode + biome (+ the sound toggle).
+    // playMusic keeps continuity — the same track flows across narration →
+    // playing → pause/inventory without restarting.
+    const syncMusic = (s: GameStore) => {
+      if (!s.soundOn) return void stopMusic();
+      if (s.mode === "shop") return void playMusic("shop");
+      if (s.mode === "splash" || s.mode === "gameover" || s.mode === "victory")
+        return void stopMusic();
+      const biome = s.game ? LEVELS[s.game.currentLevel].biome : null;
+      if (biome) playMusic(`level:${biome}`, biome);
+      else stopMusic();
+    };
+    const unsubMusic = gameStore.subscribe(syncMusic);
+    syncMusic(gameStore.getState());
+
     return () => {
       input.detach();
       window.removeEventListener("beforeunload", saveOnExit);
       document.removeEventListener("visibilitychange", saveOnExit);
+      unsubMusic();
+      stopMusic();
     };
   }, []);
 

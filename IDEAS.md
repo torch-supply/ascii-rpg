@@ -38,6 +38,6 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 
 _(audio deferred so far, but it's the classic "up a notch")_
 
-- **Sound** — _(largely done: a synthesized SFX set in `lib/sound.ts` — hit/hurt, pickup/coin, quaff, shoot/thud, blast, crumble, trap, step, altar, ui blips, boss sting, level-clear, death, + a persisted on/off toggle)_. Still to do: per-biome ambient beds, a fuller victory/game-over theme, maybe a volume slider or per-category mix.
+- **Sound** — _(largely done: synthesized SFX in `lib/sound.ts`; procedural background music in `lib/music.ts` — per-biome level beds + a shop theme; persisted on/off toggle)_. Still to do: dedicated **death** and **game-complete** music (currently music just stops on those screens), maybe a splash/title theme, and a volume slider / per-category mix (SFX vs music).
 - **Examine/look mode** — inspect a tile/monster to see its stats; expandable combat log.
 - **Settings screen** — animations toggle, palette/colorblind option, motion, difficulty.
