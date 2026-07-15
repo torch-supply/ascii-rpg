@@ -213,8 +213,9 @@ export const gameStore = createStore<GameStore>((set, get) => {
 
   const handleLevelComplete = () => {
     const game = get().game!;
-    playSfx("levelClear");
     const isLast = game.currentLevel >= LEVELS.length - 1;
+    // on the final level the victory music is the payoff — skip the level-clear jingle
+    if (!isLast) playSfx("levelClear");
     if (isLast) {
       clearSave();
       set({

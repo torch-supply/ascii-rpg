@@ -117,20 +117,76 @@ function scheduler() {
   }
 }
 
+/** A slow, mournful dirge — played once on the game-over screen (not looped). */
+function playDeath(ctx: AudioContext, out: GainNode): void {
+  const t = ctx.currentTime + 0.05;
+  const drone = (f: number) => {
+    tone(ctx, out, f, t, 6, "sine", 0.05, -7);
+    tone(ctx, out, f, t, 6, "sine", 0.05, +7);
+  };
+  const dyad = (o: number, f: number, d: number, p = 0.06) => {
+    tone(ctx, out, f, t + o, d, "triangle", p, -5);
+    tone(ctx, out, f, t + o, d, "triangle", p, +5);
+  };
+  drone(110); // low A2 pall
+  // a slow descending phrase that sinks and settles
+  dyad(0.4, 659, 1.3);
+  dyad(1.2, 523, 1.3);
+  dyad(2.0, 440, 1.5);
+  dyad(3.2, 349, 1.4);
+  dyad(4.3, 330, 2.4);
+  // final low A-minor chord, fading into the echo
+  for (const f of [220, 262, 330]) dyad(5.0, f, 3, 0.045);
+}
+
+/** A triumphant, resolving fanfare with sparkle — once on the victory screen. */
+function playVictory(ctx: AudioContext, out: GainNode): void {
+  const t = ctx.currentTime + 0.05;
+  const dyad = (o: number, f: number, d: number, p = 0.07) => {
+    tone(ctx, out, f, t + o, d, "triangle", p, -5);
+    tone(ctx, out, f, t + o, d, "triangle", p, +5);
+  };
+  // C-major foundation
+  tone(ctx, out, 130.81, t, 6, "sine", 0.05, -6);
+  tone(ctx, out, 130.81, t, 6, "sine", 0.05, +6);
+  // rising fanfare C–E–G–C
+  dyad(0.0, 523, 0.7);
+  dyad(0.4, 659, 0.7);
+  dyad(0.8, 784, 0.7);
+  dyad(1.2, 1047, 0.9);
+  // held major chord, glowing
+  for (const f of [523, 659, 784, 1047]) dyad(1.9, f, 3.4, 0.04);
+  // sparkle bells drifting over the resolve
+  ([[2.5, 1319], [3.1, 1568], [3.7, 2093]] as const).forEach(([o, f]) =>
+    tone(ctx, out, f, t + o, 1.5, "sine", 0.05)
+  );
+}
+
 /** Start (or keep) a track. `id` keeps continuity — calling with the id that's
  * already playing is a no-op, so music flows unbroken across mode changes
- * (intro → gameplay, pause, inventory, …). */
+ * (intro → gameplay, pause, inventory, …). "death"/"victory" are one-shots. */
 export function playMusic(id: string, biome?: Biome): void {
   if (!isSoundOn()) return;
   if (id === current) return;
   const bus = musicOutput();
   if (!bus) return;
+  // stop any looping track before switching
+  if (timer != null) {
+    clearInterval(timer);
+    timer = null;
+  }
   current = id;
+  track = null;
+
+  if (id === "death") return playDeath(bus.ctx, bus.out);
+  if (id === "victory") return playVictory(bus.ctx, bus.out);
+
+  // looping ambient bed (level / shop)
   track = id === "shop" ? SHOP_TRACK : LEVEL_MOODS[biome ?? "dungeon"];
   step = 0;
   deg = 2;
   nextTime = bus.ctx.currentTime + 0.1;
-  if (timer == null) timer = setInterval(scheduler, TICK_MS);
+  timer = setInterval(scheduler, TICK_MS);
   scheduler();
 }
 

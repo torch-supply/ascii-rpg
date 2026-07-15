@@ -53,8 +53,9 @@ export default function GameRoot() {
     const syncMusic = (s: GameStore) => {
       if (!s.soundOn) return void stopMusic();
       if (s.mode === "shop") return void playMusic("shop");
-      if (s.mode === "splash" || s.mode === "gameover" || s.mode === "victory")
-        return void stopMusic();
+      if (s.mode === "gameover") return void playMusic("death");
+      if (s.mode === "victory") return void playMusic("victory");
+      if (s.mode === "splash") return void stopMusic();
       const biome = s.game ? LEVELS[s.game.currentLevel].biome : null;
       if (biome) playMusic(`level:${biome}`, biome);
       else stopMusic();
