@@ -1,7 +1,7 @@
 "use client";
 
 import { gameStore, useGameStore } from "@/store/gameStore";
-import { ITEMS, SHOP_TIERS, type ShopEntry } from "@/content/items";
+import { ITEMS, SHOP_TIERS, sellPrice, type ShopEntry } from "@/content/items";
 import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
 import { MenuButton } from "@/components/ui/MenuButton";
@@ -57,6 +57,14 @@ export default function Shop() {
   const coins = game.player.coins;
   const nextTitle = LEVELS[game.currentLevel + 1]?.title ?? "the road ahead";
 
+  // sellable bag items, aggregated by id (equipped gear isn't in the bag)
+  const sellables = Object.entries(
+    game.player.bag.reduce<Record<string, number>>((acc, b) => {
+      if (sellPrice(ITEMS[b.defId]) > 0) acc[b.defId] = (acc[b.defId] ?? 0) + b.count;
+      return acc;
+    }, {})
+  );
+
   return (
     <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 overflow-auto bg-ink px-6 py-10">
       <h2 className="text-balance text-center text-lg uppercase tracking-[0.3em] text-gold">
@@ -109,6 +117,36 @@ export default function Shop() {
         })}
       </div>
 
+      {sellables.length > 0 && (
+        <div className="flex w-full max-w-lg flex-col gap-2">
+          <div className="text-center text-[11px] uppercase tracking-[0.3em] text-dim">
+            — sell —
+          </div>
+          {sellables.map(([defId, count]) => {
+            const d = ITEMS[defId];
+            return (
+              <div
+                key={defId}
+                className="flex items-center justify-between gap-3 border border-edge bg-panel/60 px-4 py-2 text-sm"
+              >
+                <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                  <span style={{ color: d.color }}>{d.glyph}</span>
+                  <span className="whitespace-nowrap text-fg">{d.name}</span>
+                  {count > 1 && <span className="text-dim">×{count}</span>}
+                  <span className="whitespace-nowrap text-dim">· {statLabel(defId)}</span>
+                </span>
+                <button
+                  onClick={() => gameStore.getState().sellBagItem(defId)}
+                  className="shrink-0 border border-gold/40 px-3 py-1 text-xs text-gold transition-colors hover:bg-gold/10"
+                >
+                  sell $ {sellPrice(d)}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="text-xs text-dim">
         ⚔ {ITEMS[game.player.weaponId].name} ({game.player.weaponPower}) · ▣{" "}
         {ITEMS[game.player.armorId].name} ({game.player.armorReduction})
@@ -120,8 +158,8 @@ export default function Shop() {
         <span className="ml-1 text-xs opacity-70">(Enter)</span>
       </MenuButton>
       <p className="max-w-md text-balance text-center text-[11px] text-edge">
-        press a number to buy · gear you buy is equipped automatically if it&apos;s
-        an upgrade
+        press a number to buy · click sell to offload spare gear · gear you buy is
+        equipped automatically if it&apos;s an upgrade
       </p>
     </div>
   );

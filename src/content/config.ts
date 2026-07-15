@@ -28,6 +28,8 @@ export const CONFIG = {
   crackedWallToughness: 4,
   /** cap on persistent floor decals per level (drops oldest beyond this) */
   maxDecals: 220,
+  /** fraction of an item's base value the shop pays when you sell it */
+  sellRate: 0.4,
   /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
   fireBurnDuration: 2,
   /** lingering fire tiles left by a thrown firebomb */

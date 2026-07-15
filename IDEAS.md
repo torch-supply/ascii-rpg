@@ -26,7 +26,7 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 - **Difficulty settings + permadeath toggle** (Phase 3 already noted) and **seed sharing** (the seed field exists, just hidden).
 - **Meta-progression** — spend leftover gold between runs to unlock starting perks/items (long-term hook; needs persistence).
 - **Kill-streak momentum** — chained kills grant a short buff.
-- **Shop upgrades** — sell items, reroll stock, a rare "deal," and the in-level shopkeeper NPC (Phase 3 noted).
+- **Shop upgrades** — ~~sell items~~ (done — flat % of base value), plus reroll stock, a rare "deal," and the in-level shopkeeper NPC (Phase 3 noted).
 - **Boss mechanics** — give Malachar phases (summon adds, telegraphed barrage tiles, teleport) so the finale is a real fight.
 
 ## Content & narrative

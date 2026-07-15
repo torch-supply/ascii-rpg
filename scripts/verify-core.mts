@@ -11,7 +11,7 @@ import { monsterAttackDamage } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
 import { MONSTERS, ELITE } from "@/content/monsters";
-import { ITEMS } from "@/content/items";
+import { ITEMS, sellPrice } from "@/content/items";
 import { CONFIG } from "@/content/config";
 import type { GameMap, Pos } from "@/game/core/types";
 
@@ -1054,6 +1054,15 @@ console.log("\n[24] Persistent decals");
     check("burnt-out fire leaves a scorch mark", g.decals[fi] === "scorch");
     check("the spent fire tile is cleared", !g.fireTiles.some((f) => f.i === fi));
   }
+}
+
+// ─── 25. Shop selling (flat % of base value) ────────────────────────────────
+console.log("\n[25] Shop selling");
+{
+  check("sellable gear returns a positive price", sellPrice(ITEMS.a_leather) > 0);
+  check("sell price is below the shop's buy price", sellPrice(ITEMS.w_short) < 15);
+  check("quest items and coins can't be sold", sellPrice(ITEMS.q_shard) === 0 && sellPrice(ITEMS.c_gold) === 0);
+  check("stronger gear is worth more", sellPrice(ITEMS.w_sun) > sellPrice(ITEMS.w_dagger));
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

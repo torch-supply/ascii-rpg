@@ -1,4 +1,5 @@
-import type { ItemDef } from "@/game/core/types";
+import type { ItemDef, ItemCategory } from "@/game/core/types";
+import { CONFIG } from "@/content/config";
 
 // Registry of item definitions, keyed by id.
 export const ITEMS: Record<string, ItemDef> = {
@@ -48,6 +49,41 @@ export function itemDef(id: string): ItemDef {
   const def = ITEMS[id];
   if (!def) throw new Error(`Unknown item id: ${id}`);
   return def;
+}
+
+// ── Selling ─────────────────────────────────────────────────────────────────
+/** Categories the shop will buy back (equipped gear isn't in the bag, so it's
+ * never sellable; quest items and loose coins can't be sold). */
+export const SELLABLE: ReadonlySet<ItemCategory> = new Set<ItemCategory>([
+  "weapon",
+  "armor",
+  "potion",
+  "torch",
+  "ammo",
+]);
+
+/** A rough gold worth for an item, derived from its category + stats. */
+export function baseValue(def: ItemDef): number {
+  switch (def.category) {
+    case "weapon":
+      return 6 + (def.power ?? 0) * 4;
+    case "armor":
+      return 8 + (def.reduction ?? 0) * 10;
+    case "potion":
+      return 12;
+    case "torch":
+      return 12;
+    case "ammo":
+      return 4;
+    default: // coin / quest — not sellable
+      return 0;
+  }
+}
+
+/** What the shop pays for one of `def` (0 if it won't buy the item). */
+export function sellPrice(def: ItemDef): number {
+  if (!SELLABLE.has(def.category)) return 0;
+  return Math.max(1, Math.round(baseValue(def) * CONFIG.sellRate));
 }
 
 // ── Shop tiers (polish — designed in now, wired up in Phase 2) ──────────────

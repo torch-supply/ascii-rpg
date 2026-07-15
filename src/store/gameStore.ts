@@ -9,7 +9,7 @@ import { beginLevel, createPlayer, clonePlayer } from "@/game/core/state";
 import { giveItem } from "@/game/core/inventory";
 import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
-import { ITEMS, SHOP_TIERS, type ShopEntry } from "@/content/items";
+import { ITEMS, SHOP_TIERS, sellPrice, type ShopEntry } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
 import { OPENING, BIOME_SCENE } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
@@ -92,6 +92,7 @@ export interface GameStore {
 
   // shop
   buyShopEntry: (entry: ShopEntry) => void;
+  sellBagItem: (defId: string) => void;
   leaveShop: () => void;
 
   // cursor targeting (firebomb throw + ranged fire share the cursor)
@@ -424,6 +425,23 @@ export const gameStore = createStore<GameStore>((set, get) => {
         game: { ...game },
         shopPurchases: { ...shopPurchases, [entry.itemId]: bought + 1 },
       });
+      persist();
+    },
+
+    sellBagItem: (defId: string) => {
+      const { game } = get();
+      if (!game) return;
+      const entry = game.player.bag.find((b) => b.defId === defId);
+      if (!entry) return;
+      const price = sellPrice(ITEMS[defId]);
+      if (price <= 0) return; // not a sellable category
+      entry.count -= 1;
+      if (entry.count <= 0)
+        game.player.bag = game.player.bag.filter((b) => b !== entry);
+      game.player.coins += price;
+      game.player.goldEarned += price; // selling still counts toward run gold
+      playSfx("coin");
+      set({ game: { ...game } });
       persist();
     },
 
