@@ -12,7 +12,7 @@ const SOUND_KEY = 'emberofdawn:sound';
 // Master gain applied to every cue — bump this to make everything louder/softer.
 // A limiter sits after it (see `audio`), so you can push this well past 1
 // without hard clipping. ~3–6 is a good range; try higher if you want.
-const MASTER_VOLUME = 8;
+const MASTER_VOLUME = 5;
 // Background music rides its own (quieter) bus, straight to the output so a loud
 // SFX limiter never ducks it. Keep it well under the SFX level — it's ambient.
 const MUSIC_VOLUME = 3;
@@ -21,6 +21,10 @@ let enabled = true;
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let musicGain: GainNode | null = null;
+// music echo nodes, reconfigured per-biome via setMusicEcho()
+let musicDelay: DelayNode | null = null;
+let musicFeedback: GainNode | null = null;
+let musicWet: GainNode | null = null;
 let stepFlip = false; // alternates footstep pitch (left/right)
 
 /** Read the saved preference (client-only). Call once on startup. */
@@ -73,17 +77,17 @@ function audio(): AudioContext | null {
     // delay adds a spacious, shimmering echo tail (the "ethereal" glue).
     musicGain = ctx.createGain();
     musicGain.connect(ctx.destination); // dry
-    const delay = ctx.createDelay(1);
-    delay.delayTime.value = 0.3;
-    const feedback = ctx.createGain();
-    feedback.gain.value = 0.34;
-    const wet = ctx.createGain();
-    wet.gain.value = 0.32;
-    musicGain.connect(delay);
-    delay.connect(feedback);
-    feedback.connect(delay); // echoes decay via the feedback loop
-    delay.connect(wet);
-    wet.connect(ctx.destination);
+    musicDelay = ctx.createDelay(1);
+    musicDelay.delayTime.value = 0.3;
+    musicFeedback = ctx.createGain();
+    musicFeedback.gain.value = 0.34;
+    musicWet = ctx.createGain();
+    musicWet.gain.value = 0.32;
+    musicGain.connect(musicDelay);
+    musicDelay.connect(musicFeedback);
+    musicFeedback.connect(musicDelay); // echoes decay via the feedback loop
+    musicDelay.connect(musicWet);
+    musicWet.connect(ctx.destination);
   }
   // re-apply every call so editing the volumes takes effect even if the audio
   // graph survived a hot-reload (module `let`s persisted)
@@ -101,6 +105,14 @@ export function musicOutput(): { ctx: AudioContext; out: GainNode } | null {
   const c = audio();
   if (!c || !musicGain) return null;
   return { ctx: c, out: musicGain };
+}
+
+/** Retune the music echo (per-biome reverb character). No-op before audio init. */
+export function setMusicEcho(time: number, feedback: number, wet: number): void {
+  if (!musicDelay || !musicFeedback || !musicWet) return;
+  musicDelay.delayTime.value = time;
+  musicFeedback.gain.value = feedback;
+  musicWet.gain.value = wet;
 }
 
 /** A single enveloped oscillator note (optionally gliding in pitch). */
