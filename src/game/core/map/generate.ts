@@ -333,6 +333,59 @@ function placeAltars(
   return altars;
 }
 
+/** A tile the player could stand on or pass through. Cracked walls count —
+ * they're breakable, so a region reached only through one is still reachable. */
+function isOpenTile(t: TileType): boolean {
+  return (
+    t === "floor" ||
+    t === "door" ||
+    t === "exit" ||
+    t === "trap" ||
+    t === "trapSprung" ||
+    t === "oil" ||
+    t === "crackedWall"
+  );
+}
+
+/**
+ * Guarantee no unreachable open areas: flood-fill from the player over every
+ * passable tile (cracked walls included — you can break them), then turn any
+ * open tile the flood didn't reach into solid wall. So every clearing you can
+ * see is actually reachable, and nothing important is affected (the player,
+ * exit, monsters, items, and altars all sit in the reachable component).
+ */
+function sealUnreachable(map: GameMap, from: Pos) {
+  const w = map.width;
+  const h = map.height;
+  const seen = new Uint8Array(w * h);
+  const start = idx(from.x, from.y, w);
+  seen[start] = 1;
+  const stack = [start];
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    const cx = cur % w;
+    const cy = Math.floor(cur / w);
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (seen[ni] || !isOpenTile(map.tiles[ni])) continue;
+      seen[ni] = 1;
+      stack.push(ni);
+    }
+  }
+  for (let i = 0; i < map.tiles.length; i++) {
+    if (!seen[i] && isOpenTile(map.tiles[i])) map.tiles[i] = "wall";
+  }
+}
+
 /** Tiles reachable from `from` WITHOUT stepping on an (armed) trap. */
 function trapFreeReachable(map: GameMap, from: Pos): Set<number> {
   const w = map.width;
@@ -585,6 +638,9 @@ export function generateLevel(
   for (const m of monsters) if (m.isGoalTarget) objectives.push({ x: m.x, y: m.y });
   for (const it of items) if (it.questTag) objectives.push({ x: it.x, y: it.y });
   ensureTrapFreeRoutes(map, playerStart, objectives);
+
+  // No teasing dead pockets: seal every open tile the player can't reach.
+  sealUnreachable(map, playerStart);
 
   return { map, monsters, items, altars, playerStart };
 }

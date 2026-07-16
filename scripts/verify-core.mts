@@ -12,6 +12,7 @@ import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
 import { MONSTERS, ELITE } from "@/content/monsters";
 import { ITEMS, sellPrice } from "@/content/items";
+import { giveItem, equipWeapon } from "@/game/core/inventory";
 import { CONFIG } from "@/content/config";
 import type { GameMap, Pos } from "@/game/core/types";
 
@@ -175,6 +176,21 @@ console.log("\n[4] Level 2 collectX goal");
   // Directly complete to verify threshold logic
   game.questProgress["moonstone"] = 3;
   check("questProgress >= count → goalComplete", isGoalComplete(game));
+
+  // every collectX level must spawn EXACTLY `count` quest items on every seed —
+  // fewer would be an unwinnable goal (you could never reach the threshold)
+  const seeds = ["c1", "c2", "c3", "c4", "c5", "c6"];
+  let short = 0;
+  for (let li = 0; li < LEVELS.length; li++) {
+    const cfg = LEVELS[li];
+    if (cfg.goal.type !== "collectX") continue;
+    const { questTag, count } = cfg.goal;
+    for (const seed of seeds) {
+      const g = beginLevel(seed, li, createPlayer());
+      if (g.items.filter((it) => it.questTag === questTag).length !== count) short++;
+    }
+  }
+  check("every collectX level spawns exactly its required item count", short === 0);
 }
 
 // ─── 5. killTarget goal (Level 3 — Frost Troll) ─────────────────────────────
@@ -1123,6 +1139,75 @@ console.log("\n[26] Turn budget vs map size");
     `objectives fit the turn budget with ${EXPLORE_FACTOR}× headroom (${checked} level×seed)`,
     bad === 0,
     `(a level dipped below ${EXPLORE_FACTOR}× — see the per-level list above)`
+  );
+}
+
+// ─── 27. Equipment swapping — never lose a weapon; switching is clean ────────
+console.log("\n[27] Equipment swapping");
+{
+  const p = createPlayer(); // Rusty Dagger wielded, empty bag
+  giveItem(p, "w_short"); // an upgrade → auto-equips
+  check("an upgrade auto-equips", p.weaponId === "w_short");
+  check("the replaced weapon is stowed, not discarded", p.bag.some((b) => b.defId === "w_dagger"));
+
+  equipWeapon(p, "w_dagger"); // switch back to the stowed weapon
+  check("re-equipping a stowed weapon swaps in", p.weaponId === "w_dagger");
+  check(
+    "the swap leaves no duplicate and loses nothing",
+    p.bag.filter((b) => b.defId === "w_dagger").length === 0 &&
+      p.bag.some((b) => b.defId === "w_short")
+  );
+}
+
+// ─── 28. No unreachable open areas ──────────────────────────────────────────
+// Every open tile the player can see must be reachable (cracked walls count as
+// passable — they're breakable). Guards against teasing walled-off pockets.
+console.log("\n[28] No unreachable open areas");
+{
+  const OPEN = new Set<string>(["floor", "door", "exit", "trap", "trapSprung", "oil", "crackedWall"]);
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const seeds = ["u1", "u2", "u3", "u4", "u5", "cave", "abc", "777"];
+  let orphans = 0;
+  let openTiles = 0;
+  for (let li = 0; li < LEVELS.length; li++) {
+    for (const seed of seeds) {
+      const g = beginLevel(seed, li, createPlayer());
+      const w = g.map.width;
+      const h = g.map.height;
+      const seen = new Uint8Array(w * h);
+      const start = idx(g.player.x, g.player.y, w);
+      seen[start] = 1;
+      const stack = [start];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        const cx = cur % w;
+        const cy = Math.floor(cur / w);
+        for (const [dx, dy] of dirs) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const ni = ny * w + nx;
+          if (seen[ni] || !OPEN.has(g.map.tiles[ni])) continue;
+          seen[ni] = 1;
+          stack.push(ni);
+        }
+      }
+      for (let i = 0; i < g.map.tiles.length; i++) {
+        if (!OPEN.has(g.map.tiles[i])) continue;
+        openTiles++;
+        if (!seen[i]) orphans++;
+      }
+    }
+  }
+  check(
+    `every open tile is reachable (${openTiles} tiles across ${seeds.length}×${LEVELS.length})`,
+    orphans === 0,
+    `(${orphans} orphaned)`
   );
 }
 

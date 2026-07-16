@@ -7,14 +7,33 @@ import { recomputeLight } from "./state";
 // shop purchases (store). One place for "what happens when the player acquires
 // an item".
 
+/** Remove a single copy of an item from the bag (a stack decrements). */
+export function removeOneFromBag(p: PlayerState, defId: string) {
+  const i = p.bag.findIndex((b) => b.defId === defId);
+  if (i < 0) return;
+  const entry = p.bag[i];
+  if (entry.count > 1) entry.count -= 1;
+  else p.bag.splice(i, 1);
+}
+
+/** Wield a weapon. Swaps, never discards: the currently-held weapon is stowed
+ * back into the bag, and the new one is taken out of it — so every weapon you
+ * find stays available to re-equip or sell. */
 export function equipWeapon(p: PlayerState, defId: string) {
+  if (p.weaponId === defId) return;
   const def = ITEMS[defId];
+  if (p.weaponId) addToBag(p, p.weaponId); // keep the old one
+  removeOneFromBag(p, defId); // the newly-wielded one leaves the bag
   p.weaponId = defId;
   p.weaponPower = def.power ?? 0;
 }
 
+/** Don armor. Same swap semantics as `equipWeapon`. */
 export function equipArmor(p: PlayerState, defId: string) {
+  if (p.armorId === defId) return;
   const def = ITEMS[defId];
+  if (p.armorId) addToBag(p, p.armorId);
+  removeOneFromBag(p, defId);
   p.armorId = defId;
   p.armorReduction = def.reduction ?? 0;
 }
