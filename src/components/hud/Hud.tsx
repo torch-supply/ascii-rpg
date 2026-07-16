@@ -217,7 +217,7 @@ export function HudFooter() {
 
       <div className="flex shrink-0 items-end gap-3">
         <span className="whitespace-nowrap text-[13px] text-dim">
-          move ↑↓←→ / hjkl · bump = attack · [f]ire · [i]nv · [p]ause · [?]help
+          move ↑↓←→ / wasd · bump = attack · [f]ire · [i]nv · [p]ause · [?]help
         </span>
         <SoundToggle />
       </div>

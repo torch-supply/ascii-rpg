@@ -33,6 +33,7 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 
 - **Lore fragments** — collectible journal pages that flesh out Veldrin; maybe an alternate ending based on a choice.
 - **More biomes/monsters/items** — always cheap to add (data-driven), e.g., a sewer, an ice cavern, a treasure vault.
+- **Cracked-wall-gated pockets** — instead of `sealUnreachable` walling off an isolated open area, reclaim decent-sized ones as *optional* content: punch a **cracked wall** between the pocket and the reachable map and drop a reward inside. Turns dead space into a break-through side-room (reuses the existing shortcut mechanic; looks intentional, unlike a carved tunnel). Would need a min-pocket-size threshold + a guaranteed reward placement.
 
 ## Audio & UX
 

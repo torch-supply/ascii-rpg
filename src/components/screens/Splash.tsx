@@ -87,7 +87,7 @@ export default function Splash() {
       )}
 
       <p className="max-w-md text-balance text-xs text-dim">
-        v1 · {LEVELS.length} levels · move with arrows or hjkl · bump to attack ·
+        v1 · {LEVELS.length} levels · move with arrows or wasd · bump to attack ·
         find the way, then live to tell it
       </p>
     </div>

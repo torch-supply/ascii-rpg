@@ -4,7 +4,7 @@ import { gameStore } from "@/store/gameStore";
 import { MenuButton } from "@/components/ui/MenuButton";
 
 const ROWS: [string, string][] = [
-  ["↑ ↓ ← →  /  h j k l  /  w a s d", "Move (bump a monster to attack it)"],
+  ["↑ ↓ ← →  /  w a s d", "Move (bump a monster to attack it)"],
   [".  or  Space", "Wait one turn"],
   ["f", "Fire the equipped bow (aim, then Enter)"],
   ["1 – 9", "Use / equip a bag item by slot"],
