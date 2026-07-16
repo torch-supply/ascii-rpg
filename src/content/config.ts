@@ -30,6 +30,14 @@ export const CONFIG = {
   maxDecals: 220,
   /** fraction of an item's base value the shop pays when you sell it */
   sellRate: 0.4,
+  /** "survive" levels: an escalating siege — waves close in from a ring around
+   * the player, growing as the timer runs down, up to a concurrent cap */
+  siege: {
+    waveEvery: 3, // spawn a wave every N turns
+    ringMin: 5, // waves appear this..
+    ringMax: 10, // ..to this many tiles from the player (they arrive in a few turns)
+    cap: 22, // max concurrent monsters during the hold
+  },
   /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
   fireBurnDuration: 2,
   /** lingering fire tiles left by a thrown firebomb */

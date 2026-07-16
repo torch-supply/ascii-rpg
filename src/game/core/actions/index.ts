@@ -1066,42 +1066,58 @@ function actMonster(
 function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
   const config = LEVELS[state.currentLevel];
   if (config.goal.type !== "survive") return;
-  if (state.turnCount % 5 !== 0) return;
-  if (state.monsters.length >= config.monsterBudget) return;
+  const siege = CONFIG.siege;
+  if (state.turnCount % siege.waveEvery !== 0) return;
+  if (state.monsters.length >= siege.cap) return;
 
+  // the horde grows as the hold wears on: 1 → 3 per wave near the end
+  const progress = Math.min(1, state.turnCount / config.goal.turns);
+  const waveSize = 1 + Math.floor(progress * 2);
+
+  // spawn from a ring around the player (any side) so there's no safe corner —
+  // close enough to close in within a few turns
   const { map, player } = state;
-  const cands: number[] = [];
+  const ring: number[] = [];
+  const fallback: number[] = [];
   for (let i = 0; i < map.tiles.length; i++) {
     const t = map.tiles[i];
-    if (t !== "floor" && t !== "trapSprung") continue;
-    const x = i % map.width;
-    const y = Math.floor(i / map.width);
-    if (chebyshev(x, y, player.x, player.y) < 6) continue; // arrive off in the dark
-    cands.push(i);
+    if (t !== "floor" && t !== "trapSprung" && t !== "oil") continue;
+    const d = chebyshev(i % map.width, Math.floor(i / map.width), player.x, player.y);
+    if (d >= siege.ringMin && d <= siege.ringMax) ring.push(i);
+    else if (d > siege.ringMax) fallback.push(i);
   }
-  if (cands.length === 0) return;
+  const pool = ring.length ? ring : fallback;
+  if (pool.length === 0) return;
 
-  const spot = cands[rng.int(0, cands.length - 1)];
   const total = config.spawnTable.reduce((s, e) => s + e.weight, 0);
-  let roll = rng.int(1, total);
-  let chosen = config.spawnTable[0].monsterId;
-  for (const e of config.spawnTable) {
-    roll -= e.weight;
-    if (roll <= 0) {
-      chosen = e.monsterId;
-      break;
+  let spawned = 0;
+  for (let n = 0; n < waveSize && state.monsters.length < siege.cap && pool.length; n++) {
+    const spot = pool.splice(rng.int(0, pool.length - 1), 1)[0]; // no two on a tile
+    const x = spot % map.width;
+    const y = Math.floor(spot / map.width);
+    if (monsterAt(state, x, y)) continue;
+    let roll = rng.int(1, total);
+    let chosen = config.spawnTable[0].monsterId;
+    for (const e of config.spawnTable) {
+      roll -= e.weight;
+      if (roll <= 0) {
+        chosen = e.monsterId;
+        break;
+      }
     }
+    const def = monsterDef(chosen);
+    state.monsters.push({
+      id: `rf${state.turnCount}_${state.monsters.length}`,
+      defId: chosen,
+      x,
+      y,
+      hp: def.maxHp,
+      state: "chase", // they already know where you are
+    });
+    spawned++;
   }
-  const def = monsterDef(chosen);
-  state.monsters.push({
-    id: `rf${state.turnCount}_${state.monsters.length}`,
-    defId: chosen,
-    x: spot % map.width,
-    y: Math.floor(spot / map.width),
-    hp: def.maxHp,
-    state: "chase",
-  });
-  msg(events, "More of the dead surge onto the wall.");
+  if (spawned > 1) msg(events, "The dead swarm the wall!");
+  else if (spawned === 1) msg(events, "More of the dead surge onto the wall.");
 }
 
 function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {

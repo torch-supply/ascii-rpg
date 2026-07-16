@@ -133,7 +133,7 @@ export const LEVELS: LevelConfig[] = [
     eliteChance: 0.12,
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
-      "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — and their warden has already seen you.",
+      "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — and their wardens have already seen you.",
     shopTier: 4,
   },
   {
@@ -184,7 +184,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "ghoul", weight: 4 },
       { monsterId: "wraith", weight: 2 },
     ],
-    turnLimit: 290,
+    turnLimit: 315,
     itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -217,7 +217,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "wraith", weight: 3 },
     ],
-    turnLimit: 270,
+    turnLimit: 320,
     itemDropCount: 3,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -261,10 +261,10 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.6,
     baseLightRadius: 6,
     trapCount: 2,
-    waterCount: 8,
+    waterCount: 12,
     eliteChance: 0.2,
     altarCount: 1,
-    goal: { type: "survive", turns: 35 },
+    goal: { type: "survive", turns: 40 },
     narration:
       "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",
     shopTier: 8,
@@ -283,7 +283,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "skeleton", weight: 3 },
       { monsterId: "ghoul", weight: 3 },
     ],
-    turnLimit: 240,
+    turnLimit: 290,
     itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -313,7 +313,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "wraith", weight: 5 },
       { monsterId: "skeleton", weight: 4 },
     ],
-    turnLimit: 220,
+    turnLimit: 250,
     itemDropCount: 3,
     dropTable: [
       { itemId: "c_gold", weight: 5 },

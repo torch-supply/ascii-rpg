@@ -6,7 +6,7 @@ import { createPlayer, beginLevel, recomputeLight } from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import { isGoalComplete } from "@/game/core/goals";
-import { idx, isWalkable, tileAt } from "@/game/core/grid";
+import { idx, isWalkable, tileAt, chebyshev } from "@/game/core/grid";
 import { monsterAttackDamage } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
@@ -477,6 +477,24 @@ console.log("\n[16] Survive & cull goals");
     if (resolveTurn(g, { type: "wait" }, new Rng(30 + t)).goalComplete) done = true;
   }
   check("survive goal completes after holding out", done && g.turnCount >= target);
+
+  // the siege must actually escalate and close in — not "stand still and win"
+  {
+    const gs = beginLevel("siege-seed", si, createPlayer());
+    gs.player.maxHp = 999999;
+    gs.player.hp = 999999;
+    gs.monsters = []; // isolate the reinforcement waves
+    const rng = new Rng(7);
+    for (let t = 0; t < 6; t++) resolveTurn(gs, { type: "wait" }, rng);
+    const early = gs.monsters.length;
+    for (let t = 6; t < 30; t++) resolveTurn(gs, { type: "wait" }, rng);
+    check("siege escalates as the hold wears on", gs.monsters.length > early);
+    check("siege stays within the concurrent cap", gs.monsters.length <= CONFIG.siege.cap);
+    check(
+      "the horde closes on a stationary player",
+      gs.monsters.some((m) => chebyshev(m.x, m.y, gs.player.x, gs.player.y) <= 2)
+    );
+  }
 
   const ci = LEVELS.findIndex((l) => l.goal.type === "killCount");
   const count = (LEVELS[ci].goal as { count: number }).count;
@@ -1063,6 +1081,49 @@ console.log("\n[25] Shop selling");
   check("sell price is below the shop's buy price", sellPrice(ITEMS.w_short) < 15);
   check("quest items and coins can't be sold", sellPrice(ITEMS.q_shard) === 0 && sellPrice(ITEMS.c_gold) === 0);
   check("stronger gear is worth more", sellPrice(ITEMS.w_sun) > sellPrice(ITEMS.w_dagger));
+}
+
+// ─── 26. Turn budget vs map size ────────────────────────────────────────────
+// The path to each level's objective must fit its turn limit with headroom for
+// exploration + combat — a guard against a map/turn edit creating a timeout
+// trap. Uses the shortest walkable beeline to the farthest objective (a floor:
+// real play needs more), and requires turnLimit ≥ that × EXPLORE_FACTOR.
+console.log("\n[26] Turn budget vs map size");
+{
+  const seeds = ["s1", "s2", "s3", "xyzzy", "blackwood", "999"];
+  const EXPLORE_FACTOR = 2.0;
+  let bad = 0;
+  let checked = 0;
+
+  for (let li = 0; li < LEVELS.length; li++) {
+    const cfg = LEVELS[li];
+    // cull / survive have no fixed objective tile — not traversal-bound
+    if (cfg.goal.type === "killCount" || cfg.goal.type === "survive") continue;
+
+    let worstFar = 0; // longest objective beeline across seeds (worst case)
+    for (const seed of seeds) {
+      const g = beginLevel(seed, li, createPlayer());
+      const from: Pos = { x: g.player.x, y: g.player.y };
+      const objs: Pos[] = [];
+      if (g.map.exit) objs.push(g.map.exit);
+      for (const m of g.monsters) if (m.isGoalTarget) objs.push({ x: m.x, y: m.y });
+      for (const it of g.items) if (it.questTag) objs.push({ x: it.x, y: it.y });
+      for (const o of objs) {
+        const path = bfsPath(g.map, from, o);
+        if (path) worstFar = Math.max(worstFar, path.length - 1);
+      }
+      checked++;
+    }
+    const ratio = cfg.turnLimit / Math.max(1, worstFar);
+    console.log(`  · ${cfg.id.padEnd(16)} ${ratio.toFixed(1)}× (${worstFar} steps / ${cfg.turnLimit} turns)`);
+    if (worstFar * EXPLORE_FACTOR > cfg.turnLimit) bad++;
+  }
+
+  check(
+    `objectives fit the turn budget with ${EXPLORE_FACTOR}× headroom (${checked} level×seed)`,
+    bad === 0,
+    `(a level dipped below ${EXPLORE_FACTOR}× — see the per-level list above)`
+  );
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

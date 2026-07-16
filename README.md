@@ -45,9 +45,9 @@ shrinks, monsters toughen, and the light dwindles.
 - **Environmental interplay** — shove enemies into chasms with a knockback weapon (instant kill), set oil slicks alight and watch the fire spread, and open cracked-wall shortcuts three ways (an explosion, slamming a monster through, or bashing it down over several turns)
 - **Elite champions & stealth** — buffed monsters (brute / swift / volatile-explodes) with better loot; light-gated detection so you can creep through the dark and land bonus **sneak attacks**
 - **Ranged combat & shrines** — an equipped bow with arrows (aim with `f`); risk/reward altars that trade blood or gold for lasting boons
-- **Atmosphere** — a soft torch-glow that hugs your field of view, and per-biome weather: mist in the mire & crypt, snow on the frostspine, embers in the throne, dust in the castle
-- **Minimal synthesized SFX** — hit / pickup / level-clear cues (Web Audio, no asset files); toggle with `m` or the HUD button (preference persists)
-- Monster loot drops, potions (heal, warding, might, firebomb, ruin, seeing, antidote), a five-tier shop, and juice: floating damage numbers, blast/projectile FX, a boss health bar, and per-level intro cards
+- **Atmosphere** — a soft torch-glow that hugs your field of view, per-biome weather (mist in the mire & crypt, snow on the frostspine, embers in the throne, dust in the castle), and lasting blood & scorch decals
+- **Audio** (Web Audio, no asset files) — a full set of synthesized SFX (combat, pickups, explosions, arrows, UI, a boss sting) plus procedural, ethereal background music per biome + shop, with one-shot death and victory themes; global mute (`m` / HUD button), preference persists
+- Monster loot drops, potions (heal, warding, might, firebomb, ruin, seeing, antidote), a five-tier shop you can **buy and sell** at, and juice: floating damage numbers, blast/projectile FX, a boss health bar, and per-level intro cards
 
 ## Project layout
 

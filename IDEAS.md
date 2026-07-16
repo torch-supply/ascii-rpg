@@ -26,7 +26,7 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 - **Difficulty settings + permadeath toggle** (Phase 3 already noted) and **seed sharing** (the seed field exists, just hidden).
 - **Meta-progression** — spend leftover gold between runs to unlock starting perks/items (long-term hook; needs persistence).
 - **Kill-streak momentum** — chained kills grant a short buff.
-- **Shop upgrades** — ~~sell items~~ (done — flat % of base value), plus reroll stock, a rare "deal," and the in-level shopkeeper NPC (Phase 3 noted).
+- **Shop upgrades** — reroll stock, a rare "deal," and the in-level shopkeeper NPC (Phase 3 noted). _(Buying + selling already shipped.)_
 - **Boss mechanics** — give Malachar phases (summon adds, telegraphed barrage tiles, teleport) so the finale is a real fight.
 
 ## Content & narrative
@@ -36,8 +36,9 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 
 ## Audio & UX
 
-_(audio deferred so far, but it's the classic "up a notch")_
+_(SFX + music are implemented — `lib/sound.ts` / `lib/music.ts`; the below is what's left.)_
 
-- **Sound** — _(largely done: synthesized SFX in `lib/sound.ts`; procedural background music in `lib/music.ts` — per-biome level beds, a shop theme, and one-shot death + victory pieces; persisted on/off toggle)_. Still to do: maybe a splash/title theme, and a volume slider / per-category mix (SFX vs music).
+- **Audio polish** — a splash/title theme, and a volume slider / per-category mix (SFX vs music). Ambient beds per biome could go further too.
+- **Inventory management** — a drop/discard action from the inventory screen for mid-level declutter (complements shop selling; keeps unwanted spare gear from piling up between shops).
 - **Examine/look mode** — inspect a tile/monster to see its stats; expandable combat log.
 - **Settings screen** — animations toggle, palette/colorblind option, motion, difficulty.
