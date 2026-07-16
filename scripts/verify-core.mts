@@ -1333,5 +1333,86 @@ console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
   }
 }
 
+// ─── 30. Same-turn resolution (goal vs. death) ──────────────────────────────
+console.log("\n[30] Same-turn resolution — decisive action wins, passive tick kills");
+{
+  // (a) A goal-completing ACTION wins before end-of-turn hazards can tick you
+  // out — you don't die to your own lingering DoT on the turn you win.
+  {
+    const g = beginLevel("sameturn-a", 0, createPlayer()); // dungeon: reachLocation
+    const p = g.player;
+    const w = g.map.width;
+    g.monsters = [];
+    const exit = g.map.exit!;
+    const nb = [
+      [0, -1],
+      [0, 1],
+      [-1, 0],
+      [1, 0],
+    ]
+      .map(([dx, dy]) => ({ x: exit.x + dx, y: exit.y + dy }))
+      .find((c) => isWalkable(g.map, c.x, c.y))!;
+    p.x = nb.x;
+    p.y = nb.y;
+    p.hp = 1;
+    p.maxHp = 20;
+    p.effects.burn = 3; // would kill on the end-of-turn tick, if it ran first
+    const res = resolveTurn(
+      g,
+      { type: "move", dx: Math.sign(exit.x - nb.x), dy: Math.sign(exit.y - nb.y) },
+      new Rng(1)
+    );
+    check(
+      "a goal-completing action wins before your own DoT can tick",
+      res.goalComplete && !res.playerDied && g.player.hp === 1
+    );
+  }
+
+  // (b) Regression: a lethal end-of-turn tick still kills when no goal is met.
+  {
+    const g = beginLevel("sameturn-b", 0, createPlayer());
+    const p = g.player;
+    g.monsters = [];
+    p.hp = 1;
+    p.maxHp = 20;
+    p.effects.burn = 3;
+    const res = resolveTurn(g, { type: "wait" }, new Rng(2));
+    check("a lethal tick still kills when no goal is completed", res.playerDied && !res.goalComplete);
+  }
+
+  // (c) The nuance: a PASSIVE tick that kills you wins over a goal that the same
+  // tick would have completed (only your own action wins through a tie).
+  {
+    const ci = LEVELS.findIndex((l) => l.goal.type === "killCount");
+    const count = (LEVELS[ci].goal as { count: number }).count;
+    const g = beginLevel("sameturn-c", ci, createPlayer());
+    const p = g.player;
+    g.monsters = [];
+    g.levelKills = count - 1; // one kill short of the cull goal
+    const spot = [
+      [1, 0],
+      [0, 1],
+      [-1, 0],
+      [0, -1],
+    ]
+      .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+      .find((c) => isWalkable(g.map, c.x, c.y))!;
+    // a monster that will die to its own burn this tick → completes the cull
+    g.monsters = [
+      { id: "m", defId: "skeleton", x: spot.x, y: spot.y, hp: 1, state: "idle", effects: { burn: 2 } },
+    ];
+    // ...on the same tick the player's own burn drops them
+    p.hp = 1;
+    p.maxHp = 20;
+    p.effects.burn = 2;
+    const res = resolveTurn(g, { type: "wait" }, new Rng(3));
+    check(
+      "a passive killing tick beats a tick-driven goal completion",
+      res.playerDied && !res.goalComplete
+    );
+    check("(sanity) that tick did finish the cull count", g.levelKills >= count);
+  }
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

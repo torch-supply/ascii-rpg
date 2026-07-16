@@ -1351,6 +1351,17 @@ export function resolveTurn(
   state.turnCount += 1;
   state.player.totalTurns += 1; // run stat (across all levels)
   state.turnsLeft -= 1;
+
+  // (1) Your decisive action ends the level right here — checked BEFORE the
+  // end-of-turn hazard ticks — so a goal-completing blow can't be undone by
+  // your own lingering fire or a DoT ticking out on the same turn you win.
+  if (isGoalComplete(state)) {
+    state.goalDone = true;
+    recomputeFOV(state);
+    pushLog(state, events);
+    return { tookTurn: true, goalComplete: true, playerDied: false, events };
+  }
+
   tickTorch(state, events);
   tickFires(state, events); // fire sears whoever stands in it, refreshing burn
   tickEffects(state, events); // then the player's DoTs/buffs tick
@@ -1358,14 +1369,9 @@ export function resolveTurn(
   recomputeFOV(state);
   senseTraps(state);
 
-  // Completing your objective happens on your turn, before monsters act.
-  if (isGoalComplete(state)) {
-    state.goalDone = true;
-    pushLog(state, events);
-    return { tookTurn: true, goalComplete: true, playerDied: false, events };
-  }
-
-  // A trap (or a firebomb misfire) can be lethal before monsters even move.
+  // A passive end-of-turn tick (trap aftermath, fire, DoT) that drops you is a
+  // death — even if that same tick also finished the objective. Only your own
+  // action wins through a simultaneous death (handled by (1) above).
   if (state.player.hp <= 0) {
     pushLog(state, events);
     return {
@@ -1375,6 +1381,14 @@ export function resolveTurn(
       deathReason: "combat",
       events,
     };
+  }
+
+  // (2) A tick-driven completion (e.g. a burn finished off the last enemy) —
+  // you survived the ticks, so claim the win before monsters move.
+  if (isGoalComplete(state)) {
+    state.goalDone = true;
+    pushLog(state, events);
+    return { tookTurn: true, goalComplete: true, playerDied: false, events };
   }
 
   maybeReinforce(state, rng, events);
