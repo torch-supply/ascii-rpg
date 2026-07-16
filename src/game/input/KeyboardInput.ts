@@ -19,6 +19,11 @@ export class KeyboardInput {
       // activate the button they've tabbed to instead of the global command.
       const active = document.activeElement as HTMLElement | null;
       if (active?.tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) {
+        // ...but a HELD key must not auto-activate a button that only just
+        // took focus. Otherwise the same Enter that (e.g.) throws a firebomb —
+        // dying you into the Game Over screen — repeats and instantly clicks
+        // its freshly-focused button, dismissing the screen you never saw.
+        if (e.repeat) e.preventDefault();
         return;
       }
 
