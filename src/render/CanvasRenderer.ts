@@ -562,6 +562,20 @@ export class CanvasRenderer {
       this.display.draw(sx, sy, glyph, dim(base, flick), null);
     }
 
+    // lich barrage telegraph: tiles about to be hit by dark fire next turn —
+    // a pulsing danger glyph over a dark-red cell so the player can step clear
+    for (const bi of state.barrage) {
+      if (!visible.has(bi)) continue;
+      const bx = bi % map.width;
+      const by = Math.floor(bi / map.width);
+      const sx = bx - camX;
+      const sy = by - camY;
+      if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
+      const pulse = this.reduceMotion ? 0.7 : 0.45 + 0.4 * Math.abs(Math.sin(now * 0.012));
+      const bg = dim('#7a1512', pulse);
+      this.display.draw(sx, sy, '✷', dim('#ff6a4a', 0.6 + 0.4 * pulse), bg);
+    }
+
     // altars/shrines (drawn from memory too, so you can navigate back to one)
     for (const a of state.altars) {
       const i = idx(a.x, a.y, map.width);

@@ -1211,5 +1211,127 @@ console.log("\n[28] No unreachable open areas");
   );
 }
 
+// ─── 29. Boss mechanics (Malachar) ──────────────────────────────────────────
+console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
+{
+  const ti = LEVELS.findIndex(
+    (l) => l.goal.type === "killTarget" && (l.goal as { monsterId?: string }).monsterId === "lich"
+  );
+  const bossHp = MONSTERS.lich.maxHp;
+
+  // (a) telegraphed barrage: gathers on one turn, detonates the next
+  {
+    const g = beginLevel("lich-barrage", ti, createPlayer());
+    const p = g.player;
+    const w = g.map.width;
+    p.maxHp = 9999;
+    p.hp = 9999;
+    p.armorReduction = 0;
+    for (let dx = 1; dx <= 4; dx++) g.map.tiles[idx(p.x + dx, p.y, w)] = "floor";
+    // filler adds push the summon-vs-barrage choice to always barrage
+    const filler = Array.from({ length: CONFIG.lich.summonCap }, (_, i) => ({
+      id: `f${i}`,
+      defId: "skeleton",
+      x: 1,
+      y: 1,
+      hp: 1,
+      state: "idle" as const,
+    }));
+    g.monsters = [
+      ...filler,
+      { id: "M", defId: "lich", x: p.x + 3, y: p.y, hp: bossHp, state: "chase", abilityCd: 0, phase: 0, isGoalTarget: true },
+    ];
+    resolveTurn(g, { type: "wait" }, new Rng(1));
+    const pIdx = idx(p.x, p.y, w);
+    check(
+      "lich telegraphs a barrage centered on the player",
+      g.barrage.length >= 1 &&
+        g.barrage.length <= CONFIG.lich.barrageTiles[0] &&
+        g.barrage.includes(pIdx),
+      `(${g.barrage.length} tiles)`
+    );
+    const hpBefore = p.hp;
+    resolveTurn(g, { type: "wait" }, new Rng(2)); // stand still → eat the fire
+    check("standing in the barrage takes damage on detonation", p.hp < hpBefore);
+    check("barrage tiles clear after detonating", g.barrage.length === 0);
+  }
+
+  // (b) summon: raises adds around the lich
+  {
+    const g = beginLevel("lich-summon", ti, createPlayer());
+    const p = g.player;
+    const w = g.map.width;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++)
+        g.map.tiles[idx(p.x + 2 + dx, p.y + dy, w)] = "floor";
+    const saved = CONFIG.lich.summonChance;
+    CONFIG.lich.summonChance = [1, 1, 1]; // force the summon branch
+    g.monsters = [
+      { id: "M", defId: "lich", x: p.x + 2, y: p.y, hp: bossHp, state: "chase", abilityCd: 0, phase: 0, isGoalTarget: true },
+    ];
+    const before = g.monsters.length;
+    resolveTurn(g, { type: "wait" }, new Rng(3));
+    CONFIG.lich.summonChance = saved;
+    check("lich summons adds when its ability is ready", g.monsters.length > before);
+  }
+
+  // (c) blink: cornered (phase 2+) the lich teleports away instead of trading blows
+  {
+    const g = beginLevel("lich-blink", ti, createPlayer());
+    const p = g.player;
+    const w = g.map.width;
+    const dirs = [
+      [0, -1],
+      [0, 1],
+      [-1, 0],
+      [1, 0],
+    ];
+    const adj = dirs
+      .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+      .find((c) => isWalkable(g.map, c.x, c.y));
+    if (adj) {
+      g.monsters = [
+        {
+          id: "M",
+          defId: "lich",
+          x: adj.x,
+          y: adj.y,
+          hp: Math.floor(bossHp / 3), // phase 2
+          state: "chase",
+          abilityCd: 5,
+          phase: 2,
+          isGoalTarget: true,
+        },
+      ];
+      resolveTurn(g, { type: "wait" }, new Rng(4));
+      const m = g.monsters.find((x) => x.defId === "lich")!;
+      check(
+        "a cornered lich blinks clear of the player",
+        chebyshev(m.x, m.y, g.player.x, g.player.y) >= CONFIG.lich.teleportMinDist
+      );
+    } else {
+      check("a cornered lich blinks clear of the player", true, "(no adjacent tile — skipped)");
+    }
+  }
+
+  // (d) phases announce as HP falls
+  {
+    const g = beginLevel("lich-phase", ti, createPlayer());
+    const p = g.player;
+    const w = g.map.width;
+    p.maxHp = 9999;
+    p.hp = 9999;
+    for (let dx = 1; dx <= 4; dx++) g.map.tiles[idx(p.x + dx, p.y, w)] = "floor";
+    g.monsters = [
+      { id: "M", defId: "lich", x: p.x + 3, y: p.y, hp: Math.floor(bossHp * 0.6), state: "chase", abilityCd: 5, phase: 0, isGoalTarget: true },
+    ];
+    const res = resolveTurn(g, { type: "wait" }, new Rng(5));
+    check(
+      "entering a new phase announces itself",
+      res.events.some((e) => e.kind === "message" && e.text.includes("wreathing shadow"))
+    );
+  }
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -38,6 +38,24 @@ export const CONFIG = {
     ringMax: 10, // ..to this many tiles from the player (they arrive in a few turns)
     cap: 22, // max concurrent monsters during the hold
   },
+  /** Malachar's boss fight (behavior "bossLich"). Values are indexed by phase
+   * (0: HP>2/3, 1: HP>1/3, 2: HP≤1/3) so the fight escalates as he weakens. */
+  lich: {
+    /** dark-fire barrage: damage per detonating tile (reduced by armor/ward) */
+    barrageDamage: 12,
+    /** how many tiles the barrage telegraphs, by phase */
+    barrageTiles: [3, 5, 7],
+    /** turns between special abilities (barrage/summon), by phase */
+    abilityCd: [5, 4, 3],
+    /** adds summoned per summon, by phase */
+    summonCount: [2, 2, 3],
+    /** chance an ability is a summon (else a barrage), by phase */
+    summonChance: [0.4, 0.45, 0.5],
+    /** don't summon past this many living non-boss monsters */
+    summonCap: 8,
+    /** blink at least this far from the player when cornered */
+    teleportMinDist: 4,
+  },
   /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
   fireBurnDuration: 2,
   /** lingering fire tiles left by a thrown firebomb */
@@ -50,5 +68,5 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "9",
+  contentVersion: "10",
 };

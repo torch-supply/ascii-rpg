@@ -285,7 +285,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     maxHp: 80,
     dmg: 12,
     armor: 2,
-    behavior: "ranged", // hurls dark bolts, closes when far
+    behavior: "bossLich", // phased finale: bolts, barrages, summons, blink
     sightRadius: 10,
     speed: 1,
     coinReward: 0,

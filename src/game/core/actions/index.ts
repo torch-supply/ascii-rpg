@@ -998,6 +998,153 @@ function rangedAttack(
     tryAfflict(state.player.effects, def.inflicts, rng, "You", events);
 }
 
+// ── boss: Malachar the Lich-King (behavior "bossLich") ─────────────────────
+// Risen dead the lich tears from the stone when he summons.
+const LICH_MINIONS = ["skeleton", "wraith"] as const;
+
+/** HP-gated phase: 0 (>2/3), 1 (>1/3), 2 (≤1/3) — the fight escalates. */
+function lichPhase(m: MonsterInstance, def: MonsterDef): number {
+  const frac = m.hp / def.maxHp;
+  if (frac > 2 / 3) return 0;
+  if (frac > 1 / 3) return 1;
+  return 2;
+}
+
+/** Empty, walkable tiles on expanding rings around (cx,cy), nearest first,
+ * excluding the player and any occupied tile. */
+function emptyTilesNear(
+  state: GameState,
+  cx: number,
+  cy: number,
+  rMin: number,
+  rMax: number
+): number[] {
+  const w = state.map.width;
+  const out: number[] = [];
+  for (let r = rMin; r <= rMax; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; // ring only
+        const x = cx + dx;
+        const y = cy + dy;
+        if (!inBounds(state.map, x, y) || !isWalkable(state.map, x, y)) continue;
+        if (x === state.player.x && y === state.player.y) continue;
+        if (monsterAt(state, x, y)) continue;
+        out.push(idx(x, y, w));
+      }
+    }
+  }
+  return out;
+}
+
+/** Telegraph a dark-fire barrage centered on the player's current tile. The
+ * tiles detonate at the start of the next monster phase (see resolveBarrage),
+ * so the player gets one turn to step clear. */
+function lichBarrage(
+  state: GameState,
+  phase: number,
+  rng: Rng,
+  events: GameEvent[]
+) {
+  const p = state.player;
+  const w = state.map.width;
+  const want = CONFIG.lich.barrageTiles[phase];
+  const tiles = [idx(p.x, p.y, w)]; // always rains where you stand
+  const cand = emptyTilesNear(state, p.x, p.y, 1, 2);
+  while (tiles.length < want && cand.length) {
+    tiles.push(cand.splice(rng.int(0, cand.length - 1), 1)[0]);
+  }
+  state.barrage = tiles;
+  msg(events, "Malachar thrusts his staff skyward — dark fire gathers overhead!");
+}
+
+/** Detonate any telegraphed barrage tiles: a spark on each, damage the player
+ * if still standing on one. Runs at the top of the monster phase. */
+function resolveBarrage(state: GameState, events: GameEvent[]) {
+  if (state.barrage.length === 0) return;
+  const p = state.player;
+  const w = state.map.width;
+  const pIdx = idx(p.x, p.y, w);
+  let struck = false;
+  for (const t of state.barrage) {
+    events.push({ kind: "hit", x: t % w, y: Math.floor(t / w) });
+    if (t === pIdx) struck = true;
+  }
+  state.barrage = [];
+  if (struck) {
+    const dmg = wardMitigate(p, Math.max(2, CONFIG.lich.barrageDamage - p.armorReduction));
+    p.hp -= dmg;
+    events.push({ kind: "damage", x: p.x, y: p.y, amount: dmg, toPlayer: true });
+    msg(events, `Dark fire crashes down on you for ${dmg}!`);
+  } else {
+    msg(events, "Dark fire crashes down where you stood.");
+  }
+}
+
+/** Raise a cluster of adds around the lich (up to the phase count). */
+function lichSummon(
+  state: GameState,
+  m: MonsterInstance,
+  phase: number,
+  rng: Rng,
+  events: GameEvent[]
+) {
+  const w = state.map.width;
+  const count = CONFIG.lich.summonCount[phase];
+  const spots = emptyTilesNear(state, m.x, m.y, 1, 3);
+  let n = 0;
+  for (const s of spots) {
+    if (n >= count) break;
+    const chosen = LICH_MINIONS[rng.int(0, LICH_MINIONS.length - 1)];
+    const mdef = monsterDef(chosen);
+    state.monsters.push({
+      id: `lm${state.turnCount}_${state.monsters.length}`,
+      defId: chosen,
+      x: s % w,
+      y: Math.floor(s / w),
+      hp: mdef.maxHp,
+      state: "chase", // they rise already hunting
+    });
+    n++;
+  }
+  if (n > 0) {
+    events.push({ kind: "blast", x: m.x, y: m.y, radius: 1 });
+    msg(events, "Malachar rips the dead from the stone — they rise around him!");
+  }
+}
+
+/** Blink to a distant walkable tile (still within bolt range-ish) — used to
+ * escape when the player closes to melee. Returns false if nowhere to go. */
+function lichTeleport(
+  state: GameState,
+  m: MonsterInstance,
+  def: MonsterDef,
+  rng: Rng,
+  events: GameEvent[]
+): boolean {
+  const w = state.map.width;
+  const p = state.player;
+  const maxD = (def.rangedRange ?? 5) + 2;
+  const cands: number[] = [];
+  for (let y = 0; y < state.map.height; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!isWalkable(state.map, x, y) || monsterAt(state, x, y)) continue;
+      if (x === p.x && y === p.y) continue;
+      const d = chebyshev(x, y, p.x, p.y);
+      if (d < CONFIG.lich.teleportMinDist || d > maxD) continue;
+      cands.push(idx(x, y, w));
+    }
+  }
+  if (cands.length === 0) return false;
+  const dest = cands[rng.int(0, cands.length - 1)];
+  events.push({ kind: "blast", x: m.x, y: m.y, radius: 1 }); // vanish
+  m.x = dest % w;
+  m.y = Math.floor(dest / w);
+  events.push({ kind: "blast", x: m.x, y: m.y, radius: 1 }); // reform
+  msg(events, "Malachar dissolves into shadow — and reforms across the hall.");
+  return true;
+}
+
 function actMonster(
   state: GameState,
   m: MonsterInstance,
@@ -1049,6 +1196,43 @@ function actMonster(
         rangedAttack(state, m, def, events, rng);
         m.cooldown = def.rangedCooldown ?? 1;
       }
+      return;
+    }
+    case "bossLich": {
+      if (m.state !== "chase") return; // dormant until he spots you
+      const phase = lichPhase(m, def);
+      // announce each new phase once (HP only falls, so phase only rises)
+      if ((m.phase ?? 0) < phase) {
+        m.phase = phase;
+        msg(
+          events,
+          phase === 1
+            ? "Malachar's form splits into wreathing shadow — the hall turns against you!"
+            : "Malachar screams, and the dark fire comes without pause!"
+        );
+      }
+      if (m.abilityCd == null) m.abilityCd = CONFIG.lich.abilityCd[phase];
+
+      // Cornered (phase 2+): blink away rather than trade melee blows.
+      if (phase >= 1 && dist <= 1 && lichTeleport(state, m, def, rng, events))
+        return;
+
+      if (m.abilityCd > 0) {
+        m.abilityCd -= 1; // basic turn: bolt in range/LOS, else close the gap
+        if (seen && dist <= (def.rangedRange ?? 5))
+          rangedAttack(state, m, def, events, rng);
+        else chaseStep(state, m, def, events, rng);
+        return;
+      }
+
+      // ability ready: summon (if adds are thin) or a telegraphed barrage
+      const adds = state.monsters.filter(
+        (x) => !monsterDef(x.defId).isBoss
+      ).length;
+      if (adds < CONFIG.lich.summonCap && rng.chance(CONFIG.lich.summonChance[phase]))
+        lichSummon(state, m, phase, rng, events);
+      else lichBarrage(state, phase, rng, events);
+      m.abilityCd = CONFIG.lich.abilityCd[phase];
       return;
     }
     case "chase":
@@ -1121,6 +1305,10 @@ function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
 }
 
 function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
+  // Last turn's telegraphed barrage lands now — the player has had one turn to
+  // step off the marked tiles.
+  resolveBarrage(state, events);
+  if (state.player.hp <= 0) return; // the barrage itself can be lethal
   const visible = new Set(state.visible);
   // snapshot the list: monsters don't die during their own phase
   for (const m of state.monsters.slice()) {

@@ -27,7 +27,7 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 - **Meta-progression** — spend leftover gold between runs to unlock starting perks/items (long-term hook; needs persistence).
 - **Kill-streak momentum** — chained kills grant a short buff.
 - **Shop upgrades** — reroll stock, a rare "deal," and the in-level shopkeeper NPC (Phase 3 noted). _(Buying + selling already shipped.)_
-- **Boss mechanics** — give Malachar phases (summon adds, telegraphed barrage tiles, teleport) so the finale is a real fight.
+- **More boss mechanics** — build on Malachar's phased fight (shipped: HP-gated phases, telegraphed dark-fire barrages, summoned adds, blink-when-cornered): e.g. telegraphed barrage *lines/cones*, an add that must be killed to drop a shield, an enrage timer. Consider a mini-boss version of the pattern for Gorm/the Herald.
 
 ## Content & narrative
 

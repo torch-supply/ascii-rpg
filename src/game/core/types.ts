@@ -47,7 +47,10 @@ export type MonsterBehavior =
   | "chase"
   | "guardChase"
   | "slowChase"
-  | "ranged";
+  | "ranged"
+  // the final boss: HP-gated phases with bolts, telegraphed barrages,
+  // summoned adds, and a blink-away when cornered (see actMonster).
+  | "bossLich";
 
 // ── Status effects ──────────────────────────────────────────────────────────
 // Timed conditions stored in an `effects` bag (key -> turns remaining). `ward`
@@ -221,6 +224,10 @@ export interface MonsterInstance {
   effects?: Record<string, number>;
   /** champion modifier (buffed stats + better loot); bosses are never elite */
   elite?: EliteKind;
+  /** boss (bossLich): turns until the next special ability can fire */
+  abilityCd?: number;
+  /** boss (bossLich): highest phase index entered so far (announce once) */
+  phase?: number;
 }
 
 export interface ItemInstance {
@@ -294,6 +301,9 @@ export interface GameState {
   decals: Record<number, DecalKind>;
   /** risk/reward shrines on the level */
   altars: AltarInstance[];
+  /** tiles telegraphed by the lich's barrage — they detonate at the start of
+   * the next monster phase, giving the player one turn to step clear */
+  barrage: number[];
   /** currently in FOV (recomputed every player turn) — set of tile indices */
   visible: number[];
   /** seen before (fog memory) — set of tile indices */

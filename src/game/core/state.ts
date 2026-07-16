@@ -97,6 +97,7 @@ export function beginLevel(
     crackedWallHits: {},
     decals: {},
     altars: data.altars,
+    barrage: [],
     visible: [],
     explored: [],
     status: "playing",
