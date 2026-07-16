@@ -98,6 +98,8 @@ export interface MonsterDef {
   speed: number;
   coinReward: number;
   isBoss?: boolean;
+  /** a tough non-boss enemy (mini-boss) — shows a small HP bar when in view */
+  miniBoss?: boolean;
   rangedDmg?: number;
   rangedRange?: number;
   /** turns a ranged attacker must reload between shots (default 1) */

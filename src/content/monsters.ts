@@ -101,6 +101,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     coinReward: 3,
     rangedDmg: 3,
     rangedRange: 4,
+    rangedCooldown: 2, // reload two turns between bolts — fire every 3rd turn (eases crossfire)
     inflicts: { effect: "poison", chance: 0.3, duration: 5 },
   },
   goblin: {
@@ -209,7 +210,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
   },
   gate_captain: {
     id: "gate_captain",
-    name: "The Warden of the Gate",
+    name: "Gate Warden",
     glyph: "C",
     color: "#d24a4a",
     maxHp: 34,
@@ -219,7 +220,8 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 9,
     speed: 1,
     coinReward: 22,
-    isBoss: true,
+    isBoss: false, // an elite gate guard, not a unique boss — several can hold the gate
+    miniBoss: true, // still tough — gets a small HP bar in view
     loot: {
       chance: 1,
       table: [

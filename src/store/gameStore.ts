@@ -630,7 +630,9 @@ export const gameStore = createStore<GameStore>((set, get) => {
         return;
       }
       if (cmd.kind === "bagSlot") {
-        if (mode === "playing" || mode === "inventory") get().useBagSlot(cmd.n);
+        // Bag hotkeys only act with the inventory screen open — prevents
+        // fat-fingering a potion/equip mid-move during play.
+        if (mode === "inventory") get().useBagSlot(cmd.n);
         else if (mode === "shop") {
           const g = get().game;
           const tier = g ? LEVELS[g.currentLevel].shopTier : null;

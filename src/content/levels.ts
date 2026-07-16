@@ -83,7 +83,7 @@ export const LEVELS: LevelConfig[] = [
     monsterBudget: 10,
     spawnTable: [
       { monsterId: "spider", weight: 4 },
-      { monsterId: "imp", weight: 4 },
+      { monsterId: "imp", weight: 2 },
       { monsterId: "goblin", weight: 3 },
     ],
     turnLimit: 350,

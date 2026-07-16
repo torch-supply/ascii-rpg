@@ -7,7 +7,7 @@ import { LEVELS } from "@/content/levels";
 import { playMusic, stopMusic } from "@/lib/music";
 
 import GameCanvas from "@/components/GameCanvas";
-import { HudBar, HudFooter, BossBar, LevelIntro } from "@/components/hud/Hud";
+import { HudBar, HudFooter, BossBar, EliteBars, LevelIntro } from "@/components/hud/Hud";
 import Splash from "@/components/screens/Splash";
 import Narration from "@/components/screens/Narration";
 import Shop from "@/components/screens/Shop";
@@ -83,6 +83,7 @@ export default function GameRoot() {
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <GameCanvas />
             {mode !== "targeting" && <BossBar />}
+            {mode !== "targeting" && <EliteBars />}
             <LevelIntro />
             {mode === "targeting" && (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">

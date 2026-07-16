@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
-import { MONSTERS } from "@/content/monsters";
+import { MONSTERS, ELITE } from "@/content/monsters";
 import { idx } from "@/game/core/grid";
 import { STATUS, STATUS_KEYS } from "@/game/core/status";
 import { goalLabel } from "@/game/core/goals";
@@ -148,6 +148,60 @@ export function BossBar() {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Compact HP bars for tough non-boss threats in view — champion elites and
+   mini-bosses (e.g. the Gate Wardens). Stacked top-left so they don't collide
+   with the prominent boss bar (top-center). */
+export function EliteBars() {
+  const game = useGameStore((s) => s.game);
+  if (!game) return null;
+  const w = game.map.width;
+  const notable = game.monsters
+    .filter((m) => {
+      const def = MONSTERS[m.defId];
+      return (
+        !def.isBoss &&
+        (m.elite || def.miniBoss) &&
+        game.visible.includes(idx(m.x, m.y, w))
+      );
+    })
+    .slice(0, 4); // cap so a swarm can't fill the screen
+  if (notable.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none absolute left-3 top-3 z-20 flex flex-col gap-1">
+      {notable.map((m) => {
+        const def = MONSTERS[m.defId];
+        const em = m.elite ? ELITE[m.elite] : null;
+        const maxHp = em ? Math.round(def.maxHp * em.hpMult) : def.maxHp;
+        const pct = Math.max(0, Math.min(100, Math.round((m.hp / maxHp) * 100)));
+        const tint = em ? em.color : def.color;
+        const label = em ? `${em.label} ${def.name}` : def.name;
+        return (
+          <div
+            key={m.id}
+            className="w-44 border border-edge/70 bg-panel/85 px-2 py-1"
+          >
+            <div className="flex items-baseline justify-between gap-2 text-[10px] uppercase tracking-[0.15em]">
+              <span className="truncate" style={{ color: tint }}>
+                {def.glyph} {label}
+              </span>
+              <span className="shrink-0 text-dim">
+                {Math.max(0, m.hp)}/{maxHp}
+              </span>
+            </div>
+            <div className="mt-0.5 h-1.5 overflow-hidden rounded-sm border border-edge">
+              <div
+                className="h-full transition-[width] duration-200 ease-out"
+                style={{ width: `${pct}%`, background: pct > 40 ? "#c0392b" : "#ff5555" }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
