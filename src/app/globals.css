@@ -183,6 +183,22 @@ body {
   animation: introCard 2600ms ease-in-out forwards;
 }
 
+/* Narration chapter card: title, divider, prose + button rise in, staggered
+   (per-element animation-delay set inline). */
+@keyframes narrRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.narr-rise {
+  animation: narrRise 700ms ease-out both;
+}
+
 /* Title shimmer: a bright band sweeps across the letters over the ember base.
    The moving layer is background layer 1; the ember gradient (layer 2) is fixed. */
 @keyframes titleShimmer {
@@ -200,7 +216,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ember-flicker,
   .ascii-shimmer,
-  .intro-card {
+  .intro-card,
+  .narr-rise {
     animation: none;
   }
   .ember-spark,

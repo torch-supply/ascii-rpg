@@ -1,14 +1,5 @@
 import type { Biome } from "@/game/core/types";
 
-export interface Scene {
-  art: string;
-  gradient?: string;
-  /** per-row colors (distinct horizontal zones) */
-  lineColors?: string[];
-  /** per-region colors via inline {key} tokens in the art */
-  colors?: Record<string, string>;
-}
-
 // ── Gradients (multi-stop; painted over aligned monospace art via AsciiArt) ──
 // Two halves of one ember gradient — EMBER (top) flows into DAWN (bottom).
 export const G_EMBER =
@@ -52,117 +43,16 @@ export const DAWN_ART = String.raw`
 `;
 export const SUBTITLE = "A ROGUELIKE QUEST";
 
-// ── Scene art (block-element + box-drawing glyphs — all single-width) ────────
-const PIT = String.raw`
-       \    .   |   .    /
-    ‒‒‒╤════╤════╤════╤‒‒‒
-       ║    ║    ║    ║
-   ┌─────────────────────┐
-   │▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓│
-   │▓                   ▓│
-   │▓                   ▓│
-   │▓         @         ▓│
-   │▓                   ▓│
-   │▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓│
-   └─────────────────────┘`;
-
-const FOREST = String.raw`
-       ▲        ▲▲         ▲
-      ▲▲▲      ▲▲▲▲       ▲▲▲      ▲
-     ▲▲▲▲▲    ▲▲▲▲▲▲     ▲▲▲▲▲    ▲▲▲
-    ▲▲▲▲▲▲▲  ▲▲▲▲▲▲▲▲   ▲▲▲▲▲▲▲  ▲▲▲▲▲
-       ┃         ┃          ┃        ┃
-       ┃         ┃          ┃        ┃
-  ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,`;
-
-const MARSH = String.raw`
-    \|/    \\|//    \|/     \|/
-   \\|//    \|/    \\|//   \|/
-  ≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈
-  ~~~~~≈≈≈~~~~~≈≈~~~~~≈≈≈~~~~≈≈~
-  ≈≈~~~~~≈≈≈~~~~~≈≈~~~~~≈≈≈~~~~~
-  ~~~~≈≈~~~~~≈≈≈~~~~~≈≈~~~~~≈≈≈~`;
-
-const MOUNTAIN = String.raw`
-             /\
-            /  \         /\
-           /    \       /  \        /\
-          / /\   \     / /\ \      /  \
-         / /  \   \   / /  \ \    / /\ \
-        /_/    \___\ /_/    \_\  /_/  \_\
-       /            V            V       \
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`;
-
-const CASTLE = String.raw`
-    ▟█▙     ▟█▙    ▟█▙    ▟█▙
-    ███     ███    ███    ███
-    ███▄▄▄▄▄███▄▄▄▄███▄▄▄▄███▄▄▄▄▄
-    ██████████████████████████████
-    ████▛▜████▛▜██████▛▜████▛▜████
-    ██████████████▐▌██████████████
-    █████████████▐██▌█████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀`;
-
-const CRYPT = String.raw`
-     †         †         †
-   ┌───┐   ┌───┐   ┌───┐   ┌───┐
-   │RIP│   │RIP│   │RIP│   │RIP│
-   │   │   │   │   │   │   │   │
-   ┴───┴───┴───┴───┴───┴───┴───┴
-   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓`;
-
-// Per-region coloring via inline {key} tokens (tokens are stripped before
-// render, so columns stay aligned): purple dusk-light, a gold crown, a purple
-// throne, and Malachar in red.
-const THRONE_COLORS = {
-  v: "#8a6ad0", // dusk light / throne
-  y: "#ffd24d", // gold crown
-  o: "#ff9d3c", // crown base glow
-  r: "#ff5555", // Malachar
-};
-const THRONE = String.raw`
-{v}            \      |      /
-{v}         \      \   |   /      /
-{y}        ▲      ▲    ▲    ▲      ▲
-{y}      ██████████████████████████
-{y}      ██████████████████████████
-{o}      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-{v}              ┌─────┐
-{v}              │  {r}M{v}  │
-{v}              └─────┘`;
-
-const DAWN = String.raw`
-              \     |     /
-          \      \  |  /      /
-        ‾‾‾‾‾  .:*░#░*:.  ‾‾‾‾‾
-      ‒‒‒‒  .:*░#######░*:.  ‒‒‒‒
-            *#############*
-      ____  ':*░#######░*:'  ____
-         \    ':*░#░*:'    /
-        /      /  |  \      \
-`;
-
-// Per-region: bone-gray skull with red eye-sockets.
-const SKULL_COLORS = { b: "#c7ccc0", r: "#ff5a3c" };
-const SKULL = String.raw`
-{b}         ,----------------,
-{b}        /    __________     \
-{b}       |    /          \     |
-{b}       |   |  {r}▄▄{b}    {r}▄▄{b}  |    |
-{b}       |   |  {r}██{b}    {r}██{b}  |    |
-{b}       |   |     ▂▂     |    |
-{b}       |    \   ▀▀▀▀   /     |
-{b}        \    |¦¦¦¦¦¦¦¦|     /
-{b}         '--'          '---'`;
-
-export const BIOME_SCENE: Record<Biome, Scene> = {
-  dungeon: { art: PIT, gradient: G_PIT },
-  forest: { art: FOREST, gradient: G_FOREST },
-  marsh: { art: MARSH, gradient: G_MARSH },
-  mountain: { art: MOUNTAIN, gradient: G_MOUNTAIN },
-  crypt: { art: CRYPT, gradient: G_CRYPT },
-  castle: { art: CASTLE, gradient: G_CASTLE },
-  throne: { art: THRONE, colors: THRONE_COLORS }, // per-region: crown + throne
+// Biome → chapter-title gradient (paints the narration title). The throne now
+// gets its own royal gradient too, since it's a gradient title, not a drawing.
+export const BIOME_GRADIENT: Record<Biome, string> = {
+  dungeon: G_PIT,
+  forest: G_FOREST,
+  marsh: G_MARSH,
+  mountain: G_MOUNTAIN,
+  crypt: G_CRYPT,
+  castle: G_CASTLE,
+  throne: G_THRONE,
 };
 
 // ── Narrative set-pieces ────────────────────────────────────────────────────
@@ -173,7 +63,7 @@ export const OPENING = {
 You are in Malachar's pit — and something down here is already awake.
 
 Find the way up. Move.`,
-  scene: BIOME_SCENE.dungeon,
+  gradient: BIOME_GRADIENT.dungeon,
 };
 
 export const VICTORY = {
@@ -185,20 +75,7 @@ Light spills down the throne stairs, across the castle, over the pass and the wo
 You lower the Sunblade, and for the first time it is warm because of the sun — not because of you.
 
 THE END.`,
-  // per-row sunrise: pale sky at the crown of the rays down to a burning base
-  scene: {
-    art: DAWN,
-    lineColors: [
-      "#fff2b0",
-      "#ffe58a",
-      "#ffd24d",
-      "#ffc23c",
-      "#fffbe6",
-      "#ffab3c",
-      "#ff8c3a",
-      "#ff6a3c",
-    ],
-  } as Scene,
+  gradient: G_DAWN,
 };
 
 export const GAMEOVER = {
@@ -206,5 +83,5 @@ export const GAMEOVER = {
   body: `The dark takes you, as it took the realm. Somewhere, an Ember stays broken.
 
 GAME OVER.`,
-  scene: { art: SKULL, colors: SKULL_COLORS } as Scene,
+  gradient: G_DEATH,
 };

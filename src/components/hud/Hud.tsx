@@ -187,10 +187,10 @@ export function EliteBars() {
         return (
           <div
             key={m.id}
-            className="w-44 border border-edge/70 bg-panel/85 px-2 py-1"
+            className="w-fit min-w-44 max-w-[80vw] border border-edge/70 bg-panel/85 px-2 py-1"
           >
             <div className="flex items-baseline justify-between gap-2 text-[10px] uppercase tracking-[0.15em]">
-              <span className="truncate" style={{ color: tint }}>
+              <span className="whitespace-nowrap" style={{ color: tint }}>
                 {def.glyph} {label}
               </span>
               <span className="shrink-0 text-dim">

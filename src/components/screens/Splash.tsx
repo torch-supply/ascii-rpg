@@ -5,6 +5,7 @@ import { EMBER_ART, DAWN_ART, G_EMBER, G_DAWN_TITLE, SUBTITLE } from "@/content/
 import { LEVELS } from "@/content/levels";
 import { MenuButton } from "@/components/ui/MenuButton";
 import { AsciiArt } from "@/components/ui/AsciiArt";
+import { AccentDivider } from "@/components/ui/AccentDivider";
 import { Embers } from "@/components/ui/Embers";
 
 export default function Splash() {
@@ -21,8 +22,18 @@ export default function Splash() {
   };
 
   return (
-    <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 overflow-auto bg-ink px-4 py-8 text-center">
-      <div className="relative flex flex-col items-center gap-1 px-6 pt-8">
+    <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-7 overflow-auto bg-ink px-6 py-10 text-center">
+      {/* hero: the wordmark over a soft ember glow + drifting sparks, capped by
+         the same ◈ divider the rest of the game uses */}
+      <div className="narr-rise relative flex flex-col items-center gap-1 px-6 pt-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-0"
+          style={{
+            background:
+              "radial-gradient(58% 55% at 50% 40%, rgba(255,140,45,0.16), transparent 70%)",
+          }}
+        />
         <Embers />
         <div className="ember-flicker relative z-10 flex flex-col items-center gap-1">
           <AsciiArt art={EMBER_ART} gradient={G_EMBER} shimmer className="text-[11px] sm:text-base" />
@@ -37,13 +48,21 @@ export default function Splash() {
         <div className="relative z-10 mt-3 text-[11px] tracking-[0.4em] text-dim sm:text-xs">
           {SUBTITLE}
         </div>
+        <AccentDivider accent="#ffb347" className="relative z-10 mt-4" />
       </div>
-      <p className="max-w-md text-balance text-sm leading-relaxed text-dim">
+
+      <p
+        className="narr-rise max-w-md text-balance text-sm leading-relaxed text-dim"
+        style={{ animationDelay: "200ms" }}
+      >
         Escape the pit. Cross the cursed land. Recover the Sunblade. End the
         Lich-King Malachar — and rekindle the dawn.
       </p>
 
-      <div className="flex flex-col items-center gap-3">
+      <div
+        className="narr-rise flex flex-col items-center gap-3"
+        style={{ animationDelay: "340ms" }}
+      >
         {hasSave && saveInfo && (
           <MenuButton accent onClick={() => gameStore.getState().resumeGame()}>
             ▸ Resume
@@ -63,7 +82,10 @@ export default function Splash() {
       </div>
 
       {DEV && (
-        <div className="pointer-events-auto flex flex-col items-center gap-1.5 border border-edge/60 px-4 py-3">
+        <div
+          className="narr-rise pointer-events-auto flex flex-col items-center gap-1.5 border border-edge/60 px-4 py-3"
+          style={{ animationDelay: "440ms" }}
+        >
           <div className="text-[10px] uppercase tracking-[0.3em] text-edge">
             dev · jump to level (kitted-out)
           </div>
@@ -86,7 +108,10 @@ export default function Splash() {
         </div>
       )}
 
-      <p className="max-w-md text-balance text-xs text-dim">
+      <p
+        className="narr-rise max-w-md text-balance text-xs text-dim"
+        style={{ animationDelay: "520ms" }}
+      >
         v1 · {LEVELS.length} levels · move with arrows or wasd · bump to attack ·
         find the way, then live to tell it
       </p>

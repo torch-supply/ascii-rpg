@@ -11,7 +11,7 @@ import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
 import { ITEMS, SHOP_TIERS, sellPrice, type ShopEntry } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
-import { OPENING, BIOME_SCENE } from "@/content/ascii";
+import { OPENING, BIOME_GRADIENT } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
 import { emitEffects } from "@/lib/effectBus";
 import { initSound, isSoundOn, setSoundOn, playSfx } from "@/lib/sound";
@@ -58,10 +58,9 @@ export interface RunResult {
 export interface NarrationData {
   title: string;
   body: string;
-  art: string;
   artGradient?: string;
-  artLineColors?: string[];
-  artColors?: Record<string, string>;
+  /** chapter accent (divider + flat-title fallback) — biome palette accent */
+  accent?: string;
   onContinue: "beginPlay" | "nextLevel" | "restartLevel" | "victory";
   buttonLabel: string;
 }
@@ -228,17 +227,14 @@ export const gameStore = createStore<GameStore>((set, get) => {
       return;
     }
     const nextIdx = game.currentLevel + 1;
-    const scene = BIOME_SCENE[LEVELS[nextIdx].biome];
     set({
       game: { ...game },
       mode: "narration",
       narration: {
         title: `${LEVELS[game.currentLevel].title} — cleared`,
         body: LEVELS[game.currentLevel].narration,
-        art: scene.art,
-        artGradient: scene.gradient,
-        artLineColors: scene.lineColors,
-        artColors: scene.colors,
+        artGradient: BIOME_GRADIENT[LEVELS[nextIdx].biome],
+        accent: LEVELS[nextIdx].palette.accent,
         onContinue: "nextLevel",
         buttonLabel: `Onward — ${LEVELS[nextIdx].title}`,
       },
@@ -266,7 +262,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       narration: {
         title: "You Fall",
         body: `Darkness swallows you.\n\nBut the quest is not yet ended. You draw breath, and rise once more.\n\nLives remaining: ${game.player.lives}`,
-        art: "",
+        accent: "#ff5a5a",
         onContinue: "restartLevel",
         buttonLabel: "Rise",
       },
@@ -310,10 +306,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
         narration: {
           title: OPENING.title,
           body: OPENING.body,
-          art: OPENING.scene.art,
-          artGradient: OPENING.scene.gradient,
-          artLineColors: OPENING.scene.lineColors,
-          artColors: OPENING.scene.colors,
+          artGradient: OPENING.gradient,
+          accent: LEVELS[0].palette.accent,
           onContinue: "beginPlay",
           buttonLabel: "Descend into the pit",
         },
