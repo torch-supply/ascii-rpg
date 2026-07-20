@@ -221,16 +221,17 @@ console.log("\n[6] Level 4 findItem goal");
   check("questProgress sunblade >= 1 → goalComplete", isGoalComplete(game));
 }
 
-// ─── 7. Combat + timeout death ──────────────────────────────────────────────
-console.log("\n[7] Combat formulas & turn-budget death");
+// ─── 7. Turn budget → overtime (not a timeout death) ────────────────────────
+console.log("\n[7] Turn-budget exhaustion is no longer lethal");
 {
   const player = createPlayer();
   const game = beginLevel("combat-seed", 0, player);
-  // starve the turn budget: wait until it hits 0
+  // run the turn budget down to empty in one wait
   const rng = new Rng(3);
   game.turnsLeft = 1;
   const res = resolveTurn(game, { type: "wait" }, rng);
-  check("turn budget exhaustion kills the player", res.playerDied && res.deathReason === "timeout");
+  check("running out the turn budget doesn't kill you", !res.playerDied);
+  check("the budget has crossed into overtime", game.turnsLeft <= 0);
 }
 
 // ─── 8. Connectivity — no more "trapped with no way out" (regression) ───────
@@ -1100,10 +1101,11 @@ console.log("\n[25] Shop selling");
 }
 
 // ─── 26. Turn budget vs map size ────────────────────────────────────────────
-// The path to each level's objective must fit its turn limit with headroom for
-// exploration + combat — a guard against a map/turn edit creating a timeout
-// trap. Uses the shortest walkable beeline to the farthest objective (a floor:
-// real play needs more), and requires turnLimit ≥ that × EXPLORE_FACTOR.
+// The path to each level's objective must fit its turn "par" with headroom for
+// exploration + combat. Overtime is no longer an instant death, but par should
+// still be reachable at a relaxed pace before the world turns hostile. Uses the
+// shortest walkable beeline to the farthest objective (a floor: real play needs
+// more), and requires turnLimit ≥ that × EXPLORE_FACTOR.
 console.log("\n[26] Turn budget vs map size");
 {
   const seeds = ["s1", "s2", "s3", "xyzzy", "blackwood", "999"];
@@ -1412,6 +1414,36 @@ console.log("\n[30] Same-turn resolution — decisive action wins, passive tick 
     );
     check("(sanity) that tick did finish the cull count", g.levelKills >= count);
   }
+}
+
+// ─── 31. Overtime pressure replaces the timeout death ───────────────────────
+// Drive a non-survive level well past its budget: no death from the clock, and
+// the world reinforces (monster count climbs) up to the overtime cap.
+console.log("\n[31] Overtime pressure (soft clock)");
+{
+  const g = beginLevel("overtime-seed", 0, createPlayer()); // dungeon: reachLocation
+  const rng = new Rng(7);
+  // isolate the clock from HP: an invincible, stationary player never completes
+  // the reach-goal, so we can overstay freely
+  g.player.hp = 99999;
+  g.player.maxHp = 99999;
+  const before = g.monsters.length;
+  g.turnsLeft = 2; // right at the edge, then overstay ~80 turns
+  let died = false;
+  let sawOvertimeMsg = false;
+  for (let i = 0; i < 80; i++) {
+    const res = resolveTurn(g, { type: "wait" }, rng);
+    if (res.events.some((e) => e.kind === "message" && /close in/.test(e.text)))
+      sawOvertimeMsg = true;
+    if (res.playerDied) {
+      died = true;
+      break;
+    }
+  }
+  check("overstaying the budget never triggers a timeout death", !died);
+  check("crossing par announces the closing dark", sawOvertimeMsg);
+  check("the world reinforces during overtime", g.monsters.length > before);
+  check("overtime respects its concurrent cap", g.monsters.length <= CONFIG.overtime.cap);
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

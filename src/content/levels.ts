@@ -151,7 +151,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "gargoyle", weight: 2 },
       { monsterId: "gate_captain", weight: 1 },
     ],
-    turnLimit: 300,
+    turnLimit: 360,
     itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -184,7 +184,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "ghoul", weight: 4 },
       { monsterId: "wraith", weight: 2 },
     ],
-    turnLimit: 315,
+    turnLimit: 375,
     itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -217,7 +217,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "wraith", weight: 3 },
     ],
-    turnLimit: 320,
+    turnLimit: 380,
     itemDropCount: 3,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -283,7 +283,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "skeleton", weight: 3 },
       { monsterId: "ghoul", weight: 3 },
     ],
-    turnLimit: 290,
+    turnLimit: 350,
     itemDropCount: 4,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -313,7 +313,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "wraith", weight: 5 },
       { monsterId: "skeleton", weight: 4 },
     ],
-    turnLimit: 250,
+    turnLimit: 310,
     itemDropCount: 3,
     dropTable: [
       { itemId: "c_gold", weight: 5 },

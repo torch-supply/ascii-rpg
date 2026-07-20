@@ -1247,19 +1247,14 @@ function actMonster(
  * On "survive" levels, trickle in reinforcements (every few turns, up to the
  * level's budget) so holding out is a real fight rather than a waiting game.
  */
-function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
+/** Spawn up to `count` monsters (from the level's spawn table) on a ring around
+ * the player — close enough to close in within a few turns, never on top of you
+ * or another monster. Respects a concurrent `cap`. Returns how many spawned.
+ * Shared by the survive siege and by overtime pressure. */
+function spawnWave(state: GameState, rng: Rng, count: number, cap: number): number {
+  if (state.monsters.length >= cap) return 0;
   const config = LEVELS[state.currentLevel];
-  if (config.goal.type !== "survive") return;
   const siege = CONFIG.siege;
-  if (state.turnCount % siege.waveEvery !== 0) return;
-  if (state.monsters.length >= siege.cap) return;
-
-  // the horde grows as the hold wears on: 1 → 3 per wave near the end
-  const progress = Math.min(1, state.turnCount / config.goal.turns);
-  const waveSize = 1 + Math.floor(progress * 2);
-
-  // spawn from a ring around the player (any side) so there's no safe corner —
-  // close enough to close in within a few turns
   const { map, player } = state;
   const ring: number[] = [];
   const fallback: number[] = [];
@@ -1271,11 +1266,11 @@ function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
     else if (d > siege.ringMax) fallback.push(i);
   }
   const pool = ring.length ? ring : fallback;
-  if (pool.length === 0) return;
+  if (pool.length === 0) return 0;
 
   const total = config.spawnTable.reduce((s, e) => s + e.weight, 0);
   let spawned = 0;
-  for (let n = 0; n < waveSize && state.monsters.length < siege.cap && pool.length; n++) {
+  for (let n = 0; n < count && state.monsters.length < cap && pool.length; n++) {
     const spot = pool.splice(rng.int(0, pool.length - 1), 1)[0]; // no two on a tile
     const x = spot % map.width;
     const y = Math.floor(spot / map.width);
@@ -1300,8 +1295,43 @@ function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
     });
     spawned++;
   }
+  return spawned;
+}
+
+function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
+  const config = LEVELS[state.currentLevel];
+  if (config.goal.type !== "survive") return;
+  const siege = CONFIG.siege;
+  if (state.turnCount % siege.waveEvery !== 0) return;
+
+  // the horde grows as the hold wears on: 1 → 3 per wave near the end
+  const progress = Math.min(1, state.turnCount / config.goal.turns);
+  const waveSize = 1 + Math.floor(progress * 2);
+
+  const spawned = spawnWave(state, rng, waveSize, siege.cap);
   if (spawned > 1) msg(events, "The dead swarm the wall!");
   else if (spawned === 1) msg(events, "More of the dead surge onto the wall.");
+}
+
+/** Once a (non-survive) level's turn budget runs out, the clock stops being a
+ * hard death and becomes rising danger: reinforcements close in, faster and in
+ * bigger waves the longer you overstay. You die to monsters, not a timer. */
+function applyOvertimePressure(state: GameState, rng: Rng, events: GameEvent[]) {
+  const config = LEVELS[state.currentLevel];
+  if (config.goal.type === "survive") return; // its own siege already drives this
+  if (state.turnsLeft > 0) return; // still within the turn budget
+  const ot = CONFIG.overtime;
+  const over = -state.turnsLeft; // 0 the moment the budget empties, then grows
+
+  if (over === 0)
+    msg(events, "Your time runs short — the dark stirs and begins to close in.");
+
+  const every = Math.max(ot.minEvery, ot.startEvery - Math.floor(over / ot.rampEvery));
+  if (state.turnCount % every !== 0) return;
+  const waveSize = 1 + Math.floor(over / ot.rampWave);
+  const spawned = spawnWave(state, rng, waveSize, ot.cap);
+  if (spawned > 1) msg(events, "The dark disgorges more hunters.");
+  else if (spawned === 1) msg(events, "Something slips out of the dark after you.");
 }
 
 function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
@@ -1391,7 +1421,8 @@ export function resolveTurn(
     return { tookTurn: true, goalComplete: true, playerDied: false, events };
   }
 
-  maybeReinforce(state, rng, events);
+  maybeReinforce(state, rng, events); // survive siege
+  applyOvertimePressure(state, rng, events); // ran out the budget? the world closes in
   advanceMonsters(state, rng, events);
 
   if (state.player.hp <= 0) {
@@ -1401,18 +1432,6 @@ export function resolveTurn(
       goalComplete: false,
       playerDied: true,
       deathReason: "combat",
-      events,
-    };
-  }
-
-  if (state.turnsLeft <= 0) {
-    msg(events, "Time runs out — the dark closes in.");
-    pushLog(state, events);
-    return {
-      tookTurn: true,
-      goalComplete: false,
-      playerDied: true,
-      deathReason: "timeout",
       events,
     };
   }

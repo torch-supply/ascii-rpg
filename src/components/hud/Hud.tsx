@@ -28,11 +28,15 @@ export function HudBar() {
   const surviveLeft = survive
     ? Math.max(0, (level.goal as { turns: number }).turns - game.turnCount)
     : 0;
-  const turnLabel = survive ? "HOLD" : "TURNS";
+  // Past the budget on a non-survive level: the clock isn't lethal, but the
+  // level turns hostile (reinforcements close in). Flag it instead of showing a
+  // meaningless negative countdown.
+  const overtime = !survive && game.turnsLeft <= 0;
+  const turnLabel = overtime ? "OVERTIME" : survive ? "HOLD" : "TURNS";
   const turnsVal = survive ? surviveLeft : game.turnsLeft;
   const turnsMax = survive ? (level.goal as { turns: number }).turns : level.turnLimit;
   const turnPct = Math.max(0, Math.round((turnsVal / turnsMax) * 100));
-  const lowTurns = !survive && game.turnsLeft <= 40;
+  const lowTurns = !survive && game.turnsLeft <= 40; // includes overtime
 
   return (
     <div className="z-10 shrink-0 border-b border-edge bg-panel/95 px-4 py-2 text-[15px]">
@@ -76,7 +80,7 @@ export function HudBar() {
             />
           </span>
           <span className={lowTurns ? "text-hp blink" : survive ? "text-gold" : "text-magic"}>
-            {turnsVal}
+            {overtime ? "⚠" : turnsVal}
           </span>
         </div>
       </div>

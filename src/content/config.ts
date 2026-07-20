@@ -38,6 +38,18 @@ export const CONFIG = {
     ringMax: 10, // ..to this many tiles from the player (they arrive in a few turns)
     cap: 22, // max concurrent monsters during the hold
   },
+  /** Overtime pressure: on non-"survive" levels, running out the turn budget is
+   * NOT an instant death. Instead the level turns hostile — reinforcements close
+   * in from a ring (reusing the siege geometry), spawning faster and in larger
+   * waves the longer you overstay, so dawdling gets lethal via monsters you can
+   * actually fight rather than a silent clock. */
+  overtime: {
+    startEvery: 6, // at par, a wave every N turns
+    minEvery: 2, // cadence floor as you overstay
+    rampEvery: 20, // tighten the cadence by 1 turn every N turns past par
+    rampWave: 25, // +1 to wave size every N turns past par
+    cap: 26, // hard ceiling on monsters during overtime
+  },
   /** Malachar's boss fight (behavior "bossLich"). Values are indexed by phase
    * (0: HP>2/3, 1: HP>1/3, 2: HP≤1/3) so the fight escalates as he weakens. */
   lich: {
