@@ -23,7 +23,7 @@ export const ITEMS: Record<string, ItemDef> = {
   // ── potions (polish; usable but not required for the core loop) ──
   p_heal: { id: "p_heal", name: "Healing Potion", glyph: "!", color: "#ff5fa2", category: "potion", stackable: true, effect: "heal", magnitude: 10 },
   p_gheal: { id: "p_gheal", name: "Greater Healing", glyph: "!", color: "#ff8fd0", category: "potion", stackable: true, effect: "greaterHeal", magnitude: 20 },
-  p_bomb: { id: "p_bomb", name: "Firebomb", glyph: "!", color: "#ff8c00", category: "potion", stackable: true, effect: "bomb", magnitude: 15 },
+  p_bomb: { id: "p_bomb", name: "Firebomb", glyph: "¤", color: "#ff8c00", category: "potion", stackable: true, effect: "bomb", magnitude: 15 },
   p_ruin: { id: "p_ruin", name: "Vial of Ruin", glyph: "!", color: "#ff5a3c", category: "potion", stackable: true, effect: "blast", magnitude: 14 },
   p_ward: { id: "p_ward", name: "Potion of Warding", glyph: "!", color: "#7fb0ff", category: "potion", stackable: true, effect: "ward", duration: 12 },
   p_might: { id: "p_might", name: "Elixir of Might", glyph: "!", color: "#ff9d3c", category: "potion", stackable: true, effect: "might", duration: 12 },
