@@ -44,11 +44,11 @@ export const CONFIG = {
    * waves the longer you overstay, so dawdling gets lethal via monsters you can
    * actually fight rather than a silent clock. */
   overtime: {
-    startEvery: 6, // at par, a wave every N turns
-    minEvery: 2, // cadence floor as you overstay
-    rampEvery: 20, // tighten the cadence by 1 turn every N turns past par
-    rampWave: 25, // +1 to wave size every N turns past par
-    cap: 26, // hard ceiling on monsters during overtime
+    startEvery: 9, // at par, a wave every N turns — a gentle trickle, not a flood
+    minEvery: 4, // cadence floor as you overstay (never faster than this)
+    rampEvery: 30, // tighten the cadence by 1 turn every N turns past par
+    rampWave: 50, // +1 to wave size every N turns past par (stays ~1 for a long while)
+    cap: 12, // hard ceiling on TOTAL monsters during overtime — keep it fightable
   },
   /** Malachar's boss fight (behavior "bossLich"). Values are indexed by phase
    * (0: HP>2/3, 1: HP>1/3, 2: HP≤1/3) so the fight escalates as he weakens. */
