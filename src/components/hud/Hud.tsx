@@ -39,7 +39,7 @@ export function HudBar() {
   const lowTurns = !survive && game.turnsLeft <= 40; // includes overtime
 
   return (
-    <div className="z-10 shrink-0 border-b border-edge bg-panel/95 px-4 py-2 text-[15px]">
+    <div className="z-10 shrink-0 border-b border-edge bg-panel/95 px-4 py-2 text-[17px]">
       <div className="flex items-center justify-between">
         <span className="text-dim">
           <span style={{ color: level.palette.accent }}>◈</span> Level{" "}
@@ -260,8 +260,8 @@ export function HudFooter() {
   ];
 
   return (
-    <div className="z-10 flex shrink-0 items-end justify-between gap-4 border-t border-edge bg-panel/95 px-4 py-1.5 text-[14px]">
-      <div className="flex min-w-0 flex-col gap-0.5">
+    <div className="z-10 flex shrink-0 items-end justify-between gap-4 border-t border-edge bg-panel/95 px-4 py-1.5 text-[17px]">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {log.map((line, i) => (
           <span
             key={i}
@@ -273,11 +273,14 @@ export function HudFooter() {
         ))}
       </div>
 
-      <div className="flex shrink-0 items-end gap-3">
-        <span className="whitespace-nowrap text-[13px] text-dim">
-          move ↑↓←→ / wasd · bump = attack · [f]ire · [i]nv · [p]ause · [?]help
-        </span>
-        <SoundToggle />
+      {/* right column: two hint lines + the sound toggle, all right-aligned so
+         nothing juts past the footer's edge and it matches the 3-line log */}
+      <div className="flex shrink-0 flex-col items-end gap-0.5 leading-tight text-dim">
+        <div className="mb-0.5">
+          <SoundToggle />
+        </div>
+        <span className="whitespace-nowrap">move ↑↓←→ / wasd · bump = attack</span>
+        <span className="whitespace-nowrap">[f]ire · [i]nv · [p]ause · [?]help</span>
       </div>
     </div>
   );
@@ -292,7 +295,7 @@ function SoundToggle() {
       onClick={toggleSound}
       title={`Sound ${soundOn ? "on" : "off"} — click or press [m]`}
       aria-label={`Sound ${soundOn ? "on" : "off"}`}
-      className={`shrink-0 border px-2 py-0.5 text-[13px] transition-colors ${
+      className={`shrink-0 border px-2 py-0.5 text-[17px] transition-colors ${
         soundOn
           ? "border-gold/50 text-gold hover:bg-gold/15"
           : "border-edge text-edge hover:text-dim"
