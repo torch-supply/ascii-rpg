@@ -99,6 +99,14 @@ const SHOP_TRACK: Track = {
   texture: { bed: { filter: "lowpass", freq: 320, q: 0.6, peak: 0.025, every: 8 }, tick: { chance: 0.05, freq: 2200, q: 1, dur: 0.03, peak: 0.02 } },
 };
 
+// The title/menu theme — slow and grand, hopeful-but-shadowed (Dorian), with
+// bright sparkle bells that echo the splash's shimmer + drifting embers.
+const TITLE_TRACK: Track = {
+  root: 130.81, scale: DORIAN, stepMs: 560, density: 0.4, wave: "triangle", peak: 0.07, droneEvery: 6, droneWave: "sine", sparkle: 0.18,
+  cutoff: 1500, echo: { time: 0.34, feedback: 0.4, wet: 0.36 }, // grand, hall-like
+  texture: { bed: { filter: "lowpass", freq: 240, q: 0.7, peak: 0.045, every: 6 }, tick: { chance: 0.06, freq: 2400, q: 1, dur: 0.05, peak: 0.03 } }, // warm air + faint ember crackle
+};
+
 const LOOKAHEAD_S = 0.3; // schedule this far ahead of the clock
 const TICK_MS = 100; // how often the scheduler runs
 
@@ -303,8 +311,13 @@ export function playMusic(id: string, biome?: Biome): void {
     return playVictory(bus.ctx, bus.out);
   }
 
-  // looping ambient bed (level / shop)
-  track = id === "shop" ? SHOP_TRACK : LEVEL_MOODS[biome ?? "dungeon"];
+  // looping ambient bed (title / level / shop)
+  track =
+    id === "title"
+      ? TITLE_TRACK
+      : id === "shop"
+        ? SHOP_TRACK
+        : LEVEL_MOODS[biome ?? "dungeon"];
   const echo = track.echo ?? DEFAULT_ECHO;
   setMusicEcho(echo.time, echo.feedback, echo.wet);
   step = 0;

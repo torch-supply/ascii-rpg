@@ -8,6 +8,7 @@ import { MONSTERS, ELITE } from "@/content/monsters";
 import { idx } from "@/game/core/grid";
 import { STATUS, STATUS_KEYS } from "@/game/core/status";
 import { goalLabel } from "@/game/core/goals";
+import { SoundToggle } from "@/components/ui/SoundToggle";
 
 /** Top status bar — rendered in normal flow above the canvas region. */
 export function HudBar() {
@@ -283,25 +284,5 @@ export function HudFooter() {
         <span className="whitespace-nowrap">[f]ire · [i]nv · [p]ause · [?]help</span>
       </div>
     </div>
-  );
-}
-
-/** Global SFX on/off toggle (preference persists across sessions). */
-function SoundToggle() {
-  const soundOn = useGameStore((s) => s.soundOn);
-  const toggleSound = useGameStore((s) => s.toggleSound);
-  return (
-    <button
-      onClick={toggleSound}
-      title={`Sound ${soundOn ? "on" : "off"} — click or press [m]`}
-      aria-label={`Sound ${soundOn ? "on" : "off"}`}
-      className={`shrink-0 border px-2 py-0.5 text-[17px] transition-colors ${
-        soundOn
-          ? "border-gold/50 text-gold hover:bg-gold/15"
-          : "border-edge text-edge hover:text-dim"
-      }`}
-    >
-      {soundOn ? "♪ on" : "♪ off"}
-    </button>
   );
 }

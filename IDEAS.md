@@ -39,7 +39,7 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 
 _(SFX + music are implemented — `lib/sound.ts` / `lib/music.ts`; the below is what's left.)_
 
-- **Audio polish** — a splash/title theme; a volume slider / per-category mix (SFX vs music).
+- **Audio polish** — a volume slider / per-category mix (SFX vs music). _(A splash/title theme shipped — `TITLE_TRACK` in `music.ts`, played on the splash + a sound toggle on the title screen.)_
 - **Deeper music** — ways to build on the per-biome beds (timbre, reverb, and texture already shipped):
   - ⭐ **Adaptive intensity** — the bed reacts to danger: swell + a low pulse when a boss is in view or HP is low, ramp during the survive siege, calm when safe. (The store already drives music, so it can feed an intensity signal.)
   - **Evolving harmony** — a slow per-biome chord progression under the drone (e.g. i → VI → iv) so the pad drifts instead of holding one root.

@@ -99,6 +99,13 @@ function audio(): AudioContext | null {
   return ctx;
 }
 
+/** Resume the gesture-gated audio context — call from a user-gesture handler
+ * (first click/keypress) so title music + SFX can begin. Browsers start the
+ * context suspended until then. No-op on the server / without Web Audio. */
+export function resumeAudio(): void {
+  audio();
+}
+
 /** The shared audio context + the (quieter) music bus, for the music engine.
  * Null on the server or if Web Audio is unavailable. */
 export function musicOutput(): { ctx: AudioContext; out: GainNode } | null {

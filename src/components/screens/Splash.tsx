@@ -7,6 +7,7 @@ import { MenuButton } from "@/components/ui/MenuButton";
 import { AsciiArt } from "@/components/ui/AsciiArt";
 import { AccentDivider } from "@/components/ui/AccentDivider";
 import { Embers } from "@/components/ui/Embers";
+import { SoundToggle } from "@/components/ui/SoundToggle";
 
 export default function Splash() {
   const hasSave = useGameStore((s) => s.hasSave);
@@ -23,6 +24,7 @@ export default function Splash() {
 
   return (
     <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-7 overflow-auto bg-ink px-6 py-10 text-center">
+      <SoundToggle className="absolute right-4 top-4 z-30" />
       {/* hero: the wordmark over a soft ember glow + drifting sparks, capped by
          the same ◈ divider the rest of the game uses */}
       <div className="narr-rise relative flex flex-col items-center gap-1 px-6 pt-8">

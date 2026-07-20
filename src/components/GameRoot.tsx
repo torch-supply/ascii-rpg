@@ -5,6 +5,7 @@ import { gameStore, useGameStore, type GameStore } from "@/store/gameStore";
 import { KeyboardInput } from "@/game/input/KeyboardInput";
 import { LEVELS } from "@/content/levels";
 import { playMusic, stopMusic } from "@/lib/music";
+import { resumeAudio } from "@/lib/sound";
 
 import GameCanvas from "@/components/GameCanvas";
 import { HudBar, HudFooter, BossBar, EliteBars, LevelIntro } from "@/components/hud/Hud";
@@ -55,7 +56,7 @@ export default function GameRoot() {
       if (s.mode === "shop") return void playMusic("shop");
       if (s.mode === "gameover") return void playMusic("death");
       if (s.mode === "victory") return void playMusic("victory");
-      if (s.mode === "splash") return void stopMusic();
+      if (s.mode === "splash") return void playMusic("title");
       const biome = s.game ? LEVELS[s.game.currentLevel].biome : null;
       if (biome) playMusic(`level:${biome}`, biome);
       else stopMusic();
@@ -63,10 +64,23 @@ export default function GameRoot() {
     const unsubMusic = gameStore.subscribe(syncMusic);
     syncMusic(gameStore.getState());
 
+    // Browsers keep the audio context suspended until a user gesture, so the
+    // title theme (queued on the splash at load) can't sound on its own. Resume
+    // it on the first click/keypress, then this listener is done.
+    const unlockAudio = () => {
+      resumeAudio();
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+    window.addEventListener("pointerdown", unlockAudio);
+    window.addEventListener("keydown", unlockAudio);
+
     return () => {
       input.detach();
       window.removeEventListener("beforeunload", saveOnExit);
       document.removeEventListener("visibilitychange", saveOnExit);
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
       unsubMusic();
       stopMusic();
     };
