@@ -4,7 +4,9 @@ import { useEffect } from "react";
 import { gameStore, useGameStore, type GameStore } from "@/store/gameStore";
 import { KeyboardInput } from "@/game/input/KeyboardInput";
 import { LEVELS } from "@/content/levels";
-import { playMusic, stopMusic } from "@/lib/music";
+import { MONSTERS } from "@/content/monsters";
+import { idx } from "@/game/core/grid";
+import { playMusic, stopMusic, setMusicIntensity } from "@/lib/music";
 import { resumeAudio } from "@/lib/sound";
 
 import GameCanvas from "@/components/GameCanvas";
@@ -27,6 +29,25 @@ const CANVAS_MODES = new Set([
   "targeting",
   "altar",
 ]);
+
+/** Danger level (0–1) fed to the adaptive music: 0 anywhere but active play,
+ * rising with low HP, a boss in view, the survive-siege progress, and overtime. */
+function dangerIntensity(s: GameStore): number {
+  if (s.mode !== "playing" || !s.game) return 0;
+  const g = s.game;
+  const p = g.player;
+  let x = 0;
+  const hpFrac = p.maxHp > 0 ? p.hp / p.maxHp : 1;
+  if (hpFrac < 0.34) x = Math.max(x, 0.45 + (0.34 - hpFrac) * 1.6); // dread as HP bleeds out
+  const w = g.map.width;
+  if (g.monsters.some((m) => MONSTERS[m.defId].isBoss && g.visible.includes(idx(m.x, m.y, w))))
+    x = Math.max(x, 0.85); // a boss is watching
+  const goal = LEVELS[g.currentLevel].goal;
+  if (goal.type === "survive")
+    x = Math.max(x, 0.35 + 0.5 * Math.min(1, g.turnCount / (goal as { turns: number }).turns));
+  else if (g.turnsLeft <= 0) x = Math.max(x, 0.6); // overtime — the dark closes in
+  return Math.min(1, x);
+}
 
 export default function GameRoot() {
   const mode = useGameStore((s) => s.mode);
@@ -53,6 +74,7 @@ export default function GameRoot() {
     // playing → pause/inventory without restarting.
     const syncMusic = (s: GameStore) => {
       if (!s.soundOn) return void stopMusic();
+      setMusicIntensity(dangerIntensity(s)); // adaptive: bed reacts to danger
       if (s.mode === "shop") return void playMusic("shop");
       if (s.mode === "gameover") return void playMusic("death");
       if (s.mode === "victory") return void playMusic("victory");

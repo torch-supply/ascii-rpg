@@ -40,10 +40,10 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 _(SFX + music are implemented — `lib/sound.ts` / `lib/music.ts`; the below is what's left.)_
 
 - **Audio polish** — a volume slider / per-category mix (SFX vs music). _(A splash/title theme shipped — `TITLE_TRACK` in `music.ts`, played on the splash + a sound toggle on the title screen.)_
-- **Deeper music** — ways to build on the per-biome beds (timbre, reverb, and texture already shipped):
-  - ⭐ **Adaptive intensity** — the bed reacts to danger: swell + a low pulse when a boss is in view or HP is low, ramp during the survive siege, calm when safe. (The store already drives music, so it can feed an intensity signal.)
-  - **Evolving harmony** — a slow per-biome chord progression under the drone (e.g. i → VI → iv) so the pad drifts instead of holding one root.
-  - **Stereo width** — pan sparkle bells + texture across L/R via `StereoPanner` for a more spacious, 3D feel.
+- **Deeper music** — ways to build on the per-biome beds (timbre, reverb, texture, **adaptive intensity**, and **evolving harmony** already shipped):
+  - **Stereo width** — pan sparkle bells + texture across L/R via `StereoPanner` for a more spacious, 3D feel. _(The last remaining one.)_
+  - _(Shipped: **adaptive intensity** — `setMusicIntensity` in `music.ts`, fed by `dangerIntensity` in `GameRoot`; the bed swells + a low heartbeat pulse comes in + timbre/tempo tighten with a boss in view, low HP, siege progress, or overtime.)_
+  - _(Shipped: **evolving harmony** — `chordRoot`/`Track.progression` in `music.ts`; the drone + pulse drift through a diatonic chord loop (`DEFAULT_PROGRESSION`, indexed into each track's own scale) instead of holding the tonic.)_
 - **Inventory management** — a drop/discard action from the inventory screen for mid-level declutter (complements shop selling; keeps unwanted spare gear from piling up between shops).
 - **Examine/look mode** — inspect a tile/monster to see its stats; expandable combat log.
 - **Settings screen** — animations toggle, palette/colorblind option, motion, difficulty.

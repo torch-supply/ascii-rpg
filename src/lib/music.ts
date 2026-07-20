@@ -43,6 +43,7 @@ interface Track {
   cutoff?: number; // per-note low-pass (softens/darkens the timbre)
   echo?: Echo; // reverb character (defaults to DEFAULT_ECHO)
   texture?: Texture; // ambient environmental bed
+  progression?: number[]; // scale-degree roots for the drifting drone chord loop
 }
 
 const DEFAULT_ECHO: Echo = { time: 0.3, feedback: 0.34, wet: 0.32 };
@@ -51,6 +52,11 @@ const MINOR_PENT = [0, 3, 5, 7, 10];
 const NAT_MINOR = [0, 2, 3, 5, 7, 8, 10];
 const DORIAN = [0, 2, 3, 5, 7, 9, 10];
 const MAJOR_PENT = [0, 2, 4, 7, 9];
+
+// Evolving harmony: the drone drifts through these scale-degree roots (one per
+// drone phrase) instead of holding the tonic. Indices into the track's own
+// scale, so it stays diatonic in any biome's mode. Tracks may override.
+const DEFAULT_PROGRESSION = [0, 2, 4, 1]; // i → III → v → ii (a gentle wander)
 
 // One mood per biome — scale/tempo + timbre (cutoff), reverb (echo), and an
 // ambient texture bed give each its own sense of place.
@@ -116,9 +122,27 @@ let track: Track | null = null;
 let step = 0;
 let nextTime = 0;
 let deg = 2; // current scale degree, for a gentle melodic random walk
+let intensity = 0; // 0 calm → 1 peak danger (eased toward the target each tick)
+let targetIntensity = 0;
+
+/** Feed a danger level (0–1) from the store. The loop glides toward it — as it
+ * rises the bed swells (louder + denser), a low heartbeat pulse comes in, the
+ * timbre brightens, and the tempo tightens. Calm (0) leaves the bed untouched. */
+export function setMusicIntensity(x: number): void {
+  targetIntensity = Math.max(0, Math.min(1, x));
+}
 
 function clampDeg(d: number, len: number): number {
   return Math.max(0, Math.min(len * 2 - 1, d)); // roam ~2 octaves
+}
+
+/** The low drone/pulse root for step `s` — walks the track's chord progression,
+ * advancing one chord per drone phrase, kept diatonic via the track's scale. */
+function chordRoot(tr: Track, s: number): number {
+  const prog = tr.progression ?? DEFAULT_PROGRESSION;
+  const deg = prog[Math.floor(s / tr.droneEvery) % prog.length];
+  const semi = tr.scale[deg % tr.scale.length];
+  return (tr.root / 2) * Math.pow(2, semi / 12);
 }
 
 function tone(
@@ -200,22 +224,29 @@ function scheduleTexture(ctx: AudioContext, out: GainNode, tr: Track, at: number
 }
 
 function scheduleStep(ctx: AudioContext, out: GainNode, tr: Track, at: number, s: number) {
-  const cut = tr.cutoff ?? 0;
+  // danger opens the filter (edgier) and swells note gains
+  const cut = tr.cutoff ? tr.cutoff * (1 + intensity * 0.5) : 0;
+  const swell = 1 + intensity * 0.5;
   // a low sustained drone anchors each phrase — two detuned voices beat into a
   // slow breathing shimmer
   if (s % tr.droneEvery === 0) {
     const dur = ((tr.stepMs * tr.droneEvery) / 1000) * 0.95;
-    tone(ctx, out, tr.root / 2, at, dur, tr.droneWave, tr.peak * 0.32, -8, cut);
-    tone(ctx, out, tr.root / 2, at, dur, tr.droneWave, tr.peak * 0.32, +8, cut);
+    const df = chordRoot(tr, s); // drifts through the progression
+    tone(ctx, out, df, at, dur, tr.droneWave, tr.peak * 0.32 * swell, -8, cut);
+    tone(ctx, out, df, at, dur, tr.droneWave, tr.peak * 0.32 * swell, +8, cut);
   }
-  // sparse melody: a wandering step within the scale (with rests), chorused
-  if (Math.random() < tr.density) {
+  // adaptive danger pulse: a low heartbeat on the beat (follows the chord root)
+  if (intensity > 0.12 && s % 4 === 0) {
+    tone(ctx, out, chordRoot(tr, s), at, (tr.stepMs / 1000) * 1.1, "sine", tr.peak * 0.9 * intensity, 0, cut);
+  }
+  // sparse melody: a wandering step within the scale (denser under pressure)
+  if (Math.random() < Math.min(1, tr.density + intensity * 0.2)) {
     deg = clampDeg(deg + (Math.floor(Math.random() * 3) - 1), tr.scale.length);
     const semi = tr.scale[deg % tr.scale.length] + 12 * Math.floor(deg / tr.scale.length);
     const freq = tr.root * Math.pow(2, semi / 12);
     const dur = (tr.stepMs / 1000) * 1.6;
-    tone(ctx, out, freq, at, dur, tr.wave, tr.peak * 0.55, -6, cut);
-    tone(ctx, out, freq, at, dur, tr.wave, tr.peak * 0.55, +6, cut);
+    tone(ctx, out, freq, at, dur, tr.wave, tr.peak * 0.55 * swell, -6, cut);
+    tone(ctx, out, freq, at, dur, tr.wave, tr.peak * 0.55 * swell, +6, cut);
   }
   // a rare high bell twinkle (2 octaves up) — magic shimmer, long echoing tail
   // (left unfiltered so it stays crisp)
@@ -234,9 +265,10 @@ function scheduler() {
     return;
   }
   const { ctx, out } = bus;
+  intensity += (targetIntensity - intensity) * 0.06; // glide — no jarring jumps
   while (nextTime < ctx.currentTime + LOOKAHEAD_S) {
     scheduleStep(ctx, out, track, nextTime, step);
-    nextTime += track.stepMs / 1000;
+    nextTime += (track.stepMs * (1 - intensity * 0.12)) / 1000; // subtle urgency
     step++;
   }
 }
