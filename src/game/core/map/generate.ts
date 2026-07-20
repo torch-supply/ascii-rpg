@@ -189,8 +189,24 @@ function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number
   }
 }
 
+const TRAP_OPEN: TileType[] = ["floor", "door", "exit", "oil"];
+/** Count a cell's open orthogonal neighbors — a trap wants ≥3 so there's a way
+ * around it (never dropped in a 1-wide corridor / chokepoint you're forced through). */
+function openOrthoCount(tiles: TileType[], w: number, i: number): number {
+  const h = tiles.length / w;
+  const x = i % w;
+  const y = Math.floor(i / w);
+  let n = 0;
+  if (y > 0 && TRAP_OPEN.includes(tiles[i - w])) n++;
+  if (y < h - 1 && TRAP_OPEN.includes(tiles[i + w])) n++;
+  if (x > 0 && TRAP_OPEN.includes(tiles[i - 1])) n++;
+  if (x < w - 1 && TRAP_OPEN.includes(tiles[i + 1])) n++;
+  return n;
+}
+
 /** Scatter hidden spike traps on free reachable floor cells (never right next
- * to the player's start, so the first step is always safe). */
+ * to the player's start, so the first step is always safe; only where a bypass
+ * exists, so a trap is an avoidable risk, not a forced toll). */
 function placeTraps(
   config: LevelConfig,
   tiles: TileType[],
@@ -209,6 +225,7 @@ function placeTraps(
     const x = i % w;
     const y = Math.floor(i / w);
     if (manhattan(x, y, playerStart.x, playerStart.y) <= 1) continue;
+    if (openOrthoCount(tiles, w, i) < 3) continue; // must have a way around it
     tiles[i] = "trap";
     occupied.add(i);
     placed++;
@@ -414,6 +431,34 @@ function trapFreeReachable(map: GameMap, from: Pos): Set<number> {
   return seen;
 }
 
+/** Tiles reachable from `from` over walkable terrain WITH traps allowed. */
+function walkableReachable(map: GameMap, from: Pos): Set<number> {
+  const w = map.width;
+  const seen = new Set<number>([idx(from.x, from.y, w)]);
+  const q = [idx(from.x, from.y, w)];
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  while (q.length) {
+    const cur = q.shift()!;
+    const cx = cur % w;
+    const cy = Math.floor(cur / w);
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!isWalkable(map, nx, ny)) continue;
+      const ni = idx(nx, ny, w);
+      if (seen.has(ni)) continue;
+      seen.add(ni);
+      q.push(ni);
+    }
+  }
+  return seen;
+}
+
 /** Shortest walkable path (traps allowed) from `from` to `to`, as tile indices. */
 function walkablePath(map: GameMap, from: Pos, to: Pos): number[] {
   const w = map.width;
@@ -457,17 +502,34 @@ function walkablePath(map: GameMap, from: Pos, to: Pos): number[] {
 }
 
 /**
- * Fairness guarantee: every objective must be reachable WITHOUT crossing a
- * trap. For any objective that isn't, demote the traps along a route to it back
- * to floor — so traps stay as optional risk/reward, never a mandatory toll.
+ * Fairness guarantee: EVERY walkable tile must be reachable WITHOUT stepping on
+ * a trap — so a trap is never the sole way to anywhere (an avoidable risk, never
+ * a forced toll). Repeatedly find a tile the player can walk to but can't reach
+ * trap-free, and demote the trap(s) bridging to it back to floor, until the
+ * trap-free region covers the whole walkable area.
  */
-function ensureTrapFreeRoutes(map: GameMap, from: Pos, objectives: Pos[]) {
-  for (const obj of objectives) {
-    const reachable = trapFreeReachable(map, from);
-    if (reachable.has(idx(obj.x, obj.y, map.width))) continue;
-    for (const i of walkablePath(map, from, obj)) {
-      if (map.tiles[i] === "trap") map.tiles[i] = "floor";
+function ensureTrapsAvoidable(map: GameMap, from: Pos) {
+  const w = map.width;
+  const walkable = walkableReachable(map, from); // traps → floor keeps this set the same
+  for (let guard = 0; guard <= walkable.size; guard++) {
+    const trapFree = trapFreeReachable(map, from);
+    let target = -1;
+    for (const i of walkable) {
+      if (map.tiles[i] === "trap") continue; // the trap tiles are the toll itself
+      if (!trapFree.has(i)) {
+        target = i;
+        break;
+      }
     }
+    if (target < 0) return; // the whole walkable area is trap-free reachable — done
+    let demoted = false;
+    for (const i of walkablePath(map, from, { x: target % w, y: Math.floor(target / w) })) {
+      if (map.tiles[i] === "trap") {
+        map.tiles[i] = "floor";
+        demoted = true;
+      }
+    }
+    if (!demoted) return; // safety: nothing to demote (shouldn't happen)
   }
 }
 
@@ -632,12 +694,9 @@ export function generateLevel(
   // Risk/reward shrines on open floor.
   const altars = placeAltars(config, floors, occupied, w, levelIndex);
 
-  // Fairness: guarantee a trap-free route to every objective.
-  const objectives: Pos[] = [];
-  if (map.exit) objectives.push(map.exit);
-  for (const m of monsters) if (m.isGoalTarget) objectives.push({ x: m.x, y: m.y });
-  for (const it of items) if (it.questTag) objectives.push({ x: it.x, y: it.y });
-  ensureTrapFreeRoutes(map, playerStart, objectives);
+  // Fairness: guarantee every walkable tile is reachable without crossing a
+  // trap — traps stay an avoidable risk, never a forced toll on the only path.
+  ensureTrapsAvoidable(map, playerStart);
 
   // No teasing dead pockets: seal every open tile the player can't reach.
   sealUnreachable(map, playerStart);

@@ -1446,5 +1446,67 @@ console.log("\n[31] Overtime pressure (soft clock)");
   check("overtime respects its concurrent cap", g.monsters.length <= CONFIG.overtime.cap);
 }
 
+// ─── 32. Traps are always avoidable (never the only path) ───────────────────
+// Fairness: every tile the player can walk to must be reachable WITHOUT stepping
+// on a trap, so a trap is never a forced toll on the sole route — only a risk
+// you can route around. Checked across all levels × several seeds.
+console.log("\n[32] Traps never block the sole path");
+{
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const seeds = ["s1", "s2", "trap-check", "xyzzy", "blackwood", "999", "abc", "q7"];
+  let bad = 0;
+  let checked = 0;
+  let withTraps = 0;
+  for (let li = 0; li < LEVELS.length; li++) {
+    for (const seed of seeds) {
+      const g = beginLevel(seed, li, createPlayer());
+      const w = g.map.width;
+      const s = idx(g.player.x, g.player.y, w);
+      if (g.map.tiles.some((t) => t === "trap")) withTraps++;
+      // flood allowing traps, and flood blocking traps
+      const flood = (blockTraps: boolean) => {
+        const seen = new Set<number>([s]);
+        const q = [s];
+        while (q.length) {
+          const c = q.shift()!;
+          const cx = c % w;
+          const cy = Math.floor(c / w);
+          for (const [dx, dy] of dirs) {
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (!isWalkable(g.map, nx, ny)) continue;
+            const ni = ny * w + nx;
+            if (seen.has(ni)) continue;
+            if (blockTraps && g.map.tiles[ni] === "trap") continue;
+            seen.add(ni);
+            q.push(ni);
+          }
+        }
+        return seen;
+      };
+      const walk = flood(false);
+      const free = flood(true);
+      // every non-trap tile the player can walk to must be reachable trap-free
+      for (const i of walk) {
+        if (g.map.tiles[i] === "trap") continue;
+        if (!free.has(i)) {
+          bad++;
+          break;
+        }
+      }
+      checked++;
+    }
+  }
+  check(
+    `every walkable tile is reachable without stepping on a trap (${checked} level×seed, ${withTraps} had traps)`,
+    bad === 0
+  );
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);
