@@ -135,6 +135,19 @@ export interface GameStore {
 let runPlayMs = 0;
 let sessionStartMs = 0;
 
+// Briefly ignore "advance past this screen" actions right after a screen
+// appears, so the SAME keypress that (e.g.) threw a firebomb and cleared the
+// level can't also skip the level-cleared card straight into the shop. Guards
+// both the keyboard path and native focused-button activation, since both route
+// through the store actions below.
+let inputSettleUntil = 0;
+function armInputSettle() {
+  inputSettleUntil = Date.now() + 250;
+}
+function inputSettling(): boolean {
+  return Date.now() < inputSettleUntil;
+}
+
 // Dev-only tooling is dead-code-eliminated from the production/static build.
 export const DEV = process.env.NODE_ENV !== "production";
 
@@ -218,6 +231,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
 
   const handleLevelComplete = () => {
     const game = get().game!;
+    armInputSettle(); // don't let the clearing keypress skip the cleared card
     const isLast = game.currentLevel >= LEVELS.length - 1;
     // on the final level the victory music is the payoff — skip the level-clear jingle
     if (!isLast) playSfx("levelClear");
@@ -249,6 +263,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
 
   const handleDeath = () => {
     const game = get().game!;
+    armInputSettle(); // the killing keypress mustn't skip the death/game-over card
     playSfx("death");
     game.player.lives -= 1;
     if (game.player.lives <= 0) {
@@ -306,6 +321,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const game = beginLevel(masterSeed, 0, player);
       runPlayMs = 0;
       sessionStartMs = Date.now();
+      armInputSettle(); // the class-pick keypress mustn't skip the opening card
       set({
         game,
         rng,
@@ -335,6 +351,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     },
 
     quitToTitle: () => {
+      if (inputSettling()) return; // ignore a keypress carried in from the last screen
       const info = peekSaveInfo();
       set({
         mode: "splash",
@@ -378,6 +395,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     },
 
     continueNarration: () => {
+      if (inputSettling()) return; // ignore a keypress carried in from the last screen
       const { narration, game } = get();
       if (!narration) return;
       switch (narration.onContinue) {
@@ -391,6 +409,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
           if (tier != null && SHOP_TIERS[tier]) {
             // Visit the shop before the next level loads. Keep the current
             // game state (for coins/gear) until the player leaves the shop.
+            armInputSettle(); // and don't let the same key bounce out of the shop
             set({ mode: "shop", narration: null, shopPurchases: {} });
           } else {
             const player = clonePlayer(game!.player);
@@ -449,6 +468,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     },
 
     leaveShop: () => {
+      if (inputSettling()) return; // ignore a keypress carried in from the last screen
       const game = get().game!;
       const player = clonePlayer(game.player);
       const ng = beginLevel(game.masterSeed, game.currentLevel + 1, player);
