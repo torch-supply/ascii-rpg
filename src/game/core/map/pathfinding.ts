@@ -1,6 +1,6 @@
 import * as ROT from "rot-js";
 import type { GameMap, Pos } from "@/game/core/types";
-import { isWalkable } from "@/game/core/grid";
+import { isWalkable, tileAt } from "@/game/core/grid";
 
 /**
  * Next step from `from` toward `to` using A* (4-directional, matching movement).
@@ -8,9 +8,16 @@ import { isWalkable } from "@/game/core/grid";
  * turn resolution prevents stacking), which keeps chasers from getting stuck.
  * Returns null if already adjacent-at-target or no path exists.
  */
-export function stepToward(map: GameMap, from: Pos, to: Pos): Pos | null {
+export function stepToward(
+  map: GameMap,
+  from: Pos,
+  to: Pos,
+  opensDoors = false
+): Pos | null {
   const passable = (x: number, y: number) =>
-    isWalkable(map, x, y) || (x === to.x && y === to.y);
+    isWalkable(map, x, y) ||
+    (x === to.x && y === to.y) ||
+    (opensDoors && tileAt(map, x, y) === "door"); // door-forcers route through shut doors
 
   const astar = new ROT.Path.AStar(to.x, to.y, passable, { topology: 4 });
   const path: Pos[] = [];

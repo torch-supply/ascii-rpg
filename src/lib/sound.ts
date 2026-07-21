@@ -183,6 +183,7 @@ export type Sfx =
   | 'shoot' // loosed an arrow
   | 'thud' // an arrow struck stone (miss)
   | 'crumble' // a cracked wall broke apart
+  | 'door' // a door opened / shut
   | 'trap' // a spike trap sprang
   | 'altar' // accepted a shrine's boon
   | 'step' // walked a tile
@@ -236,6 +237,11 @@ export function playSfx(kind: Sfx): void {
       noise(c, t, 0.3, 0.12, 900);
       note(c, t, 92, 0.28, 'square', 0.07, 50);
       note(c, t + 0.08, 70, 0.2, 'square', 0.05, 42);
+      break;
+    case 'door':
+      // a wooden creak + a soft latch knock (opening or shutting)
+      note(c, t, 180, 0.16, 'sawtooth', 0.05, 320);
+      noise(c, t + 0.1, 0.05, 0.04, 1200);
       break;
     case 'trap':
       // a sharp metallic snap

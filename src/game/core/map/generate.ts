@@ -189,7 +189,7 @@ function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number
   }
 }
 
-const TRAP_OPEN: TileType[] = ["floor", "door", "exit", "oil"];
+const TRAP_OPEN: TileType[] = ["floor", "doorOpen", "exit", "oil"];
 /** Count a cell's open orthogonal neighbors — a trap wants ≥3 so there's a way
  * around it (never dropped in a 1-wide corridor / chokepoint you're forced through). */
 function openOrthoCount(tiles: TileType[], w: number, i: number): number {
@@ -298,7 +298,7 @@ function placeCrackedWalls(
   const open = (i: number) =>
     tiles[i] === "floor" ||
     tiles[i] === "oil" ||
-    tiles[i] === "door" ||
+    tiles[i] === "doorOpen" ||
     tiles[i] === "trap" ||
     tiles[i] === "trapSprung" ||
     tiles[i] === "exit";
@@ -318,6 +318,48 @@ function placeCrackedWalls(
     [cands[k], cands[j]] = [cands[j], cands[k]];
   }
   for (let n = 0; n < count && n < cands.length; n++) tiles[cands[n]] = "crackedWall";
+}
+
+/** Place interactive doors on 1-wide chokepoints (a floor cell open on one axis,
+ * walled on the other). Generated OPEN, so connectivity + pathing are unchanged;
+ * the player can shut one to break line-of-sight or wall off a chaser. */
+function placeDoors(
+  config: LevelConfig,
+  tiles: TileType[],
+  occupied: Set<number>,
+  w: number,
+  h: number,
+  playerStart: Pos
+) {
+  const count = config.doorCount ?? 0;
+  if (count <= 0) return;
+  const solid = (i: number) => tiles[i] === "wall" || tiles[i] === "crackedWall";
+  const open = (i: number) =>
+    tiles[i] === "floor" ||
+    tiles[i] === "oil" ||
+    tiles[i] === "exit" ||
+    tiles[i] === "trap" ||
+    tiles[i] === "trapSprung" ||
+    tiles[i] === "doorOpen";
+  const cands: number[] = [];
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (tiles[i] !== "floor" || occupied.has(i)) continue;
+      if (manhattan(x, y, playerStart.x, playerStart.y) <= 2) continue; // not on the doorstep
+      const horiz = open(i - 1) && open(i + 1) && solid(i - w) && solid(i + w);
+      const vert = open(i - w) && open(i + w) && solid(i - 1) && solid(i + 1);
+      if (horiz || vert) cands.push(i);
+    }
+  }
+  for (let k = cands.length - 1; k > 0; k--) {
+    const j = mapInt(0, k);
+    [cands[k], cands[j]] = [cands[j], cands[k]];
+  }
+  for (let n = 0; n < count && n < cands.length; n++) {
+    tiles[cands[n]] = "doorOpen";
+    occupied.add(cands[n]);
+  }
 }
 
 /** Place risk/reward shrines on free floor (in the reachable region), each with
@@ -355,7 +397,7 @@ function placeAltars(
 function isOpenTile(t: TileType): boolean {
   return (
     t === "floor" ||
-    t === "door" ||
+    t === "doorOpen" ||
     t === "exit" ||
     t === "trap" ||
     t === "trapSprung" ||
@@ -690,6 +732,7 @@ export function generateLevel(
   // Environmental terrain: oil slicks (walkable) + destructible cracked walls.
   placeOil(config, tiles, occupied, w, h);
   placeCrackedWalls(config, tiles, w, h);
+  placeDoors(config, tiles, occupied, w, h, playerStart); // interactive doors (open)
 
   // Risk/reward shrines on open floor.
   const altars = placeAltars(config, floors, occupied, w, levelIndex);

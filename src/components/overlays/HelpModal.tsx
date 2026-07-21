@@ -7,6 +7,7 @@ const ROWS: [string, string][] = [
   ["↑ ↓ ← →  /  w a s d", "Move (bump a monster to attack it)"],
   [".  or  Space", "Wait one turn"],
   ["f", "Fire the equipped bow (aim, then Enter)"],
+  ["c", "Close an adjacent open door (bump a shut door to open it)"],
   ["i", "Open inventory"],
   ["1 – 9", "In inventory: use / equip a bag item by slot"],
   ["p  or  Esc", "Pause"],

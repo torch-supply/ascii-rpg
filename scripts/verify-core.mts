@@ -6,7 +6,7 @@ import { createPlayer, beginLevel, recomputeLight } from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import { isGoalComplete } from "@/game/core/goals";
-import { idx, isWalkable, tileAt, chebyshev } from "@/game/core/grid";
+import { idx, isWalkable, isTransparent, tileAt, chebyshev } from "@/game/core/grid";
 import { monsterAttackDamage } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
@@ -1166,7 +1166,7 @@ console.log("\n[27] Equipment swapping");
 // passable — they're breakable). Guards against teasing walled-off pockets.
 console.log("\n[28] No unreachable open areas");
 {
-  const OPEN = new Set<string>(["floor", "door", "exit", "trap", "trapSprung", "oil", "crackedWall"]);
+  const OPEN = new Set<string>(["floor", "doorOpen", "exit", "trap", "trapSprung", "oil", "crackedWall"]);
   const dirs = [
     [0, -1],
     [0, 1],
@@ -1506,6 +1506,46 @@ console.log("\n[32] Traps never block the sole path");
     `every walkable tile is reachable without stepping on a trap (${checked} level×seed, ${withTraps} had traps)`,
     bad === 0
   );
+}
+
+// ─── 33. Interactive doors ──────────────────────────────────────────────────
+console.log("\n[33] Interactive doors");
+{
+  // (a) door-count levels generate open doors at chokepoints
+  let withDoors = 0;
+  for (const seed of ["s1", "s2", "s3", "door", "xyzzy", "999"]) {
+    const g = beginLevel(seed, 4, createPlayer()); // iron_gate: doorCount 3
+    if (g.map.tiles.some((t) => t === "doorOpen")) withDoors++;
+  }
+  check("door-count levels generate open doors", withDoors > 0);
+
+  // (b) close → blocks move + sight; bump → reopens (without moving onto it)
+  const g = beginLevel("door-mech", 0, createPlayer());
+  g.monsters = [];
+  const w = g.map.width;
+  const p = g.player;
+  const nb = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]
+    .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+    .find(
+      (c) =>
+        tileAt(g.map, c.x, c.y) === "floor" &&
+        !g.items.some((it) => it.x === c.x && it.y === c.y)
+    )!;
+  g.map.tiles[idx(nb.x, nb.y, w)] = "doorOpen";
+
+  const r1 = resolveTurn(g, { type: "closeDoor" }, new Rng(1));
+  check("closing shuts the adjacent open door", tileAt(g.map, nb.x, nb.y) === "door" && r1.tookTurn);
+  check("a shut door blocks movement", !isWalkable(g.map, nb.x, nb.y));
+  check("a shut door blocks sight", !isTransparent(g.map, nb.x, nb.y));
+
+  const r2 = resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(2));
+  check("bumping a shut door opens it", tileAt(g.map, nb.x, nb.y) === "doorOpen" && r2.tookTurn);
+  check("opening a door doesn't move you onto it", g.player.x === p.x && g.player.y === p.y);
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

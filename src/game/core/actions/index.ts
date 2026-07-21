@@ -454,8 +454,14 @@ function movePlayer(
     return true; // attacking costs a turn
   }
   if (!isWalkable(state.map, nx, ny)) {
-    // bumping a cracked wall hacks at it (costs a turn); any other wall/water
-    // is a dead bump (no turn spent)
+    // bumping a closed door swings it open (costs the turn; step through next);
+    // a cracked wall hacks at it; any other wall/water is a dead bump (no turn)
+    if (tileAt(state.map, nx, ny) === "door") {
+      state.map.tiles[idx(nx, ny, state.map.width)] = "doorOpen";
+      events.push({ kind: "door" });
+      msg(events, "You shove the door open.");
+      return true;
+    }
     if (tileAt(state.map, nx, ny) === "crackedWall") {
       return bashCrackedWall(state, nx, ny, events);
     }
@@ -631,7 +637,7 @@ function tickEffects(state: GameState, events: GameEvent[]) {
 function igniteTile(state: GameState, i: number, life: number): boolean {
   const t = state.map.tiles[i];
   if (t === "oil") state.map.tiles[i] = "floor"; // the slick is consumed
-  else if (t !== "floor" && t !== "trapSprung" && t !== "door") return false;
+  else if (t !== "floor" && t !== "trapSprung" && t !== "doorOpen") return false;
   const ex = state.fireTiles.find((f) => f.i === i);
   if (ex) ex.life = Math.max(ex.life, life);
   else state.fireTiles.push({ i, life });
@@ -744,7 +750,7 @@ function spawnFires(state: GameState, tx: number, ty: number, rng: Rng) {
       const t = map.tiles[i];
       if (t === "oil") igniteTile(state, i, life);
       else if (
-        (t === "floor" || t === "trapSprung" || t === "door") &&
+        (t === "floor" || t === "trapSprung" || t === "doorOpen") &&
         rng.chance(CONFIG.fire.spawnChance)
       )
         igniteTile(state, i, life);
@@ -907,7 +913,34 @@ function applyPlayerAction(
       return throwFirebombAt(state, action.defId, action.x, action.y, events, rng);
     case "shootAt":
       return resolvePlayerShot(state, action.x, action.y, events, rng);
+    case "closeDoor":
+      return closePlayerDoor(state, events);
   }
+}
+
+/** Shut an orthogonally-adjacent open door (break LOS / wall off a chaser).
+ * Won't close onto a monster. Costs a turn only if a door actually closes. */
+function closePlayerDoor(state: GameState, events: GameEvent[]): boolean {
+  const p = state.player;
+  const w = state.map.width;
+  for (const [dx, dy] of [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ]) {
+    const nx = p.x + dx;
+    const ny = p.y + dy;
+    if (!inBounds(state.map, nx, ny)) continue;
+    if (tileAt(state.map, nx, ny) !== "doorOpen") continue;
+    if (monsterAt(state, nx, ny)) continue; // something's in the doorway
+    state.map.tiles[idx(nx, ny, w)] = "door";
+    events.push({ kind: "door" });
+    msg(events, "You pull the door shut.");
+    return true;
+  }
+  msg(events, "There's no open door beside you to close.");
+  return false;
 }
 
 // ── monster phase ────────────────────────────────────────────────────────
@@ -967,9 +1000,20 @@ function chaseStep(
   const step = stepToward(
     state.map,
     { x: m.x, y: m.y },
-    { x: state.player.x, y: state.player.y }
+    { x: state.player.x, y: state.player.y },
+    def.opensDoors
   );
-  if (step) monsterMoveTo(state, m, def, step.x, step.y, events, rng);
+  if (!step) return;
+  // a door-forcer (guard/boss) shoves a shut door open — spends the turn on it,
+  // then walks through next turn; dumb monsters can't (their path routed around)
+  if (def.opensDoors && tileAt(state.map, step.x, step.y) === "door") {
+    state.map.tiles[idx(step.x, step.y, state.map.width)] = "doorOpen";
+    events.push({ kind: "door" });
+    if (state.visible.includes(idx(step.x, step.y, state.map.width)))
+      msg(events, `The ${def.name} forces the door open.`);
+    return;
+  }
+  monsterMoveTo(state, m, def, step.x, step.y, events, rng);
 }
 
 function rangedAttack(

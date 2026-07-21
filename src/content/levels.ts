@@ -36,6 +36,7 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.0,
     baseLightRadius: 8,
     trapCount: 3,
+    doorCount: 2,
     goal: { type: "reachLocation" },
     narration:
       "You haul yourself out of the pit into cold night air. No stars — only a black wall of trees ahead, whispering. The Blackwood. Somewhere in it lies the path the dead don't want you to find.",
@@ -162,6 +163,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 5,
     trapCount: 5,
     crackedWallCount: 4,
+    doorCount: 3,
     eliteChance: 0.15,
     altarCount: 1,
     goal: { type: "killCount", count: 8 },
@@ -196,6 +198,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 4,
     oilCount: 12,
     crackedWallCount: 4,
+    doorCount: 3,
     eliteChance: 0.15,
     altarCount: 2,
     goal: { type: "collectX", questTag: "sigil", count: 3 },
@@ -230,6 +233,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 8,
     oilCount: 10,
     crackedWallCount: 3,
+    doorCount: 2,
     eliteChance: 0.18,
     altarCount: 1,
     goal: { type: "findItem", questTag: "sunblade" },
@@ -294,6 +298,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 5,
     trapCount: 3,
     crackedWallCount: 3,
+    doorCount: 2,
     eliteChance: 0.2,
     goal: { type: "killTarget", monsterId: "herald" },
     narration:
@@ -322,6 +327,7 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 2.0,
     baseLightRadius: 5,
     trapCount: 2,
+    doorCount: 2,
     goal: { type: "killTarget", monsterId: "lich" },
     // Final level: this narration is unused for transition (the Victory screen
     // shows VICTORY.body instead), but kept for completeness.

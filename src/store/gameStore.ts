@@ -152,6 +152,7 @@ function playTurnSfx(events: TurnResult["events"]) {
   if (has("shoot")) playSfx("shoot");
   if (has("thud")) playSfx("thud");
   if (has("crumble")) playSfx("crumble");
+  if (has("door")) playSfx("door");
   if (has("blast")) playSfx("blast");
   // a trap's snap stands in for the generic hurt on that turn
   if (has("trap")) playSfx("trap");
@@ -676,7 +677,13 @@ export const gameStore = createStore<GameStore>((set, get) => {
           }
           break;
         case "confirm":
-          if (mode === "narration") {
+          if (mode === "splash") {
+            // Enter on the title starts the default action (resume a run if one
+            // exists, else a new game) — for when focus isn't on a button.
+            playSfx("uiSelect");
+            if (get().hasSave) get().resumeGame();
+            else get().newGame();
+          } else if (mode === "narration") {
             playSfx("uiSelect");
             get().continueNarration();
           } else if (mode === "shop") {

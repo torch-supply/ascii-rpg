@@ -281,7 +281,7 @@ export function HudFooter() {
           <SoundToggle />
         </div>
         <span className="whitespace-nowrap">move ↑↓←→ / wasd · bump = attack</span>
-        <span className="whitespace-nowrap">[f]ire · [i]nv · [p]ause · [?]help</span>
+        <span className="whitespace-nowrap">[f]ire · [c]lose · [i]nv · [p]ause · [?]help</span>
       </div>
     </div>
   );

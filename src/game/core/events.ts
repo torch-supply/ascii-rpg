@@ -15,6 +15,8 @@ export type GameEvent =
   | { kind: "thud" }
   // a cracked wall broke apart (bash / knockback / blast)
   | { kind: "crumble" }
+  // a door was opened or shut (player bump/close, or a monster forcing through)
+  | { kind: "door" }
   // a spike trap sprang
   | { kind: "trap" }
   // the player walked one tile

@@ -20,7 +20,7 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 - ⭐ **Character classes / starting kits** — Warrior (melee+armor), Rogue (stealth+crit), Pyromancer (bombs+bolts). Big replay boost, picked on the splash.
 - **Weapon properties** — the remaining ones: reach (hit 2 tiles), cleave (hit all adjacent), lifesteal, crit chance. (Knockback, on-hit status, and ranged already shipped.)
 - ⭐ **Ranged-attack telegraphs** — when a ranged enemy (imp/lich) is lined up to fire, flash a faint aim line / target marker the turn *before* the shot, so incoming fire is readable and dodgeable — the same fairness/counterplay the boss dark-fire barrage and trap-awareness already give. Reuses the overlay telegraph rendering; strong readability win now that ranged crossfire is a real threat.
-- **Interactive doors** — open/close the door tiles (`+`/`'`) to break line-of-sight and body-block a chaser into a chokepoint. A light tactical layer on terrain that already exists (pairs with stealth-via-light).
+- _(Shipped: **interactive doors** — closed `door` (`+`, blocks move + sight) vs open `doorOpen` (`'`); bump to open, `[c]` to close. Generated open on chokepoints (`placeDoors`, `LevelConfig.doorCount`). Close one to break LOS / wall off a chaser; dumb monsters reroute, `MonsterDef.opensDoors` foes force through.)_
 
 ## Systems / meta / replay
 

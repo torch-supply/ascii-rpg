@@ -116,6 +116,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 6,
     speed: 1,
     coinReward: 3,
+    opensDoors: true, // goblins are clever enough to work a latch
     loot: { chance: 0.15, table: [{ itemId: "p_heal", weight: 1 }] },
   },
   skeleton: {
@@ -222,6 +223,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     coinReward: 22,
     isBoss: false, // an elite gate guard, not a unique boss — several can hold the gate
     miniBoss: true, // still tough — gets a small HP bar in view
+    opensDoors: true, // a warden won't be stopped by a shut door
     loot: {
       chance: 1,
       table: [
@@ -244,6 +246,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 22,
     isBoss: true,
+    opensDoors: true,
     rangedDmg: 7,
     rangedRange: 5,
     loot: {
@@ -290,6 +293,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 0,
     isBoss: true,
+    opensDoors: true,
     rangedDmg: 9,
     rangedRange: 5,
   },

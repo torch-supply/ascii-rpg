@@ -36,6 +36,11 @@ export function keyToCommand(e: KeyboardEvent): InputCommand | null {
     case " ":
       return { kind: "action", action: { type: "wait" } };
 
+    // ── close an adjacent open door ──
+    case "c":
+    case "C":
+      return { kind: "action", action: { type: "closeDoor" } };
+
     // ── UI ──
     case "Escape":
     case "p":

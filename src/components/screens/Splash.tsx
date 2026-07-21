@@ -66,7 +66,7 @@ export default function Splash() {
         style={{ animationDelay: "340ms" }}
       >
         {hasSave && saveInfo && (
-          <MenuButton accent onClick={() => gameStore.getState().resumeGame()}>
+          <MenuButton accent autoFocus onClick={() => gameStore.getState().resumeGame()}>
             ▸ Resume
             <span className="ml-1 text-xs opacity-80">
               — Level {saveInfo.level + 1}: {saveInfo.title} · turn{" "}
@@ -75,7 +75,7 @@ export default function Splash() {
           </MenuButton>
         )}
 
-        <MenuButton onClick={startNew}>
+        <MenuButton autoFocus={!hasSave} onClick={startNew}>
           ▸ New Game
           {hasSave && (
             <span className="ml-1 text-xs text-dim">(overwrites save)</span>

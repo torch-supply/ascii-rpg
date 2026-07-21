@@ -4,7 +4,8 @@ export const TERRAIN_GLYPH: Record<TileType, string> = {
   wall: '#',
   crackedWall: '%', // fractured — a blast will open it
   floor: '·',
-  door: '+',
+  door: '+', // closed
+  doorOpen: "'", // ajar
   exit: '>',
   trap: '·', // hidden — looks like floor until sprung
   trapSprung: '^',
@@ -40,6 +41,8 @@ export const EXIT_COLOR = '#ffd700';
 export const TRAP_COLOR = '#ff5a3c';
 export const WATER_COLOR = '#3a6ea5';
 export const OIL_COLOR = '#6b6f3a';
+export const DOOR_COLOR = '#b07a3f'; // closed door — warm wood, reads as a barrier
+export const DOOR_OPEN_COLOR = '#6e5330'; // open door — dim, out of the way
 /** Cracked walls tint the biome wall color a touch toward this warm ochre —
  * enough to notice on a lit tile, easy to miss in the gloom. */
 export const CRACKED_WALL_TINT = '#d8b878';
@@ -79,7 +82,9 @@ export function terrainColor(t: TileType, palette: Palette): string {
     case 'trap': // hidden: same as floor
       return palette.floor;
     case 'door':
-      return palette.accent;
+      return DOOR_COLOR;
+    case 'doorOpen':
+      return DOOR_OPEN_COLOR;
     case 'exit':
       return EXIT_COLOR;
     case 'trapSprung':

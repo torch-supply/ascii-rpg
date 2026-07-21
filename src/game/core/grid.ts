@@ -22,7 +22,7 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
   const t = tileAt(map, x, y);
   return (
     t === "floor" ||
-    t === "door" ||
+    t === "doorOpen" || // a closed "door" blocks like a wall until opened
     t === "exit" ||
     t === "trap" ||
     t === "trapSprung" ||
@@ -34,7 +34,7 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
  * across water and oil. */
 export function isTransparent(map: GameMap, x: number, y: number): boolean {
   const t = tileAt(map, x, y);
-  return t !== "wall" && t !== "crackedWall";
+  return t !== "wall" && t !== "crackedWall" && t !== "door"; // a shut door blocks sight
 }
 
 export function chebyshev(ax: number, ay: number, bx: number, by: number): number {

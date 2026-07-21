@@ -9,7 +9,8 @@ export type TileType =
   | "wall"
   | "crackedWall" // a wall, but an explosion blows it open into floor
   | "floor"
-  | "door"
+  | "door" // a closed door: blocks movement + sight until opened (bump to open)
+  | "doorOpen" // an open door: walkable + see-through (press [c] to close it)
   | "exit"
   | "trap" // armed, hidden (renders as floor) until stepped on
   | "trapSprung" // triggered, visible, harmless
@@ -103,6 +104,8 @@ export interface MonsterDef {
   isBoss?: boolean;
   /** a tough non-boss enemy (mini-boss) — shows a small HP bar when in view */
   miniBoss?: boolean;
+  /** can shove a closed door open (spends a turn); dumb monsters just reroute */
+  opensDoors?: boolean;
   rangedDmg?: number;
   rangedRange?: number;
   /** turns a ranged attacker must reload between shots (default 1) */
@@ -197,6 +200,8 @@ export interface LevelConfig {
   oilCount?: number;
   /** destructible cracked walls bordering rooms (default 0) */
   crackedWallCount?: number;
+  /** interactive doors placed on 1-wide chokepoints, generated open (default 0) */
+  doorCount?: number;
   /** per-monster chance to spawn as an elite/champion (0–1, default 0) */
   eliteChance?: number;
   /** risk/reward shrines placed on open floor (default 0) */
@@ -320,7 +325,8 @@ export type PlayerAction =
   | { type: "equip"; defId: string }
   | { type: "useItem"; defId: string }
   | { type: "throwAt"; defId: string; x: number; y: number }
-  | { type: "shootAt"; x: number; y: number };
+  | { type: "shootAt"; x: number; y: number }
+  | { type: "closeDoor" }; // shut an adjacent open door (break LOS / block a chaser)
 
 // ── Turn resolution result ─────────────────────────────────────────────────
 export interface TurnResult {
