@@ -39,14 +39,13 @@ export default function ClassSelect() {
         {CLASS_LIST.map((cls, i) => (
           <button
             key={cls.id}
-            autoFocus={i === 0}
             onClick={() => gameStore.getState().chooseClass(cls.id)}
             className="pointer-events-auto block w-full border border-edge bg-panel px-5 py-3 text-left transition-colors hover:border-gold focus:border-gold focus:outline-none"
           >
             <div className="flex flex-wrap items-baseline gap-x-2">
               <span className="text-magic">[{i + 1}]</span>
               <span className="text-lg" style={{ color: cls.color }}>
-                {cls.name}
+                {cls.glyph} {cls.name}
               </span>
               <span className="text-[11px] text-dim">— {traitLine(cls)}</span>
             </div>

@@ -42,7 +42,7 @@ export const CLASSES: Record<string, ClassDef> = {
   warrior: {
     id: "warrior",
     name: "Warrior",
-    glyph: "@",
+    glyph: "⚔",
     color: "#e0c060",
     blurb: "Sword + armor, hardy. Shrugs off blows — a forgiving front-liner.",
     weaponId: "w_short",
@@ -54,7 +54,7 @@ export const CLASSES: Record<string, ClassDef> = {
   rogue: {
     id: "rogue",
     name: "Rogue",
-    glyph: "@",
+    glyph: "†",
     color: "#7fe0ff",
     blurb: "Fragile, deadly from the dark. Triple sneak damage + crits.",
     weaponId: "w_dagger",
@@ -67,7 +67,7 @@ export const CLASSES: Record<string, ClassDef> = {
   pyromancer: {
     id: "pyromancer",
     name: "Pyromancer",
-    glyph: "@",
+    glyph: "✷",
     color: "#ff8c3a",
     blurb: "Bombs + bolts. Fights at range and burns rooms down.",
     weaponId: "w_bow",

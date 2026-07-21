@@ -5,6 +5,7 @@ import { useGameStore } from "@/store/gameStore";
 import { LEVELS } from "@/content/levels";
 import { ITEMS } from "@/content/items";
 import { MONSTERS, ELITE } from "@/content/monsters";
+import { classDef } from "@/content/classes";
 import { idx } from "@/game/core/grid";
 import { STATUS, STATUS_KEYS } from "@/game/core/status";
 import { goalLabel } from "@/game/core/goals";
@@ -16,6 +17,7 @@ export function HudBar() {
   if (!game) return null;
 
   const p = game.player;
+  const cls = classDef(p.classId);
   const level = LEVELS[game.currentLevel];
   const weapon = ITEMS[p.weaponId];
   const armor = ITEMS[p.armorId];
@@ -43,6 +45,10 @@ export function HudBar() {
     <div className="z-10 shrink-0 border-b border-edge bg-panel/95 px-4 py-2 text-[17px]">
       <div className="flex items-center justify-between">
         <span className="text-dim">
+          <span title={`Class: ${cls.name}`} style={{ color: cls.color }}>
+            {cls.glyph} {cls.name}
+          </span>
+          <span className="text-edge"> · </span>
           <span style={{ color: level.palette.accent }}>◈</span> Level{" "}
           {game.currentLevel + 1}/{LEVELS.length} — {level.title}
         </span>
