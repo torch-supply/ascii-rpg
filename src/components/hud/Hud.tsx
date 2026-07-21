@@ -107,6 +107,18 @@ export function HudBar() {
           {(p.effects.might ?? 0) > 0 && (
             <span style={{ color: "#ff9d3c" }}> · ⚔ might {p.effects.might}</span>
           )}
+          {(p.effects.levitate ?? 0) > 0 && (
+            <span style={{ color: "#a9d8ff" }}> · ☁ float {p.effects.levitate}</span>
+          )}
+          {(p.effects.emberstep ?? 0) > 0 && (
+            <span style={{ color: "#ff7a3c" }}> · ✷ ember {p.effects.emberstep}</span>
+          )}
+          {(p.effects.frostwalk ?? 0) > 0 && (
+            <span style={{ color: "#bfe8ff" }}> · ❆ rime {p.effects.frostwalk}</span>
+          )}
+          {(p.effects.shadow ?? 0) > 0 && (
+            <span style={{ color: "#9a8cff" }}> · ◐ shadow {p.effects.shadow}</span>
+          )}
           {STATUS_KEYS.map((k) =>
             (p.effects[k] ?? 0) > 0 ? (
               <span key={k} style={{ color: STATUS[k].hudColor }}>

@@ -29,6 +29,11 @@ export const ITEMS: Record<string, ItemDef> = {
   p_might: { id: "p_might", name: "Elixir of Might", glyph: "!", color: "#ff9d3c", category: "potion", stackable: true, effect: "might", duration: 12 },
   p_antidote: { id: "p_antidote", name: "Antidote", glyph: "!", color: "#7fdf6a", category: "potion", stackable: true, effect: "cleanse" },
   p_detect: { id: "p_detect", name: "Draught of Seeing", glyph: "!", color: "#c86bff", category: "potion", stackable: true, effect: "detect" },
+  p_levit: { id: "p_levit", name: "Draught of Levitation", glyph: "!", color: "#a9d8ff", category: "potion", stackable: true, effect: "levitate", duration: 16 },
+  p_ember: { id: "p_ember", name: "Emberstep Draught", glyph: "!", color: "#ff7a3c", category: "potion", stackable: true, effect: "emberstep", duration: 12 },
+  p_rime: { id: "p_rime", name: "Rimewalk Draught", glyph: "!", color: "#bfe8ff", category: "potion", stackable: true, effect: "frostwalk", duration: 14 },
+  p_shadow: { id: "p_shadow", name: "Shadowcloak Draught", glyph: "!", color: "#7a6cff", category: "potion", stackable: true, effect: "shadow", duration: 14 },
+  p_blink: { id: "p_blink", name: "Phial of Blinking", glyph: "!", color: "#c86bff", category: "potion", stackable: true, effect: "blink" },
 
   // ── ammunition (bundles; `value` = arrows per pickup/purchase) ──
   am_arrow: { id: "am_arrow", name: "Arrows", glyph: "»", color: "#d0c0a0", category: "ammo", stackable: true, value: 12 },
@@ -106,6 +111,7 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
   ],
   2: [
     { itemId: "w_mace", price: 24 },
+    { itemId: "p_rime", price: 26, maxQty: 1 },
     { itemId: "a_leather", price: 12 },
     { itemId: "p_heal", price: 8, maxQty: 3 },
     { itemId: "p_antidote", price: 10, maxQty: 2 },
@@ -119,16 +125,19 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
     { itemId: "i_lantern", price: 30 },
     { itemId: "p_gheal", price: 18, maxQty: 2 },
     { itemId: "p_bomb", price: 20, maxQty: 2 },
+    { itemId: "p_levit", price: 30, maxQty: 1 },
   ],
   4: [
     { itemId: "a_chain", price: 25 },
     { itemId: "p_gheal", price: 18, maxQty: 2 },
     { itemId: "p_ward", price: 16, maxQty: 2 },
     { itemId: "p_bomb", price: 20, maxQty: 3 },
+    { itemId: "p_ember", price: 26, maxQty: 1 },
     { itemId: "i_torch", price: 10 },
   ],
   5: [
     { itemId: "a_scale", price: 38 },
+    { itemId: "p_shadow", price: 24, maxQty: 1 },
     { itemId: "p_might", price: 16, maxQty: 2 },
     { itemId: "p_antidote", price: 10, maxQty: 2 },
     { itemId: "p_gheal", price: 18, maxQty: 3 },
@@ -139,6 +148,8 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
     { itemId: "p_detect", price: 12, maxQty: 2 },
     { itemId: "p_ruin", price: 22, maxQty: 2 },
     { itemId: "p_gheal", price: 18, maxQty: 3 },
+    { itemId: "p_levit", price: 30, maxQty: 1 },
+    { itemId: "p_ember", price: 26, maxQty: 1 },
     { itemId: "i_lantern", price: 30 },
   ],
   7: [
@@ -151,10 +162,14 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
   8: [
     { itemId: "p_might", price: 16, maxQty: 3 },
     { itemId: "p_ruin", price: 22, maxQty: 2 },
+    { itemId: "p_rime", price: 26, maxQty: 1 },
+    { itemId: "p_blink", price: 30, maxQty: 1 },
     { itemId: "p_gheal", price: 18, maxQty: 3 },
     { itemId: "p_bomb", price: 20, maxQty: 3 },
   ],
   9: [
+    { itemId: "p_shadow", price: 24, maxQty: 1 },
+    { itemId: "p_blink", price: 30, maxQty: 1 },
     { itemId: "p_ward", price: 16, maxQty: 3 },
     { itemId: "p_might", price: 16, maxQty: 3 },
     { itemId: "p_gheal", price: 18, maxQty: 3 },

@@ -46,4 +46,4 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 
 ---
 
-_Recently shipped (details in [CLAUDE.md](CLAUDE.md) / [README.md](README.md)): character classes (Warrior / Rogue / Pyromancer + passives), interactive doors, overtime (a soft turn-limit that ramps reinforcements instead of an instant death), a global trap-avoidability guarantee, adaptive music intensity + evolving harmony, a splash/title theme, cinematic title-card screens (opening / transitions / victory / game-over), and the two-column shop._
+_Recently shipped (details in [CLAUDE.md](CLAUDE.md) / [README.md](README.md)): character classes (Warrior / Rogue / Pyromancer + passives), interactive doors, overtime (a soft turn-limit that ramps reinforcements instead of an instant death), a global trap-avoidability guarantee, adaptive music intensity + evolving harmony, a splash/title theme, cinematic title-card screens (opening / transitions / victory / game-over), the two-column shop, forage heal tiles, and the terrain-defying draughts (Levitation / Emberstep / Rimewalk / Shadowcloak / Phial of Blinking)._

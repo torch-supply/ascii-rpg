@@ -78,6 +78,11 @@ export const CONFIG = {
     outdoor: { heal: 1, glyph: "%", color: "#8fd45a", name: "wild growth" },
     arcane: { heal: 2, glyph: "∴", color: "#c86bff", name: "arcane mote" },
   },
+  /** while the Shadow effect is active, monsters can't detect you beyond this
+   * many tiles (on top of the usual light-limited sight) */
+  shadowSightRadius: 2,
+  /** how far the Phial of Blinking can teleport you (cursor range) */
+  blinkRange: 5,
   /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
   fireBurnDuration: 2,
   /** lingering fire tiles left by a thrown firebomb */
@@ -90,7 +95,7 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "13",
+  contentVersion: "15",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */

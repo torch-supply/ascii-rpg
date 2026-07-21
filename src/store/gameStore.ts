@@ -41,8 +41,9 @@ export type UIMode =
   | "victory";
 
 export interface TargetingData {
-  /** "firebomb" throws the potion `defId`; "ranged" fires the equipped bow */
-  kind: "firebomb" | "ranged";
+  /** "firebomb" throws the potion `defId`; "ranged" fires the equipped bow;
+   * "blink" teleports the player to the chosen tile (Phial of Blinking) */
+  kind: "firebomb" | "ranged" | "blink";
   defId: string;
   x: number;
   y: number;
@@ -100,6 +101,7 @@ export interface GameStore {
   // cursor targeting (firebomb throw + ranged fire share the cursor)
   beginTargeting: (defId: string) => void;
   beginRangedTargeting: () => void;
+  beginBlinkTargeting: (defId: string) => void;
   moveCursor: (dx: number, dy: number) => void;
   confirmTarget: () => void;
   cancelTarget: () => void;
@@ -514,6 +516,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       if (mode === "inventory") set({ mode: "playing" });
       if (def.category === "potion") {
         if (def.effect === "bomb") get().beginTargeting(entry.defId);
+        else if (def.effect === "blink") get().beginBlinkTargeting(entry.defId);
         else get().submitAction({ type: "useItem", defId: entry.defId });
       } else if (def.category === "weapon" || def.category === "armor") {
         get().submitAction({ type: "equip", defId: entry.defId });
@@ -542,6 +545,16 @@ export const gameStore = createStore<GameStore>((set, get) => {
       set({
         mode: "targeting",
         targeting: { kind: "firebomb", defId, x: cx, y: cy, range: CONFIG.throwRange },
+      });
+    },
+
+    beginBlinkTargeting: (defId: string) => {
+      const { game } = get();
+      if (!game) return;
+      const p = game.player;
+      set({
+        mode: "targeting",
+        targeting: { kind: "blink", defId, x: p.x, y: p.y, range: CONFIG.blinkRange },
       });
     },
 
@@ -594,6 +607,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const { kind, defId, x, y } = targeting;
       set({ mode: "playing", targeting: null });
       if (kind === "ranged") get().submitAction({ type: "shootAt", x, y });
+      else if (kind === "blink") get().submitAction({ type: "blinkTo", defId, x, y });
       else get().submitAction({ type: "throwAt", defId, x, y });
     },
 

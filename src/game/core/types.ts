@@ -15,6 +15,7 @@ export type TileType =
   | "trap" // armed, hidden (renders as floor) until stepped on
   | "trapSprung" // triggered, visible, harmless
   | "oil" // walkable slick; fire ignites it and races across it
+  | "ice" // frozen water (Frostwalk) — permanent walkable bridge
   | "forage" // walkable; step on it to heal a little, then it's spent (→ floor)
   | "water"; // impassable but transparent (chasm / water)
 
@@ -136,7 +137,12 @@ export type PotionEffect =
   | "ward" // temporary damage reduction
   | "might" // temporary weapon-power boost
   | "cleanse" // clear damaging debuffs (poison/bleed/burn)
-  | "detect"; // reveal every trap on the level
+  | "detect" // reveal every trap on the level
+  | "levitate" // float over water/chasm + traps (no trap triggers) for a time
+  | "emberstep" // immune to fire searing for a time
+  | "frostwalk" // freeze water you step onto into permanent walkable ice
+  | "shadow" // shrink monster detection range for a time (deep stealth)
+  | "blink"; // short teleport to a chosen tile in range (opens cursor targeting)
 
 export interface ItemDef {
   id: string;
@@ -331,7 +337,8 @@ export type PlayerAction =
   | { type: "useItem"; defId: string }
   | { type: "throwAt"; defId: string; x: number; y: number }
   | { type: "shootAt"; x: number; y: number }
-  | { type: "closeDoor" }; // shut an adjacent open door (break LOS / block a chaser)
+  | { type: "closeDoor" } // shut an adjacent open door (break LOS / block a chaser)
+  | { type: "blinkTo"; defId: string; x: number; y: number }; // teleport (Phial of Blinking)
 
 // ── Turn resolution result ─────────────────────────────────────────────────
 export interface TurnResult {

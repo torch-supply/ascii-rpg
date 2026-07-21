@@ -39,6 +39,16 @@ function statLabel(itemId: string): string {
           return "cures poison/bleed/burn";
         case "detect":
           return "reveals traps";
+        case "levitate":
+          return `walk over water & traps · ${d.duration}t`;
+        case "emberstep":
+          return `fire immunity · ${d.duration}t`;
+        case "frostwalk":
+          return `freeze water to ice · ${d.duration}t`;
+        case "shadow":
+          return `unseen beyond ${CONFIG.shadowSightRadius} tiles · ${d.duration}t`;
+        case "blink":
+          return `teleport ${CONFIG.blinkRange} tiles`;
         default:
           return "";
       }

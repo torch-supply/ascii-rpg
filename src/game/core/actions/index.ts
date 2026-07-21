@@ -5,6 +5,7 @@ import type {
   MonsterDef,
   PlayerAction,
   PlayerState,
+  Pos,
   TurnResult,
 } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
@@ -467,6 +468,22 @@ function movePlayer(
     return true; // attacking costs a turn
   }
   if (!isWalkable(state.map, nx, ny)) {
+    // levitation lets you glide out over water / the chasm (nothing to trip or
+    // grab out there — just drift across)
+    if (tileAt(state.map, nx, ny) === "water" && (p.effects.levitate ?? 0) > 0) {
+      p.x = nx;
+      p.y = ny;
+      events.push({ kind: "step" });
+      return true;
+    }
+    // frostwalk freezes the water you step onto into a permanent ice bridge
+    if (tileAt(state.map, nx, ny) === "water" && (p.effects.frostwalk ?? 0) > 0) {
+      state.map.tiles[idx(nx, ny, state.map.width)] = "ice";
+      p.x = nx;
+      p.y = ny;
+      events.push({ kind: "step" });
+      return true;
+    }
     // bumping a closed door swings it open (costs the turn; step through next);
     // a cracked wall hacks at it; any other wall/water is a dead bump (no turn)
     if (tileAt(state.map, nx, ny) === "door") {
@@ -509,6 +526,7 @@ function forageOnTile(state: GameState, events: GameEvent[]) {
 function springTrap(state: GameState, events: GameEvent[]) {
   const i = idx(state.player.x, state.player.y, state.map.width);
   if (state.map.tiles[i] !== "trap") return;
+  if ((state.player.effects.levitate ?? 0) > 0) return; // floating over it — stays armed
   state.map.tiles[i] = "trapSprung";
   const dmg = wardMitigate(
     state.player,
@@ -593,6 +611,30 @@ function useItem(
       msg(events, "The floor's hidden teeth glimmer into sight.");
       consume();
       return true;
+    case "levitate":
+      p.effects.levitate = def.duration ?? 12;
+      msg(events, `You drift up off the ground — water and traps hold no threat. (${p.effects.levitate} turns)`);
+      consume();
+      return true;
+    case "emberstep":
+      p.effects.emberstep = def.duration ?? 12;
+      msg(events, `Your skin turns ember-proof; fire can't touch you. (${p.effects.emberstep} turns)`);
+      consume();
+      return true;
+    case "frostwalk":
+      p.effects.frostwalk = def.duration ?? 12;
+      msg(events, `Frost sheathes your steps — water freezes as you cross. (${p.effects.frostwalk} turns)`);
+      consume();
+      return true;
+    case "shadow":
+      p.effects.shadow = def.duration ?? 12;
+      msg(events, `You melt into shadow — nothing spots you unless it's close. (${p.effects.shadow} turns)`);
+      consume();
+      return true;
+    case "blink":
+      // no target given (the UI normally routes this to cursor targeting) —
+      // panic-blink to a random reachable tile in range
+      return blinkFallback(state, entry, events, rng);
     default:
       return false;
   }
@@ -637,6 +679,7 @@ function tickEffects(state: GameState, events: GameEvent[]) {
   // damage-over-time (poison/bleed/burn) — a floating number tinted by kind
   for (const k of Object.keys(e)) {
     if (!isStatusKind(k)) continue;
+    if (k === "burn" && (e.emberstep ?? 0) > 0) continue; // ember-proof: fire doesn't bite
     const dmg = STATUS[k].dmgPerTurn;
     if (dmg <= 0) continue;
     p.hp -= dmg;
@@ -657,7 +700,46 @@ function tickEffects(state: GameState, events: GameEvent[]) {
       delete e[k];
       if (k === "ward") msg(events, "Your warding fades.");
       else if (k === "might") msg(events, "Your strength fades.");
-      else if (isStatusKind(k)) msg(events, STATUS[k].onFade);
+      else if (k === "emberstep") msg(events, "Your skin cools — the ember-ward is spent.");
+      else if (k === "levitate") {
+        msg(events, "Your levitation fades.");
+        landFromLevitation(state, events); // don't leave you stranded over water
+      } else if (isStatusKind(k)) msg(events, STATUS[k].onFade);
+    }
+  }
+}
+
+/** When levitation wears off over open water, scramble to the nearest solid
+ * ground (flood out across the water to the closest walkable shore) — so a
+ * lapsed potion never means a silent drop into the void. */
+function landFromLevitation(state: GameState, events: GameEvent[]) {
+  const p = state.player;
+  if (tileAt(state.map, p.x, p.y) !== "water") return;
+  const w = state.map.width;
+  const seen = new Set<number>([idx(p.x, p.y, w)]);
+  const q: Pos[] = [{ x: p.x, y: p.y }];
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  while (q.length) {
+    const c = q.shift()!;
+    for (const [dx, dy] of dirs) {
+      const nx = c.x + dx;
+      const ny = c.y + dy;
+      if (!inBounds(state.map, nx, ny)) continue;
+      const ni = idx(nx, ny, w);
+      if (seen.has(ni)) continue;
+      seen.add(ni);
+      if (isWalkable(state.map, nx, ny) && !monsterAt(state, nx, ny)) {
+        p.x = nx;
+        p.y = ny;
+        msg(events, "You splash down and scramble to solid ground.");
+        return;
+      }
+      if (tileAt(state.map, nx, ny) === "water") q.push({ x: nx, y: ny });
     }
   }
 }
@@ -684,7 +766,7 @@ function tickFires(state: GameState, events: GameEvent[]) {
   for (const f of state.fireTiles) {
     const fx = f.i % w;
     const fy = Math.floor(f.i / w);
-    if (p.x === fx && p.y === fy) {
+    if (p.x === fx && p.y === fy && (p.effects.emberstep ?? 0) <= 0) {
       const had = (p.effects.burn ?? 0) > 0;
       applyStatus(p.effects, "burn", CONFIG.fireBurnDuration);
       if (!had) msg(events, STATUS.burn.onApply("You"));
@@ -945,7 +1027,71 @@ function applyPlayerAction(
       return resolvePlayerShot(state, action.x, action.y, events, rng);
     case "closeDoor":
       return closePlayerDoor(state, events);
+    case "blinkTo":
+      return resolvePlayerBlink(state, action.defId, action.x, action.y, events);
   }
+}
+
+/** Teleport to a chosen tile (Phial of Blinking): must be within `blinkRange`,
+ * walkable, and empty. Consumes the phial + the turn; you arrive fully (a trap
+ * underfoot springs, items/forage are gathered). No-op (no turn) if invalid. */
+function resolvePlayerBlink(
+  state: GameState,
+  defId: string,
+  x: number,
+  y: number,
+  events: GameEvent[]
+): boolean {
+  const p = state.player;
+  const entry = p.bag.find((b) => b.defId === defId);
+  if (!entry) return false;
+  if (
+    chebyshev(p.x, p.y, x, y) > CONFIG.blinkRange ||
+    !isWalkable(state.map, x, y) ||
+    monsterAt(state, x, y)
+  ) {
+    msg(events, "The blink fizzles — you can't reach there.");
+    return false; // no turn spent
+  }
+  entry.count -= 1;
+  if (entry.count <= 0) p.bag = p.bag.filter((b) => b !== entry);
+  events.push({ kind: "blast", x: p.x, y: p.y, radius: 1 }); // depart poof
+  p.x = x;
+  p.y = y;
+  events.push({ kind: "blast", x, y, radius: 1 }); // arrive poof
+  events.push({ kind: "quaff" });
+  msg(events, "You blink through the space between.");
+  springTrap(state, events); // you land on the tile — a trap underfoot bites
+  pickUp(state, events);
+  forageOnTile(state, events);
+  return true;
+}
+
+/** No-target blink: hop to a random reachable tile in range (used only if a
+ * Phial is somehow used without the cursor). */
+function blinkFallback(
+  state: GameState,
+  entry: { defId: string },
+  events: GameEvent[],
+  rng: Rng
+): boolean {
+  const p = state.player;
+  const r = CONFIG.blinkRange;
+  const cands: { x: number; y: number }[] = [];
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const x = p.x + dx;
+      const y = p.y + dy;
+      if (isWalkable(state.map, x, y) && !monsterAt(state, x, y)) cands.push({ x, y });
+    }
+  }
+  if (cands.length === 0) {
+    msg(events, "The blink fizzles.");
+    return false;
+  }
+  const t = cands[rng.int(0, cands.length - 1)];
+  return resolvePlayerBlink(state, entry.defId, t.x, t.y, events);
 }
 
 /** Shut an orthogonally-adjacent open door (break LOS / wall off a chaser).
@@ -1239,7 +1385,11 @@ function actMonster(
   // as the player's own light reveals them. Dousing your torch / low-light
   // levels let you slip closer unseen (and set up a sneak attack).
   const isChaser = def.behavior !== "wander" && def.behavior !== "erratic";
-  const detectRange = Math.min(def.sightRadius, p.lightRadius);
+  const detectRange = Math.min(
+    def.sightRadius,
+    p.lightRadius,
+    (p.effects.shadow ?? 0) > 0 ? CONFIG.shadowSightRadius : Infinity
+  );
   if (isChaser && seen && dist <= detectRange) m.state = "chase";
 
   switch (def.behavior) {

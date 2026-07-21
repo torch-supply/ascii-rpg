@@ -128,7 +128,9 @@ export default function GameRoot() {
                 <span className="border border-gold/50 bg-panel/90 px-3 py-1 text-xs text-gold">
                   {targetingKind === "ranged"
                     ? "Take aim — move cursor · Enter to loose an arrow · Esc to cancel"
-                    : "Aim the firebomb — move cursor · Enter to throw · Esc to cancel"}
+                    : targetingKind === "blink"
+                      ? "Choose where to blink — move cursor · Enter to teleport · Esc to cancel"
+                      : "Aim the firebomb — move cursor · Enter to throw · Esc to cancel"}
                 </span>
               </div>
             )}

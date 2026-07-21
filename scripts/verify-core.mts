@@ -1652,5 +1652,184 @@ console.log("\n[35] Forage heal tiles");
   }
 }
 
+// ─── 36. Levitation & Emberstep potions ─────────────────────────────────────
+console.log("\n[36] Levitation & Emberstep");
+{
+  const adjFloor = (g: ReturnType<typeof beginLevel>) => {
+    const p = g.player;
+    return [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]
+      .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+      .find((c) => tileAt(g.map, c.x, c.y) === "floor")!;
+  };
+
+  // (a) levitation glides onto water; without it, water blocks
+  {
+    const g = beginLevel("levit-a", 0, createPlayer());
+    g.monsters = [];
+    const w = g.map.width;
+    const p = g.player;
+    const nb = adjFloor(g);
+    g.map.tiles[idx(nb.x, nb.y, w)] = "water";
+    p.effects.levitate = 5;
+    const r = resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(1));
+    check("levitation glides onto water", r.tookTurn && g.player.x === nb.x && g.player.y === nb.y);
+
+    const g2 = beginLevel("levit-a", 0, createPlayer());
+    g2.monsters = [];
+    const p2 = g2.player;
+    const nb2 = adjFloor(g2);
+    g2.map.tiles[idx(nb2.x, nb2.y, g2.map.width)] = "water";
+    resolveTurn(g2, { type: "move", dx: nb2.x - p2.x, dy: nb2.y - p2.y }, new Rng(1));
+    check("without levitation water blocks the step", g2.player.x !== nb2.x || g2.player.y !== nb2.y);
+  }
+
+  // (b) levitation floats over a trap without springing it
+  {
+    const g = beginLevel("levit-b", 0, createPlayer());
+    g.monsters = [];
+    const w = g.map.width;
+    const p = g.player;
+    const nb = adjFloor(g);
+    g.map.tiles[idx(nb.x, nb.y, w)] = "trap";
+    p.effects.levitate = 5;
+    p.hp = p.maxHp;
+    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(1));
+    check(
+      "levitation floats over a trap unsprung",
+      g.player.hp === g.player.maxHp && tileAt(g.map, nb.x, nb.y) === "trap"
+    );
+  }
+
+  // (c) emberstep: standing in fire applies no burn / damage
+  {
+    const g = beginLevel("ember-c", 0, createPlayer());
+    g.monsters = [];
+    const p = g.player;
+    g.fireTiles.push({ i: idx(p.x, p.y, g.map.width), life: 3 });
+    p.effects.emberstep = 5;
+    p.hp = p.maxHp;
+    resolveTurn(g, { type: "wait" }, new Rng(1));
+    check(
+      "emberstep: fire doesn't sear you",
+      (g.player.effects.burn ?? 0) === 0 && g.player.hp === g.player.maxHp
+    );
+  }
+
+  // (d) levitation lapsing over water scrambles you to solid ground
+  {
+    const g = beginLevel("levit-d", 0, createPlayer());
+    g.monsters = [];
+    const w = g.map.width;
+    const p = g.player;
+    const px = p.x;
+    const py = p.y;
+    g.map.tiles[idx(px, py, w)] = "water"; // simulate standing mid-lake
+    p.effects.levitate = 1;
+    resolveTurn(g, { type: "wait" }, new Rng(1));
+    check(
+      "levitation lapsing over water shunts you to land",
+      tileAt(g.map, g.player.x, g.player.y) !== "water" && (g.player.x !== px || g.player.y !== py)
+    );
+  }
+}
+
+// ─── 37. Frostwalk / Shadowcloak / Blink ────────────────────────────────────
+console.log("\n[37] Frostwalk / Shadow / Blink");
+{
+  const adjFloor = (g: ReturnType<typeof beginLevel>) => {
+    const p = g.player;
+    return [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]
+      .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+      .find((c) => tileAt(g.map, c.x, c.y) === "floor")!;
+  };
+
+  // (a) frostwalk freezes water you step onto into a walkable ice bridge
+  {
+    const g = beginLevel("frost-a", 0, createPlayer());
+    g.monsters = [];
+    const w = g.map.width;
+    const p = g.player;
+    const nb = adjFloor(g);
+    g.map.tiles[idx(nb.x, nb.y, w)] = "water";
+    p.effects.frostwalk = 5;
+    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(1));
+    check(
+      "frostwalk freezes water into a walkable ice bridge",
+      tileAt(g.map, nb.x, nb.y) === "ice" && g.player.x === nb.x && g.player.y === nb.y
+    );
+  }
+
+  // (b) shadow shrinks monster detection — a goblin 3 tiles off (sight 6) won't
+  // spot a shadowed player, but does without it
+  {
+    const spotAt3 = (shadowed: boolean): string => {
+      const g = beginLevel("shadow-b", 0, createPlayer());
+      const w = g.map.width;
+      const p = g.player;
+      p.baseLightRadius = 8;
+      p.lightRadius = 8;
+      const dir = p.x < w - 6 ? 1 : -1; // carve a clear line with room
+      for (let k = 1; k <= 4; k++) g.map.tiles[idx(p.x + dir * k, p.y, w)] = "floor";
+      g.monsters = [
+        { id: "m", defId: "goblin", x: p.x + dir * 3, y: p.y, hp: 20, state: "idle" },
+      ];
+      if (shadowed) p.effects.shadow = 5;
+      resolveTurn(g, { type: "wait" }, new Rng(1));
+      return g.monsters.find((m) => m.id === "m")?.state ?? "gone";
+    };
+    check("shadow keeps a monster 3 tiles off from spotting you", spotAt3(true) === "idle");
+    check("without shadow it spots you and gives chase", spotAt3(false) === "chase");
+  }
+
+  // (c) blink teleports to a chosen tile in range + spends the phial; invalid
+  // targets (a wall) are refused with no turn spent
+  {
+    const g = beginLevel("blink-c", 0, createPlayer());
+    g.monsters = [];
+    const w = g.map.width;
+    const p = g.player;
+    p.bag.push({ defId: "p_blink", count: 1 });
+    let dest: { x: number; y: number } | null = null;
+    let wall: { x: number; y: number } | null = null;
+    for (let dy = -CONFIG.blinkRange; dy <= CONFIG.blinkRange && (!dest || !wall); dy++) {
+      for (let dx = -CONFIG.blinkRange; dx <= CONFIG.blinkRange; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const x = p.x + dx;
+        const y = p.y + dy;
+        if (!tileAt(g.map, x, y)) continue;
+        if (!dest && tileAt(g.map, x, y) === "floor") dest = { x, y };
+        if (!wall && tileAt(g.map, x, y) === "wall") wall = { x, y };
+      }
+    }
+    const r = resolveTurn(g, { type: "blinkTo", defId: "p_blink", x: dest!.x, y: dest!.y }, new Rng(1));
+    check(
+      "blink teleports to the chosen tile + spends the phial",
+      r.tookTurn &&
+        g.player.x === dest!.x &&
+        g.player.y === dest!.y &&
+        !g.player.bag.some((b) => b.defId === "p_blink")
+    );
+
+    const g2 = beginLevel("blink-c", 0, createPlayer());
+    g2.monsters = [];
+    g2.player.bag.push({ defId: "p_blink", count: 1 });
+    const r2 = resolveTurn(g2, { type: "blinkTo", defId: "p_blink", x: wall!.x, y: wall!.y }, new Rng(1));
+    check(
+      "blink into a wall is refused (no turn, phial kept)",
+      !r2.tookTurn && g2.player.bag.some((b) => b.defId === "p_blink")
+    );
+  }
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

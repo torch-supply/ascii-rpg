@@ -27,7 +27,8 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
     t === "trap" ||
     t === "trapSprung" ||
     t === "oil" ||
-    t === "forage"
+    t === "forage" ||
+    t === "ice"
   );
 }
 

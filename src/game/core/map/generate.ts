@@ -189,7 +189,7 @@ function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number
   }
 }
 
-const TRAP_OPEN: TileType[] = ["floor", "doorOpen", "exit", "oil", "forage"];
+const TRAP_OPEN: TileType[] = ["floor", "doorOpen", "exit", "oil", "forage", "ice"];
 /** Count a cell's open orthogonal neighbors — a trap wants ≥3 so there's a way
  * around it (never dropped in a 1-wide corridor / chokepoint you're forced through). */
 function openOrthoCount(tiles: TileType[], w: number, i: number): number {
@@ -440,6 +440,7 @@ function isOpenTile(t: TileType): boolean {
     t === "trapSprung" ||
     t === "oil" ||
     t === "forage" ||
+    t === "ice" ||
     t === "crackedWall"
   );
 }

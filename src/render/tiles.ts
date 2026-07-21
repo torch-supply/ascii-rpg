@@ -12,6 +12,7 @@ export const TERRAIN_GLYPH: Record<TileType, string> = {
   trapSprung: '^',
   oil: '≈', // a slick sheen on the floor
   water: '~',
+  ice: '▒', // frozen water — a walkable bridge (Frostwalk)
   forage: '%', // default; terrainGlyph swaps per biome (berries vs. arcane mote)
 };
 
@@ -96,6 +97,8 @@ export function terrainColor(t: TileType, palette: Palette, biome: Biome): strin
       return TRAP_COLOR;
     case 'oil':
       return OIL_COLOR;
+    case 'ice':
+      return '#bfe8ff'; // pale frost
     case 'water':
       return WATER_COLOR;
   }
