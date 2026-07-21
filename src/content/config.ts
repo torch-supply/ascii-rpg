@@ -81,6 +81,9 @@ export const CONFIG = {
   /** while the Shadow effect is active, monsters can't detect you beyond this
    * many tiles (on top of the usual light-limited sight) */
   shadowSightRadius: 2,
+  /** an alerted (non-boss) monster gives up the chase after this many turns
+   * without detecting you — break line-of-sight and wait it out */
+  loseInterestTurns: 6,
   /** how far the Phial of Blinking can teleport you (cursor range) */
   blinkRange: 5,
   /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
@@ -95,7 +98,7 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "15",
+  contentVersion: "16",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */

@@ -238,6 +238,10 @@ export interface MonsterInstance {
   effects?: Record<string, number>;
   /** champion modifier (buffed stats + better loot); bosses are never elite */
   elite?: EliteKind;
+  /** last tile it detected the player at — where it hunts after losing sight */
+  lastSeen?: { x: number; y: number };
+  /** turns since it could last detect the player (alerted monsters give up) */
+  lostTurns?: number;
   /** boss (bossLich): turns until the next special ability can fire */
   abilityCd?: number;
   /** boss (bossLich): highest phase index entered so far (announce once) */

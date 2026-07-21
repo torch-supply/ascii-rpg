@@ -1171,14 +1171,10 @@ function chaseStep(
   m: MonsterInstance,
   def: MonsterDef,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
+  target: Pos
 ) {
-  const step = stepToward(
-    state.map,
-    { x: m.x, y: m.y },
-    { x: state.player.x, y: state.player.y },
-    def.opensDoors
-  );
+  const step = stepToward(state.map, { x: m.x, y: m.y }, target, def.opensDoors);
   if (!step) return;
   // a door-forcer (guard/boss) shoves a shut door open — spends the turn on it,
   // then walks through next turn; dumb monsters can't (their path routed around)
@@ -1381,16 +1377,34 @@ function actMonster(
   const dist = chebyshev(m.x, m.y, p.x, p.y);
   const seen = visible.has(idx(m.x, m.y, state.map.width));
 
-  // Chasers wake (and stay awake) once they spot the player — but only as far
-  // as the player's own light reveals them. Dousing your torch / low-light
-  // levels let you slip closer unseen (and set up a sneak attack).
+  // Detection is light-limited: a chaser only notices you within the smaller of
+  // its sight and your own light (Shadow shrinks it further). Dousing your
+  // torch / low light lets you slip past unseen and set up a sneak attack.
   const isChaser = def.behavior !== "wander" && def.behavior !== "erratic";
   const detectRange = Math.min(
     def.sightRadius,
     p.lightRadius,
     (p.effects.shadow ?? 0) > 0 ? CONFIG.shadowSightRadius : Infinity
   );
-  if (isChaser && seen && dist <= detectRange) m.state = "chase";
+  const canDetect = isChaser && seen && dist <= detectRange;
+  if (canDetect) {
+    m.state = "chase";
+    m.lastSeen = { x: p.x, y: p.y }; // remember where you were
+    m.lostTurns = 0;
+  } else if (m.state === "chase" && !def.isBoss) {
+    // lost sight — hunt your last-known spot, then give up after a while
+    // (bosses never lose interest — the finale is relentless)
+    m.lostTurns = (m.lostTurns ?? 0) + 1;
+    if (m.lostTurns >= CONFIG.loseInterestTurns) {
+      m.state = "idle";
+      m.lastSeen = undefined;
+      m.lostTurns = 0;
+    }
+  }
+  // pursue your actual position while in contact (or if a boss / no memory);
+  // otherwise head for the last tile you were seen on
+  const target: Pos =
+    canDetect || def.isBoss || !m.lastSeen ? { x: p.x, y: p.y } : m.lastSeen;
 
   switch (def.behavior) {
     case "wander":
@@ -1402,18 +1416,18 @@ function actMonster(
     case "slowChase":
       // shambles: acts only every other turn
       if (state.turnCount % 2 === 1) return;
-      if (m.state === "chase") chaseStep(state, m, def, events, rng);
+      if (m.state === "chase") chaseStep(state, m, def, events, rng, target);
       else moveRandom(state, m, def, rng, events);
       return;
     case "guardChase":
       // holds its ground until it spots you, then pursues relentlessly
-      if (m.state === "chase") chaseStep(state, m, def, events, rng);
+      if (m.state === "chase") chaseStep(state, m, def, events, rng, target);
       return;
     case "ranged": {
       if (m.state !== "chase") return;
       const inRange = seen && dist <= (def.rangedRange ?? 4);
       if (!inRange) {
-        chaseStep(state, m, def, events, rng); // close until the player is in range
+        chaseStep(state, m, def, events, rng, target); // close until the player is in range
       } else if ((m.cooldown ?? 0) > 0) {
         m.cooldown = (m.cooldown ?? 0) - 1; // reload — hold position, don't fire
       } else {
@@ -1445,7 +1459,7 @@ function actMonster(
         m.abilityCd -= 1; // basic turn: bolt in range/LOS, else close the gap
         if (seen && dist <= (def.rangedRange ?? 5))
           rangedAttack(state, m, def, events, rng);
-        else chaseStep(state, m, def, events, rng);
+        else chaseStep(state, m, def, events, rng, target);
         return;
       }
 
@@ -1461,7 +1475,7 @@ function actMonster(
     }
     case "chase":
     default:
-      if (m.state === "chase") chaseStep(state, m, def, events, rng);
+      if (m.state === "chase") chaseStep(state, m, def, events, rng, target);
       else moveRandom(state, m, def, rng, events);
       return;
   }

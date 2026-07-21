@@ -1831,5 +1831,42 @@ console.log("\n[37] Frostwalk / Shadow / Blink");
   }
 }
 
+// ─── 38. Stealth: alerted monsters lose interest ────────────────────────────
+console.log("\n[38] Lose-interest (break contact to shake pursuers)");
+{
+  const adjFloor = (g: ReturnType<typeof beginLevel>) => {
+    const p = g.player;
+    return [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]
+      .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+      .find((c) => tileAt(g.map, c.x, c.y) === "floor")!;
+  };
+  // run an alerted goblin for the give-up window under a given light radius,
+  // return its final state
+  const chaseThenWait = (light: number): string => {
+    const g = beginLevel("lose-38", 0, createPlayer());
+    const p = g.player;
+    p.hp = 9999;
+    p.maxHp = 9999;
+    p.baseLightRadius = light;
+    p.lightRadius = light;
+    const nb = adjFloor(g);
+    g.monsters = [
+      { id: "m", defId: "goblin", x: nb.x, y: nb.y, hp: 20, state: "chase", lostTurns: 0 },
+    ];
+    for (let i = 0; i <= CONFIG.loseInterestTurns; i++)
+      resolveTurn(g, { type: "wait" }, new Rng(1 + i));
+    return g.monsters.find((m) => m.id === "m")?.state ?? "gone";
+  };
+  // pitch dark (light 0) → it can't detect you → gives up after the window
+  check("an alerted monster gives up once it can't detect you", chaseThenWait(0) === "idle");
+  // still lit → keeps seeing you → stays on the hunt
+  check("it stays chasing while it can still see you", chaseThenWait(8) === "chase");
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);
