@@ -256,6 +256,8 @@ export interface PlayerState {
   maxHp: number;
   hp: number;
   lives: number;
+  /** chosen character class (drives the starting kit + passive traits) */
+  classId: string;
   weaponId: string;
   armorId: string;
   weaponPower: number;

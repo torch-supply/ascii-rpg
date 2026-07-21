@@ -7,7 +7,7 @@ import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import { isGoalComplete } from "@/game/core/goals";
 import { idx, isWalkable, isTransparent, tileAt, chebyshev } from "@/game/core/grid";
-import { monsterAttackDamage } from "@/game/core/combat";
+import { monsterAttackDamage, mitigate } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
 import { MONSTERS, ELITE } from "@/content/monsters";
@@ -1546,6 +1546,52 @@ console.log("\n[33] Interactive doors");
   const r2 = resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(2));
   check("bumping a shut door opens it", tileAt(g.map, nb.x, nb.y) === "doorOpen" && r2.tookTurn);
   check("opening a door doesn't move you onto it", g.player.x === p.x && g.player.y === p.y);
+}
+
+// ─── 34. Character classes (kits + passives) ────────────────────────────────
+console.log("\n[34] Character classes");
+{
+  const warrior = createPlayer("warrior");
+  check(
+    "class kit equips its weapon + armor",
+    warrior.weaponId === "w_short" && warrior.armorId === "a_leather"
+  );
+  check("class sets its own maxHp", warrior.maxHp === 26 && warrior.hp === 26);
+  check("class grants its starting bag", warrior.bag.some((b) => b.defId === "p_heal"));
+  check("classId is recorded on the player", warrior.classId === "warrior");
+
+  const pyro = createPlayer("pyromancer");
+  check(
+    "Pyromancer starts with bow + arrows + bombs",
+    pyro.weaponId === "w_bow" &&
+      pyro.bag.some((b) => b.defId === "am_arrow") &&
+      pyro.bag.some((b) => b.defId === "p_bomb")
+  );
+
+  // passive: Warrior damage reduction (via the shared `mitigate` choke point)
+  check("Warrior shaves 1 off an incoming hit", mitigate(warrior, 10) === 9);
+  check("the plain baseline takes full damage", mitigate(createPlayer("wanderer"), 10) === 10);
+
+  // passive: the Rogue's bigger sneak multiplier out-damages the baseline (same
+  // dagger, so only the ×3-vs-×2 sneak — plus any crit — differs)
+  const sneakDmg = (classId: string): number => {
+    const g = beginLevel("cls-sneak", 0, createPlayer(classId));
+    const w = g.map.width;
+    const p = g.player;
+    const nb = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]
+      .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+      .find((c) => isWalkable(g.map, c.x, c.y))!;
+    g.monsters = [{ id: "t", defId: "skeleton", x: nb.x, y: nb.y, hp: 999, state: "idle" }];
+    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(5));
+    const m = g.monsters.find((x) => x.id === "t");
+    return 999 - (m ? m.hp : 999);
+  };
+  check("Rogue's sneak strike out-damages the plain baseline", sneakDmg("rogue") > sneakDmg("wanderer"));
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

@@ -107,10 +107,10 @@ export default function Shop() {
         <div className="text-sm text-gold">$ {coins} gold</div>
 
         <div className="grid w-full grid-cols-1 items-start gap-6 md:grid-cols-2">
-          {/* ── LEFT: your satchel ── */}
+          {/* ── LEFT: your inventory (worn + carried) ── */}
           <section className="flex flex-col gap-2">
             <h3 className="text-center text-[11px] uppercase tracking-[0.3em] text-dim">
-              Your Satchel
+              Your Inventory
             </h3>
             {worn.map((w) => (
               <div
@@ -210,7 +210,7 @@ export default function Shop() {
           <span className="ml-1 text-xs opacity-70">(Enter)</span>
         </MenuButton>
         <p className="max-w-md text-balance text-center text-[11px] text-edge">
-          press a number (or click) to buy · sell spare gear from your satchel ·
+          press a number (or click) to buy · sell spare gear from your inventory ·
           upgrades equip automatically
         </p>
       </div>

@@ -19,7 +19,7 @@ export default function Splash() {
     ) {
       return;
     }
-    gameStore.getState().newGame();
+    gameStore.getState().setMode("classSelect"); // pick a class, then descend
   };
 
   return (

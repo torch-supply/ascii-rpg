@@ -17,6 +17,7 @@ import {
   playerAttackDamage,
   monsterAttackDamage,
   wardMitigate,
+  mitigate,
 } from "@/game/core/combat";
 import {
   STATUS,
@@ -28,6 +29,7 @@ import {
 import type { StatusApplication } from "@/game/core/types";
 import { stepToward } from "@/game/core/map/pathfinding";
 import { monsterDef, ELITE, type EliteMod } from "@/content/monsters";
+import { classDef } from "@/content/classes";
 import { ITEMS } from "@/content/items";
 import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
@@ -316,7 +318,11 @@ function resolvePlayerAttack(
   // approached unseen in the dark) takes bonus damage from the first strike.
   const canAlert = def.behavior !== "wander" && def.behavior !== "erratic";
   const sneak = canAlert && target.state === "idle";
-  if (sneak) dmg = Math.round(dmg * CONFIG.sneakMultiplier);
+  const cls = classDef(state.player.classId);
+  if (sneak) dmg = Math.round(dmg * (cls.sneakMultiplier ?? CONFIG.sneakMultiplier));
+  // class crit: a chance to double the blow (Rogue)
+  const crit = (cls.critChance ?? 0) > 0 && rng.chance(cls.critChance!);
+  if (crit) dmg *= 2;
   target.hp -= dmg;
   if (ranged)
     events.push({
@@ -328,7 +334,14 @@ function resolvePlayerAttack(
   events.push({ kind: "hit", x: target.x, y: target.y });
   events.push({ kind: "damage", x: target.x, y: target.y, amount: dmg, toPlayer: false });
   if (target.hp <= 0) {
-    msg(events, sneak ? `A silent kill — the ${def.name} never woke.` : `You slay the ${def.name}.`);
+    msg(
+      events,
+      sneak
+        ? `A silent kill — the ${def.name} never woke.`
+        : crit
+          ? `A critical blow fells the ${def.name}!`
+          : `You slay the ${def.name}.`
+    );
     awardKill(state, target, def, rng, events);
     state.monsters = state.monsters.filter((m) => m.id !== target.id);
   } else {
@@ -337,7 +350,7 @@ function resolvePlayerAttack(
       events,
       sneak
         ? `Sneak attack! You hit the ${def.name} for ${dmg} (${target.hp} left).`
-        : `You strike the ${def.name} for ${dmg} (${target.hp} left).`
+        : `${crit ? "Critical! " : ""}You strike the ${def.name} for ${dmg} (${target.hp} left).`
     );
     // the wielded weapon may sear/chill/poison what it strikes (player → monster)
     if (!target.effects) target.effects = {};
@@ -777,7 +790,7 @@ function detonateAt(
   });
   events.push({ kind: "blast", x: tx, y: ty, radius: 1 });
 
-  const dmg = def.magnitude ?? 0;
+  const dmg = (def.magnitude ?? 0) + (classDef(state.player.classId).bombPower ?? 0);
   for (const m of state.monsters) {
     const d = chebyshev(m.x, m.y, tx, ty);
     if (d > 1) continue;
@@ -1024,7 +1037,7 @@ function rangedAttack(
   rng: Rng
 ) {
   const bonus = eliteMod(m)?.dmgBonus ?? 0;
-  const dmg = wardMitigate(
+  const dmg = mitigate(
     state.player,
     Math.max(1, (def.rangedDmg ?? def.dmg) + bonus - state.player.armorReduction)
   );

@@ -11,6 +11,7 @@ import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
 import { ITEMS, SHOP_TIERS, sellPrice, type ShopEntry } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
+import { CLASS_LIST } from "@/content/classes";
 import { OPENING, BIOME_GRADIENT } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
 import { emitEffects } from "@/lib/effectBus";
@@ -27,6 +28,7 @@ import {
 
 export type UIMode =
   | "splash"
+  | "classSelect"
   | "playing"
   | "paused"
   | "inventory"
@@ -85,7 +87,8 @@ export interface GameStore {
 
   // lifecycle
   init: () => void;
-  newGame: (seed?: string) => void;
+  newGame: (classId: string, seed?: string) => void;
+  chooseClass: (classId: string) => void;
   resumeGame: () => void;
   quitToTitle: () => void;
 
@@ -289,12 +292,14 @@ export const gameStore = createStore<GameStore>((set, get) => {
       set({ hasSave: !!info, saveInfo: info, soundOn: isSoundOn() });
     },
 
-    newGame: (seed?: string) => {
+    chooseClass: (classId: string) => get().newGame(classId),
+
+    newGame: (classId: string, seed?: string) => {
       const masterSeed =
         seed && seed.trim()
           ? seed.trim()
           : String(Math.floor(Math.random() * 1e9));
-      const player = createPlayer();
+      const player = createPlayer(classId);
       const rng = new Rng(gameplaySeed(masterSeed));
       const game = beginLevel(masterSeed, 0, player);
       runPlayMs = 0;
@@ -628,7 +633,10 @@ export const gameStore = createStore<GameStore>((set, get) => {
         // Bag hotkeys only act with the inventory screen open — prevents
         // fat-fingering a potion/equip mid-move during play.
         if (mode === "inventory") get().useBagSlot(cmd.n);
-        else if (mode === "shop") {
+        else if (mode === "classSelect") {
+          const cls = CLASS_LIST[cmd.n - 1];
+          if (cls) get().chooseClass(cls.id);
+        } else if (mode === "shop") {
           const g = get().game;
           const tier = g ? LEVELS[g.currentLevel].shopTier : null;
           const entry =
@@ -640,7 +648,10 @@ export const gameStore = createStore<GameStore>((set, get) => {
       // cmd.kind === "ui"
       switch (cmd.cmd) {
         case "pause":
-          if (mode === "playing") {
+          if (mode === "classSelect") {
+            playSfx("uiBack");
+            set({ mode: "splash" }); // back out of class select to the title
+          } else if (mode === "playing") {
             playSfx("uiSelect");
             set({ mode: "paused" });
           } else if (mode === "targeting") {
@@ -678,11 +689,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
           break;
         case "confirm":
           if (mode === "splash") {
-            // Enter on the title starts the default action (resume a run if one
-            // exists, else a new game) — for when focus isn't on a button.
+            // Enter on the title does the default action — resume a run if one
+            // exists, else open class select (for when focus isn't on a button).
             playSfx("uiSelect");
             if (get().hasSave) get().resumeGame();
-            else get().newGame();
+            else set({ mode: "classSelect" });
           } else if (mode === "narration") {
             playSfx("uiSelect");
             get().continueNarration();

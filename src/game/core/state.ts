@@ -2,25 +2,28 @@ import type { GameState, PlayerState } from "./types";
 import { CONFIG } from "@/content/config";
 import { ITEMS } from "@/content/items";
 import { LEVELS } from "@/content/levels";
+import { classDef, DEFAULT_CLASS_ID } from "@/content/classes";
 import { generateLevel } from "./map/generate";
 import { computeVisible } from "./map/fov";
 
-export function createPlayer(): PlayerState {
-  const weapon = ITEMS[CONFIG.startingWeaponId];
-  const armor = ITEMS[CONFIG.startingArmorId];
+export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
+  const cls = classDef(classId);
+  const weapon = ITEMS[cls.weaponId];
+  const armor = ITEMS[cls.armorId];
   return {
     x: 0,
     y: 0,
-    maxHp: CONFIG.startingMaxHp,
-    hp: CONFIG.startingMaxHp,
+    maxHp: cls.maxHp,
+    hp: cls.maxHp,
     lives: CONFIG.startingLives,
+    classId: cls.id,
     weaponId: weapon.id,
     armorId: armor.id,
     weaponPower: weapon.power ?? 0,
     weaponBonus: 0,
     armorReduction: armor.reduction ?? 0,
     coins: 0,
-    bag: [],
+    bag: cls.bag.map((b) => ({ ...b })),
     kills: 0,
     totalTurns: 0,
     goldEarned: 0,

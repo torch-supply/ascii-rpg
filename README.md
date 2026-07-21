@@ -27,10 +27,11 @@ npm run test:core  # pure-engine checks (determinism, goals, combat, connectivit
 
 ## How to play
 
-- **Move / attack:** arrow keys, `hjkl`, or `wasd` — walk into a monster to attack it (bump combat)
-- **Fire bow:** `f` (aim, then `Enter`)  ·  **Wait:** `.` or space  ·  **Inventory:** `i`  ·  **Pause:** `p` / `Esc`  ·  **Mute:** `m`  ·  **Help:** `?`
-- Number keys use/equip a bag item; firebombs open a **cursor targeting** mode (aim, `Enter` to throw, `Esc` to cancel)
-- You have 3 lives and a per-level **turn budget** — running out of either costs a life and restarts the level. Progress, gear, and coins carry over. Zero lives ends the run.
+- **New Game** lets you pick a **class** — Warrior (tanky melee), Rogue (fragile, stealthy crits), or Pyromancer (bombs & bolts) — each with a distinct starting kit and passives
+- **Move / attack:** arrow keys or `wasd` — walk into a monster to attack it (bump combat)
+- **Fire bow:** `f` (aim, then `Enter`)  ·  **Close door:** `c`  ·  **Wait:** `.` or space  ·  **Inventory:** `i`  ·  **Pause:** `p` / `Esc`  ·  **Mute:** `m`  ·  **Help:** `?`
+- In the **inventory** (`i`), number keys use/equip an item. Firebombs open a **cursor targeting** mode (aim, `Enter` to throw, `Esc` to cancel). Bump a closed door to open it.
+- You have 3 lives; dying costs a life and restarts the level (progress, gear, and coins carry over), and zero lives ends the run. Each level has a **turn budget** — run it out and you don't die, but the level turns hostile: reinforcements close in until you finish the goal or fall.
 
 The quest runs across 10 levels (dungeon → blackwood → mire → frostspine → the
 sections of Blackhall Castle → the Throne of Dusk), with narration scenes and a
@@ -39,14 +40,16 @@ shrinks, monsters toughen, and the light dwindles.
 
 ### Features
 
+- **Character classes** — Warrior / Rogue / Pyromancer, picked on New Game; each changes your opening kit and tactics via passives (damage reduction, bigger sneak + crit chance, extra firebomb power)
 - Six goal types (reach / collect / find / kill-boss / cull N monsters / survive N turns)
-- Hidden spike traps (with an awareness sense and a guaranteed trap-free route to every objective), impassable water/chasm terrain, and torch fuel
+- Hidden spike traps (with an awareness sense; every walkable tile is always reachable without stepping on a trap — a trap is an avoidable risk, never a forced toll), impassable water/chasm terrain, and torch fuel
+- **Interactive doors** — bump a closed door to open it, or press `c` to shut one to break line-of-sight and wall off a chaser; most monsters reroute around a closed door, but guards and bosses force it open
 - **Status effects** — poison, bleed, and burn (damage-over-time) plus chill; monsters afflict you, and your firebombs and the Frostbrand weapon afflict them. Cure debuffs with an Antidote.
 - **Environmental interplay** — shove enemies into chasms with a knockback weapon (instant kill), set oil slicks alight and watch the fire spread, and open cracked-wall shortcuts three ways (an explosion, slamming a monster through, or bashing it down over several turns)
 - **Elite champions & stealth** — buffed monsters (brute / swift / volatile-explodes) with better loot; light-gated detection so you can creep through the dark and land bonus **sneak attacks**
 - **Ranged combat & shrines** — an equipped bow with arrows (aim with `f`); risk/reward altars that trade blood or gold for lasting boons
 - **Atmosphere** — a soft torch-glow that hugs your field of view, per-biome weather (mist in the mire & crypt, snow on the frostspine, embers in the throne, dust in the castle), and lasting blood & scorch decals
-- **Audio** (Web Audio, no asset files) — a full set of synthesized SFX (combat, pickups, explosions, arrows, UI, a boss sting) plus procedural, ethereal background music per biome + shop, with one-shot death and victory themes; global mute (`m` / HUD button), preference persists
+- **Audio** (Web Audio, no asset files) — a full set of synthesized SFX (combat, pickups, explosions, arrows, doors, UI, a boss sting) plus procedural, ethereal background music: a per-biome + shop bed and a title theme, all with **adaptive intensity** (swells and adds a heartbeat pulse as danger rises — a boss in view, low HP, the survive siege) and a slowly **drifting chord progression**, with one-shot death and victory themes; global mute (`m` / HUD button), preference persists
 - Monster loot drops, potions (heal, warding, might, firebomb, ruin, seeing, antidote), a five-tier shop you can **buy and sell** at, and juice: floating damage numbers, blast/projectile FX, a boss health bar, and per-level intro cards
 
 ## Project layout
