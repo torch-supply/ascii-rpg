@@ -37,6 +37,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 8,
     trapCount: 3,
     doorCount: 2,
+    forageCount: 3,
     goal: { type: "reachLocation" },
     narration:
       "You haul yourself out of the pit into cold night air. No stars — only a black wall of trees ahead, whispering. The Blackwood. Somewhere in it lies the path the dead don't want you to find.",
@@ -68,6 +69,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 6,
     trapCount: 2,
     waterCount: 10,
+    forageCount: 6,
     goal: { type: "collectX", questTag: "moonstone", count: 3 },
     narration:
       "The three shards flare as one, and a silver thread pulls you downward — toward a reek of rot and black standing water. The Mire. Whatever the dead are guarding, the only path runs through it.",
@@ -98,6 +100,7 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.15,
     baseLightRadius: 6,
     trapCount: 6,
+    forageCount: 6,
     waterCount: 46,
     oilCount: 16,
     eliteChance: 0.1,
@@ -131,6 +134,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 5,
     trapCount: 3,
     waterCount: 18,
+    forageCount: 5,
     eliteChance: 0.12,
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
@@ -164,6 +168,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 5,
     crackedWallCount: 4,
     doorCount: 3,
+    forageCount: 1,
     eliteChance: 0.15,
     altarCount: 1,
     goal: { type: "killCount", count: 8 },
@@ -199,6 +204,7 @@ export const LEVELS: LevelConfig[] = [
     oilCount: 12,
     crackedWallCount: 4,
     doorCount: 3,
+    forageCount: 1,
     eliteChance: 0.15,
     altarCount: 2,
     goal: { type: "collectX", questTag: "sigil", count: 3 },
@@ -231,6 +237,7 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.5,
     baseLightRadius: 3,
     trapCount: 8,
+    forageCount: 2,
     oilCount: 10,
     crackedWallCount: 3,
     doorCount: 2,
@@ -299,6 +306,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 3,
     crackedWallCount: 3,
     doorCount: 2,
+    forageCount: 1,
     eliteChance: 0.2,
     goal: { type: "killTarget", monsterId: "herald" },
     narration:

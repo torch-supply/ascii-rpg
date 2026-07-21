@@ -382,6 +382,8 @@ export class CanvasRenderer {
         });
       } else if (e.kind === 'damage') {
         this.spawnDamageNumber(e.x, e.y, e.amount, e.toPlayer, e.color);
+      } else if (e.kind === 'heal') {
+        this.spawnDamageNumber(e.x, e.y, e.amount, false, '#7fdf6a'); // green +heal
       }
     }
     if (this.fx.length && this.rafId == null) {
@@ -520,7 +522,7 @@ export class CanvasRenderer {
 
         const t = map.tiles[i];
         let glyph = terrainGlyph(t, level.biome);
-        let color = terrainColor(t, palette);
+        let color = terrainColor(t, palette, level.biome);
         // a sensed/detected (but still armed) trap shows as a faint warning ^
         if (t === 'trap' && knownTraps.has(i)) {
           glyph = '^';
@@ -709,7 +711,7 @@ export class CanvasRenderer {
     if (this.crackAny) {
       const { map } = state;
       const palette = LEVELS[state.currentLevel].palette;
-      const wallBase = terrainColor('crackedWall', palette);
+      const wallBase = terrainColor('crackedWall', palette, LEVELS[state.currentLevel].biome);
       const player = state.player;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';

@@ -32,7 +32,7 @@ import { monsterDef, ELITE, type EliteMod } from "@/content/monsters";
 import { classDef } from "@/content/classes";
 import { ITEMS } from "@/content/items";
 import { LEVELS } from "@/content/levels";
-import { CONFIG } from "@/content/config";
+import { CONFIG, forageStyle } from "@/content/config";
 
 const DIRS = [
   [0, -1],
@@ -485,7 +485,24 @@ function movePlayer(
   events.push({ kind: "step" }); // footfall SFX cue
   springTrap(state, events);
   pickUp(state, events);
+  forageOnTile(state, events);
   return true;
+}
+
+/** Step onto a forage tile: a small heal (biome-flavored), then it's spent to
+ * floor. At full HP it's left untouched — save it for when you actually need it. */
+function forageOnTile(state: GameState, events: GameEvent[]) {
+  const p = state.player;
+  const i = idx(p.x, p.y, state.map.width);
+  if (state.map.tiles[i] !== "forage") return;
+  if (p.hp >= p.maxHp) return; // already full — leave it for later
+  const style = forageStyle(LEVELS[state.currentLevel].biome);
+  const before = p.hp;
+  p.hp = Math.min(p.maxHp, p.hp + style.heal);
+  const gained = p.hp - before;
+  state.map.tiles[i] = "floor"; // consumed
+  events.push({ kind: "heal", x: p.x, y: p.y, amount: gained });
+  msg(events, `You gather ${style.name} — +${gained} HP.`);
 }
 
 /** Trigger a hidden trap under the player, revealing and spending it. */

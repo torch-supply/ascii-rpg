@@ -1,4 +1,5 @@
 import type { Biome, Palette, TileType } from '@/game/core/types';
+import { forageStyle } from '@/content/config';
 
 export const TERRAIN_GLYPH: Record<TileType, string> = {
   wall: '#',
@@ -11,6 +12,7 @@ export const TERRAIN_GLYPH: Record<TileType, string> = {
   trapSprung: '^',
   oil: '≈', // a slick sheen on the floor
   water: '~',
+  forage: '%', // default; terrainGlyph swaps per biome (berries vs. arcane mote)
 };
 
 // Per-biome glyph overrides give each region its own silhouette (colored by the
@@ -32,6 +34,7 @@ export function terrainGlyph(t: TileType, biome: Biome): string {
     return BIOME_WALL[biome] ?? TERRAIN_GLYPH.wall;
   if (t === 'floor' || t === 'trap')
     return BIOME_FLOOR[biome] ?? TERRAIN_GLYPH.floor;
+  if (t === 'forage') return forageStyle(biome).glyph;
   return TERRAIN_GLYPH[t];
 }
 
@@ -72,10 +75,12 @@ export const BIOME_ATMOSPHERE: Partial<Record<Biome, AtmosphereDef>> = {
   castle: { kind: 'dust', color: '#b8ad94', count: 34, alpha: 0.15 },
 };
 
-export function terrainColor(t: TileType, palette: Palette): string {
+export function terrainColor(t: TileType, palette: Palette, biome: Biome): string {
   switch (t) {
     case 'wall':
       return palette.wall;
+    case 'forage':
+      return forageStyle(biome).color;
     case 'crackedWall':
       return mix(palette.wall, CRACKED_WALL_TINT, CRACKED_WALL_MIX);
     case 'floor':

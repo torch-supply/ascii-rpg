@@ -1166,7 +1166,7 @@ console.log("\n[27] Equipment swapping");
 // passable — they're breakable). Guards against teasing walled-off pockets.
 console.log("\n[28] No unreachable open areas");
 {
-  const OPEN = new Set<string>(["floor", "doorOpen", "exit", "trap", "trapSprung", "oil", "crackedWall"]);
+  const OPEN = new Set<string>(["floor", "doorOpen", "exit", "trap", "trapSprung", "oil", "forage", "crackedWall"]);
   const dirs = [
     [0, -1],
     [0, 1],
@@ -1592,6 +1592,64 @@ console.log("\n[34] Character classes");
     return 999 - (m ? m.hp : 999);
   };
   check("Rogue's sneak strike out-damages the plain baseline", sneakDmg("rogue") > sneakDmg("wanderer"));
+}
+
+// ─── 35. Forage (heal tiles) ────────────────────────────────────────────────
+console.log("\n[35] Forage heal tiles");
+{
+  const orthoFloor = (g: ReturnType<typeof beginLevel>) => {
+    const p = g.player;
+    return [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]
+      .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+      .find((c) => tileAt(g.map, c.x, c.y) === "floor")!;
+  };
+
+  // (a) forage-count levels grow forage tiles
+  let withForage = 0;
+  for (const seed of ["s1", "s2", "s3", "f1", "f2"]) {
+    const g = beginLevel(seed, 1, createPlayer()); // blackwood: forageCount 6
+    if (g.map.tiles.some((t) => t === "forage")) withForage++;
+  }
+  check("forage-count levels grow forage tiles", withForage > 0);
+
+  // (b) stepping on forage heals (capped) and spends the tile to floor
+  {
+    const g = beginLevel("forage-mech", 0, createPlayer());
+    g.monsters = [];
+    const w = g.map.width;
+    const p = g.player;
+    const nb = orthoFloor(g);
+    g.map.tiles[idx(nb.x, nb.y, w)] = "forage";
+    p.hp = p.maxHp - 5;
+    const before = p.hp;
+    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(1));
+    check(
+      "stepping on forage heals (never past max)",
+      g.player.hp > before && g.player.hp <= g.player.maxHp
+    );
+    check("forage is spent to floor", tileAt(g.map, nb.x, nb.y) === "floor");
+  }
+
+  // (c) at full HP it's left untouched — no waste
+  {
+    const g = beginLevel("forage-full", 0, createPlayer());
+    g.monsters = [];
+    const w = g.map.width;
+    const p = g.player;
+    const nb = orthoFloor(g);
+    g.map.tiles[idx(nb.x, nb.y, w)] = "forage";
+    p.hp = p.maxHp;
+    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(2));
+    check(
+      "forage is left untouched at full HP",
+      tileAt(g.map, nb.x, nb.y) === "forage" && g.player.hp === g.player.maxHp
+    );
+  }
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

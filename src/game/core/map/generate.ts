@@ -189,7 +189,7 @@ function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number
   }
 }
 
-const TRAP_OPEN: TileType[] = ["floor", "doorOpen", "exit", "oil"];
+const TRAP_OPEN: TileType[] = ["floor", "doorOpen", "exit", "oil", "forage"];
 /** Count a cell's open orthogonal neighbors — a trap wants ≥3 so there's a way
  * around it (never dropped in a 1-wide corridor / chokepoint you're forced through). */
 function openOrthoCount(tiles: TileType[], w: number, i: number): number {
@@ -362,6 +362,43 @@ function placeDoors(
   }
 }
 
+/** Tuck forage (heal) tiles into nooks off the main path — preferring dead-ends
+ * / corridor ends (≤2 open neighbors) so grabbing one costs a small detour,
+ * never sits on the beeline. Generated as `forage`, spent to floor on step. */
+function placeForage(
+  config: LevelConfig,
+  tiles: TileType[],
+  occupied: Set<number>,
+  w: number,
+  h: number,
+  playerStart: Pos
+) {
+  const count = config.forageCount ?? 0;
+  if (count <= 0) return;
+  const nooks: number[] = [];
+  const rest: number[] = [];
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (tiles[i] !== "floor" || occupied.has(i)) continue;
+      if (manhattan(x, y, playerStart.x, playerStart.y) <= 2) continue; // not on the doorstep
+      (openOrthoCount(tiles, w, i) <= 2 ? nooks : rest).push(i);
+    }
+  }
+  const shuffle = (a: number[]) => {
+    for (let k = a.length - 1; k > 0; k--) {
+      const j = mapInt(0, k);
+      [a[k], a[j]] = [a[j], a[k]];
+    }
+    return a;
+  };
+  const pool = [...shuffle(nooks), ...shuffle(rest)]; // nooks first (off the path)
+  for (let n = 0; n < count && n < pool.length; n++) {
+    tiles[pool[n]] = "forage";
+    occupied.add(pool[n]);
+  }
+}
+
 /** Place risk/reward shrines on free floor (in the reachable region), each with
  * a pre-rolled bargain. They sit on walkable floor — the player interacts by
  * bumping; monsters ignore them. */
@@ -402,6 +439,7 @@ function isOpenTile(t: TileType): boolean {
     t === "trap" ||
     t === "trapSprung" ||
     t === "oil" ||
+    t === "forage" ||
     t === "crackedWall"
   );
 }
@@ -733,6 +771,7 @@ export function generateLevel(
   placeOil(config, tiles, occupied, w, h);
   placeCrackedWalls(config, tiles, w, h);
   placeDoors(config, tiles, occupied, w, h, playerStart); // interactive doors (open)
+  placeForage(config, tiles, occupied, w, h, playerStart); // heal tiles in nooks
 
   // Risk/reward shrines on open floor.
   const altars = placeAltars(config, floors, occupied, w, levelIndex);

@@ -15,6 +15,7 @@ export type TileType =
   | "trap" // armed, hidden (renders as floor) until stepped on
   | "trapSprung" // triggered, visible, harmless
   | "oil" // walkable slick; fire ignites it and races across it
+  | "forage" // walkable; step on it to heal a little, then it's spent (→ floor)
   | "water"; // impassable but transparent (chasm / water)
 
 export interface GameMap {
@@ -202,6 +203,8 @@ export interface LevelConfig {
   crackedWallCount?: number;
   /** interactive doors placed on 1-wide chokepoints, generated open (default 0) */
   doorCount?: number;
+  /** forageable heal tiles tucked in nooks off the main path (default 0) */
+  forageCount?: number;
   /** per-monster chance to spawn as an elite/champion (0–1, default 0) */
   eliteChance?: number;
   /** risk/reward shrines placed on open floor (default 0) */

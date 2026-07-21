@@ -151,7 +151,7 @@ function playTurnSfx(events: TurnResult["events"]) {
   const dealtDmg = events.some((e) => e.kind === "damage" && !e.toPlayer);
   if (has("coin")) playSfx("coin");
   if (has("pickup")) playSfx("pickup");
-  if (has("quaff")) playSfx("quaff");
+  if (has("quaff") || has("heal")) playSfx("quaff"); // heal = foraged bite
   if (has("shoot")) playSfx("shoot");
   if (has("thud")) playSfx("thud");
   if (has("crumble")) playSfx("crumble");

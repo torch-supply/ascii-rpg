@@ -1,3 +1,5 @@
+import type { Biome } from "@/game/core/types";
+
 // Global, non-per-level tuning knobs.
 export const CONFIG = {
   startingLives: 3,
@@ -68,6 +70,14 @@ export const CONFIG = {
     /** blink at least this far from the player when cornered */
     teleportMinDist: 4,
   },
+  /** Forage heal tiles. Outdoors the land sustains you (small, plentiful heals);
+   * the deeper arcane motes heal a touch more but are far rarer (per-level
+   * `forageCount`, sparse-to-none in the castle/throne). */
+  forage: {
+    outdoorBiomes: ["forest", "marsh", "mountain"] as Biome[],
+    outdoor: { heal: 1, glyph: "%", color: "#8fd45a", name: "wild growth" },
+    arcane: { heal: 2, glyph: "∴", color: "#c86bff", name: "arcane mote" },
+  },
   /** how long a status debuff lasts when applied by a fire tile (burn refresh) */
   fireBurnDuration: 2,
   /** lingering fire tiles left by a thrown firebomb */
@@ -80,5 +90,12 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "12",
+  contentVersion: "13",
 };
+
+/** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */
+export function forageStyle(biome: Biome) {
+  return CONFIG.forage.outdoorBiomes.includes(biome)
+    ? CONFIG.forage.outdoor
+    : CONFIG.forage.arcane;
+}

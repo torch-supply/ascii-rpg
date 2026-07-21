@@ -44,6 +44,7 @@ shrinks, monsters toughen, and the light dwindles.
 - Six goal types (reach / collect / find / kill-boss / cull N monsters / survive N turns)
 - Hidden spike traps (with an awareness sense; every walkable tile is always reachable without stepping on a trap — a trap is an avoidable risk, never a forced toll), impassable water/chasm terrain, and torch fuel
 - **Interactive doors** — bump a closed door to open it, or press `c` to shut one to break line-of-sight and wall off a chaser; most monsters reroute around a closed door, but guards and bosses force it open
+- **Forage** — berries & mushrooms tucked in the wilds (and rarer arcane motes in the depths) top up a little HP when you step on them; plentiful outdoors, sparse-to-none in the barren castle and throne
 - **Status effects** — poison, bleed, and burn (damage-over-time) plus chill; monsters afflict you, and your firebombs and the Frostbrand weapon afflict them. Cure debuffs with an Antidote.
 - **Environmental interplay** — shove enemies into chasms with a knockback weapon (instant kill), set oil slicks alight and watch the fire spread, and open cracked-wall shortcuts three ways (an explosion, slamming a monster through, or bashing it down over several turns)
 - **Elite champions & stealth** — buffed monsters (brute / swift / volatile-explodes) with better loot; light-gated detection so you can creep through the dark and land bonus **sneak attacks**

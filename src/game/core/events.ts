@@ -25,5 +25,7 @@ export type GameEvent =
   // a damage number to float off a tile (toPlayer tints it red vs. gold;
   // an explicit `color` overrides that, e.g. green for poison ticks)
   | { kind: "damage"; x: number; y: number; amount: number; toPlayer: boolean; color?: string }
+  // a small heal (foraged berries / mote) — floats a green +N and plays a soft cue
+  | { kind: "heal"; x: number; y: number; amount: number }
   // an expanding blast ring centered on a tile (firebomb / Ruin)
   | { kind: "blast"; x: number; y: number; radius: number };
