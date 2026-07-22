@@ -263,8 +263,8 @@ export const MONSTERS: Record<string, MonsterDef> = {
     name: "Gorm, the Frost Troll",
     glyph: "T",
     color: "#a9e0ff",
-    maxHp: 40,
-    dmg: 8,
+    maxHp: 36,
+    dmg: 6,
     armor: 1,
     behavior: "guardChase", // guards the bridge until it spots you
     sightRadius: 9,
