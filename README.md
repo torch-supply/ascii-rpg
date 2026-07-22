@@ -22,7 +22,12 @@ rendered on a canvas. Runs entirely in the browser — no backend, no accounts.
 npm install
 npm run dev        # dev server at http://localhost:3000
 npm run build      # static export to out/
-npm run test:core  # pure-engine checks (determinism, goals, combat, connectivity, mechanics)
+
+# tests (no framework — plain tsx scripts under scripts/)
+npm run test:core  # pure-engine checks: mechanics in isolation (determinism, goals, combat, connectivity, status/fire/elites/stealth/ranged/altars/doors/…)
+npm run test:play  # autonomous playthroughs: a greedy bot plays every level across many seeds — beatability, no mid-run invariant breaks, plus a per-level difficulty table
+npm run test:store # store orchestration: drives the Zustand store headlessly — screen/run flow, shop economy, death/restart, victory, save/resume
+npm run test:all   # all three in sequence
 ```
 
 ## How to play

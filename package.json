@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "test:core": "npx --yes tsx scripts/verify-core.mts",
-    "test:play": "npx --yes tsx scripts/verify-playthrough.mts"
+    "test:play": "npx --yes tsx scripts/verify-playthrough.mts",
+    "test:store": "npx --yes tsx scripts/verify-store.mts",
+    "test:all": "npm run test:core && npm run test:play && npm run test:store"
   },
   "dependencies": {
     "next": "16.2.11",
