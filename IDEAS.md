@@ -36,6 +36,19 @@ _A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintO
 - **More biomes/monsters/items** — always cheap to add (data-driven), e.g., a sewer, an ice cavern, a treasure vault.
 - **Cracked-wall-gated pockets** — instead of `sealUnreachable` walling off an isolated open area, reclaim decent-sized ones as *optional* content: punch a **cracked wall** between the pocket and the reachable map and drop a reward inside. Reuses the existing shortcut mechanic; looks intentional, unlike a carved tunnel. Needs a min-pocket-size threshold + a guaranteed reward placement.
 
+## Scale & world richness ("make it feel epic")
+
+_Guiding caveat: scale only feels epic if it's **populated**. The game's strength is tight, legible, escalating levels — "bigger" without more content/POIs/pacing just trades tension for walking. Match any size bump with density (monsters, forage, altars, secrets) + turn-budget tuning. Pursue the exploration/atmosphere items freely; treat dynamic terrain as one-off set-pieces so it doesn't dilute the taut core._
+
+Priority order: **(1)** secret areas → **(2)** sub-biome regions → **(3)** selective bigger set-pieces + vistas → **(4)** a single flooding level.
+
+- ⭐ **Secret / optional areas** — richest & safest, no progress gating. Builds on **Cracked-wall-gated pockets** (above); extend with hidden rooms behind bump-to-reveal secret walls, a rare guarded vault, buried caches, lore fragments. Rewards the exploration we're trying to make epic and can't unbalance or gate anything.
+- ⭐ **Sub-biome regions** — the biggest world-feel jump. One secondary region per level with its own palette / glyphs / atmosphere (a flooded cavern inside the dungeon, a marsh patch in the wood). Needs **per-tile region tagging** (the renderer already tints/weathers per `level.biome` — make that per-tile) + generation that carves a distinct blob (e.g. a `Cellular` cave inside a `Digger` dungeon) while preserving the connectivity/trap-avoidability guarantees. Keep to ~1 region so the screen doesn't turn to visual noise.
+- **Selective bigger maps** — _no technical limit_: the renderer is already a scrolling camera viewport (rot.js paints only the visible window), and generation is `O(tiles)` and fast. The limits are gameplay — the turn budget scales with size (test [26] asserts `turnLimit ≥ shortest-path × 2`), and a sparse big map is just wandering in the dark. Enlarge **set-pieces** (Great Hall / Throne), not everything; variety of scale is itself epic. Always pair with content density + budget tuning.
+- **Vistas & set-piece beats** — cheap, high atmosphere: a distant landmark glimpsed through the fog (Blackhall from the Pass), a portcullis grinding shut behind you, a collapsing bridge, a scripted ambush (doors + reinforcements already exist), dynamic lighting (a hall going dark; the throne's fire flaring in phase 3) tied to the adaptive-music swell.
+- **Dynamic terrain (flooding water)** — a level that floods/drains during play, or via a lever/altar. Great spectacle, and Levitation / Frostwalk / Emberstep become clutch counters. Runtime terrain mutation already exists (Frostwalk→ice, fire→floor, cracked walls). **The hard part is fairness** — flooding the sole route recreates the forced-path problem traps had, so it needs telegraphing + a guaranteed-reachable objective. Scope to ONE signature level (e.g. the Sunken Crypt actually floods as you hunt the Sunblade), not a global system.
+- **A beat of calm** — a safe room / shrine alcove between horrors; pacing that makes the danger land harder.
+
 ## Audio & UX
 
 - **Audio polish** — a volume slider / per-category mix (SFX vs music).
