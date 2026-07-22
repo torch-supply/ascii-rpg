@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:core": "npx --yes tsx scripts/verify-core.mts"
+    "test:core": "npx --yes tsx scripts/verify-core.mts",
+    "test:play": "npx --yes tsx scripts/verify-playthrough.mts"
   },
   "dependencies": {
     "next": "16.2.11",
