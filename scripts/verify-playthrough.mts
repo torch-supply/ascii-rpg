@@ -298,6 +298,7 @@ interface RunResult {
   outcome: "win" | "death" | "stuck";
   turns: number;
   endHp: number;
+  coins: number; // gold earned this level (bot starts at 0, never spends)
   invariant: string | null; // first invariant violation seen, if any
 }
 
@@ -329,10 +330,10 @@ function playLevel(levelIndex: number, seed: string, botSeed: number): RunResult
     note(g.monsters.length > CONFIG.siege.cap + CONFIG.overtime.cap + 40, "monster count blew past caps");
     prevTurn = g.turnCount;
 
-    if (res.goalComplete) return { outcome: "win", turns: g.turnCount, endHp: g.player.hp, invariant };
-    if (res.playerDied) return { outcome: "death", turns: g.turnCount, endHp: 0, invariant };
+    if (res.goalComplete) return { outcome: "win", turns: g.turnCount, endHp: g.player.hp, coins: g.player.coins, invariant };
+    if (res.playerDied) return { outcome: "death", turns: g.turnCount, endHp: 0, coins: g.player.coins, invariant };
   }
-  return { outcome: "stuck", turns: g.turnCount, endHp: g.player.hp, invariant };
+  return { outcome: "stuck", turns: g.turnCount, endHp: g.player.hp, coins: g.player.coins, invariant };
 }
 
 const median = (xs: number[]) => {
@@ -384,10 +385,11 @@ for (let li = 0; li < LEVELS.length; li++) {
   const deaths = results.filter((r) => r.outcome === "death").length;
   const stuck = results.filter((r) => r.outcome === "stuck").length;
   const medDeathTurn = median(results.filter((r) => r.outcome === "death").map((r) => r.turns));
+  const medGold = median(results.map((r) => r.coins)); // gold earned this level
   rows.push(
     `  · ${cfg.id.padEnd(16)} ${cfg.goal.type.padEnd(13)} win ${rate.padStart(3)}%  ` +
       `(${wins.length}W/${deaths}D/${stuck}S)  medTurns ${String(medTurns).padStart(4)}  ` +
-      `medEndHP ${String(medHp).padStart(2)}  medDeath@ ${medDeathTurn}t`
+      `medEndHP ${String(medHp).padStart(2)}  medGold ${String(medGold).padStart(3)}  medDeath@ ${medDeathTurn}t`
   );
 }
 

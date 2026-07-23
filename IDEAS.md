@@ -8,9 +8,8 @@ A running list of ideas to implement later. ⭐ = high-impact / recommended-firs
 
 ### Overlay-canvas effects
 
-_A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintOverlay`) — already used for torch-glow, per-biome weather, cracked-wall fissures, and blood/scorch decals. It supports alpha, gradients, blend modes, blur, and sub-cell drawing — none of which the cell grid can do. Caveat: it composites **on top** of glyphs (use additive/`screen` blend for light so it brightens rather than paints over), and full-canvas gradient repaints are heavier than cheap strokes, so throttle/cache the expensive ones._
+_A transparent RGBA canvas sits atop the rot.js grid (see `CanvasRenderer.paintOverlay`) — already used for bloom, per-biome atmosphere, cracked-wall fissures, and blood/scorch decals. It supports alpha, gradients, blend modes, blur, and sub-cell drawing — none of which the cell grid can do. Caveat: it composites **on top** of glyphs (use additive/`screen` blend for light so it brightens rather than paints over), and full-canvas gradient repaints are heavier than cheap strokes, so throttle/cache the expensive ones._
 
-- **Bloom / glow** — `shadowBlur` on the Sunblade, magic bolts, and bosses so bright things actually radiate.
 - **Screen feedback** — a red vignette pulse when low-HP or poisoned, a white flash on a firebomb, subtle screen-shake (transform the layers, like the smooth-scroll already does).
 - **Smooth AoE telegraphs** — a clean glowing circle/cone for blast radius or an incoming boss attack, instead of blocky highlighted cells.
 
@@ -50,6 +49,17 @@ Priority order: **(1)** secret areas → **(2)** sub-biome regions → **(3)** s
 - **Dynamic terrain (flooding water)** — a level that floods/drains during play, or via a lever/altar. Great spectacle, and Levitation / Frostwalk / Emberstep become clutch counters. Runtime terrain mutation already exists (Frostwalk→ice, fire→floor, cracked walls). **The hard part is fairness** — flooding the sole route recreates the forced-path problem traps had, so it needs telegraphing + a guaranteed-reachable objective. Scope to ONE signature level (e.g. the Sunken Crypt actually floods as you hunt the Sunblade), not a global system.
 - **A beat of calm** — a safe room / shrine alcove between horrors; pacing that makes the danger land harder.
 
+## rot.js features to explore
+
+_We currently use a small slice of rot.js: `RNG` (seeded/weighted/clone), `Display`, `Map.Digger/Uniform/Cellular`, `FOV.PreciseShadowcasting`, `Path.AStar`. Unused features worth experimenting with, ranked by fit for this game:_
+
+- ✅ **`ROT.Lighting` (+ `ROT.Color`) — shipped** (the flat distance-dimming + old `paintGlow`/`lit()` were removed). Multi-source colored light that spreads through the FOV and bounces off surfaces, in `src/render/lighting.ts` (`computeLightMap` → per-tile RGB), blended through the renderer's single `litVis` choke point. Sources: torch (flickering, guttering dim/warm-shift as fuel runs low; a steady eyes-only ember when unlit), per-tile-flickering fire, Sunblade, altars, boss aura, the lich's dark-fire barrage (pulsing red underlight), and transient bolt/explosion/hit flashes (from the FX layer via `fxLights`). Per-biome ambient (`ambientForBiome`) eases center→edge to a fog-level floor (no black ring). Bright sources get additive radial-gradient **bloom** via `paintBloom`. All tuning lives at the top of `lighting.ts`. _Remaining follow-ups: **reflection tuning** — biome-specific `REFLECTIVITY` (wet marsh bounces more than dry stone); **perf** — cache the full light pass and reapply only the flicker scalar per frame if the big castle levels dip._
+- **`ROT.StringGenerator`** — Markov-chain procedural text/names, trained on a tiny corpus: elite epithets, crypt epitaphs, altar incantations, unique weapon names — different per seed. Cheap flavor. Caveat: defaults to `Math.random`, so keep it cosmetic-only or feed it our seeded RNG to stay deterministic.
+- **More map generators** — `Map.Rogue` (classic room-and-corridor) and the maze family (`DividedMaze`/`IceyMaze`/`EllerMaze`) for a distinct labyrinth-type level. We already switch on `LevelConfig.generator`, so slotting one in is nearly free — good structural variety vs. the current digger/cellular caves.
+- **`ROT.Noise` (Simplex)** — replace our hand-rolled value-noise (`AsciiField`, atmosphere) and drive organic terrain placement (water/oil/sub-biomes flow coherently instead of the blob walk). Marginal visual gain; cleaner + enables nicer organic maps. Pairs with **Sub-biome regions**.
+
+_Deliberately skipping (conflict with our design): `Scheduler`/`EventQueue`/`Engine` (our pure-core `LoopDriver` seam is intentional — only revisit for real-time mode), graphical tiles / hex grid / `ROT.Text` / built-in keyboard handling (against the ASCII aesthetic / React HUD / our own keymap)._
+
 ## Audio & UX
 
 - **Audio polish** — a volume slider / per-category mix (SFX vs music).
@@ -60,4 +70,4 @@ Priority order: **(1)** secret areas → **(2)** sub-biome regions → **(3)** s
 
 ---
 
-_Recently shipped (details in [CLAUDE.md](CLAUDE.md) / [README.md](README.md)): character classes (Warrior / Rogue / Pyromancer + passives), interactive doors, overtime (a soft turn-limit that ramps reinforcements instead of an instant death), a global trap-avoidability guarantee, adaptive music intensity + evolving harmony, a splash/title theme, cinematic title-card screens (opening / transitions / victory / game-over), the two-column shop, forage heal tiles, and the terrain-defying draughts (Levitation / Emberstep / Rimewalk / Shadowcloak / Phial of Blinking)._
+_Recently shipped (details in [CLAUDE.md](CLAUDE.md) / [README.md](README.md)): dynamic colored lighting (`ROT.Lighting` — flickering/guttering torch, fire/Sunblade/altar/boss/barrage sources, per-biome ambient, bloom on bright sources), character classes (Warrior / Rogue / Pyromancer + passives), interactive doors, overtime (a soft turn-limit that ramps reinforcements instead of an instant death), a global trap-avoidability guarantee, adaptive music intensity + evolving harmony, a splash/title theme, cinematic title-card screens (opening / transitions / victory / game-over), the two-column shop, forage heal tiles, and the terrain-defying draughts (Levitation / Emberstep / Rimewalk / Shadowcloak / Phial of Blinking)._
