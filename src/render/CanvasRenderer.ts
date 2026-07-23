@@ -2,7 +2,7 @@ import { ITEMS } from '@/content/items';
 import { LEVELS } from '@/content/levels';
 import { ELITE, MONSTERS } from '@/content/monsters';
 import type { GameEvent } from '@/game/core/events';
-import { chebyshev, idx } from '@/game/core/grid';
+import { idx } from '@/game/core/grid';
 import { STATUS } from '@/game/core/status';
 import type {
   Biome,
@@ -13,6 +13,13 @@ import type {
 } from '@/game/core/types';
 import * as ROT from 'rot-js';
 import { createDisplay } from './Display';
+import {
+  AMBIENT_ENTITY,
+  ambientForBiome,
+  computeLightMap,
+  type ExtraLight,
+  type LightMap,
+} from './lighting';
 import {
   BIOME_ATMOSPHERE,
   CRACKED_WALL_CRACK_DIM,
@@ -34,14 +41,7 @@ const HIT_DELAY_MS = 30;
 const HIT_MS = 150;
 const RING_MS = 300; // firebomb / Ruin expanding blast ring
 
-// Distance-based lighting: brightness at the player's feet vs. at the light's
-// edge (terrain fades hard for atmosphere; entities stay more legible).
-const EDGE_MIN_TERRAIN = 0.4;
-const EDGE_MIN_ENTITY = 0.62;
-const AMBIENT_MS = 66; // ~15fps flicker redraw
-const GLOW_RADIUS_SCALE = 0.85; // torch-glow reach relative to the light radius
-// how much of the glow survives with no torch lit (base light = a faint ember)
-const GLOW_UNLIT = 0.4;
+const AMBIENT_MS = 132; // ~8fps flicker redraw
 
 // Which debuff colors an afflicted entity's glyph (first match wins).
 const TINT_ORDER: StatusKind[] = ['burn', 'poison', 'bleed', 'chill'];
@@ -212,6 +212,15 @@ export class CanvasRenderer {
   private ambientId: number | null = null;
   private lastAmbient = 0;
   private reduceMotion = false;
+  // dynamic lighting: per-tile colored light, recomputed each render
+  private lightMap: LightMap | null = null;
+  // player pos + map width, cached for litVis's radial edge-fade (round vignette)
+  private litPX = 0;
+  private litPY = 0;
+  private litW = 1;
+  // per-biome ambient floor (center → edge), set each render from the level
+  private ambCenter: [number, number, number] = [104, 100, 120];
+  private ambEdge: [number, number, number] = [90, 88, 102];
   // smooth-scroll: slide the canvas one cell when the camera follows the player
   private lastCamX = 0;
   private lastCamY = 0;
@@ -470,10 +479,74 @@ export class CanvasRenderer {
     this.display.draw(sx, sy, glyph, color, null);
   }
 
-  /** Dim a visible tile by distance: full at the player, `edgeMin` at radius. */
-  private lit(color: string, dist: number, effR: number, edgeMin: number) {
-    const t = Math.min(1, dist / Math.max(1, effR));
-    return dim(color, 1 - (1 - edgeMin) * t);
+  /** Transient light sources from active cosmetic FX (bolts, explosions, hit
+   * sparks), color/intensity-scaled for the current frame. */
+  private fxLights(now: number): ExtraLight[] {
+    const out: ExtraLight[] = [];
+    for (const f of this.fx) {
+      if (now < f.t0) continue;
+      const p = clamp((now - f.t0) / f.dur, 0, 1);
+      if (f.kind === 'projectile') {
+        // a warm light rides along with the bolt head
+        const hx = Math.round(f.fromX + (f.toX - f.fromX) * p);
+        const hy = Math.round(f.fromY + (f.toY - f.fromY) * p);
+        out.push({ x: hx, y: hy, color: [255, 150, 70] });
+      } else if (f.kind === 'ring') {
+        // explosion: a bright flash that pops, then fades over the first ~60%
+        const k = Math.max(0, 1 - p * 1.6);
+        if (k > 0.03) out.push({ x: f.x, y: f.y, color: [255 * k, 175 * k, 90 * k] });
+      } else {
+        // hit spark: a small, brief white flash
+        const k = p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.5);
+        if (k > 0.03) out.push({ x: f.x, y: f.y, color: [150 * k, 150 * k, 160 * k] });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Color a visible tile: multiply the base glyph color by (ambient + computed
+   * light) so sources tint and brighten their surroundings. `effR` shapes the
+   * ambient edge-fade; `entity` uses the flat readability floor.
+   */
+  private litVis(color: string, i: number, effR: number, entity = false) {
+    const lm = this.lightMap;
+    if (!lm) return color; // no light computed yet (pre-first-render); unreachable in practice
+    const L = lm.get(i);
+    // Fade ONLY the ambient floor with distance, leaving the computed light
+    // (the torch pool + colored sources) intact — so the pool keeps its clean
+    // falloff while the flat ambient no longer forms a lit plateau that meets
+    // the vision edge on a hard line (or lets you see far into the dark).
+    // Entities keep a constant ambient floor so they stay legible in the dark.
+    let amb: [number, number, number];
+    if (entity) {
+      amb = AMBIENT_ENTITY;
+    } else {
+      // Ease the ambient from the biome's center tint (player) to its edge
+      // tint (~fog level) at the vision edge — bright-ish near you, never
+      // dropping below the explored-memory brightness, so the FOV rim blends
+      // into the remembered tiles instead of forming a black ring.
+      const ex = i % this.litW;
+      const ey = Math.floor(i / this.litW);
+      const d = Math.hypot(ex - this.litPX, ey - this.litPY);
+      const t = Math.min(1, d / Math.max(1, effR));
+      const af = 1 - t * t * (3 - 2 * t); // 1 at player → 0 at the vision edge
+      const c = this.ambCenter;
+      const e = this.ambEdge;
+      amb = [
+        e[0] + (c[0] - e[0]) * af,
+        e[1] + (c[1] - e[1]) * af,
+        e[2] + (c[2] - e[2]) * af,
+      ];
+    }
+    const total: [number, number, number] = [
+      Math.min(255, amb[0] + (L ? L[0] : 0)),
+      Math.min(255, amb[1] + (L ? L[1] : 0)),
+      Math.min(255, amb[2] + (L ? L[2] : 0)),
+    ];
+    return ROT.Color.toHex(
+      ROT.Color.multiply(ROT.Color.fromString(color), total),
+    );
   }
 
   private renderBase(state: GameState) {
@@ -507,6 +580,20 @@ export class CanvasRenderer {
       : Math.sin(now * 0.005) * 0.5 + Math.sin(now * 0.013) * 0.3;
     const effR = Math.max(2, player.lightRadius + flicker);
 
+    // colored multi-source light for this frame (see ./lighting)
+    const amb = ambientForBiome(level.biome);
+    this.ambCenter = amb.center;
+    this.ambEdge = amb.edge;
+    this.lightMap = computeLightMap(
+      state,
+      now,
+      this.reduceMotion,
+      this.fxLights(now),
+    );
+    this.litPX = player.x;
+    this.litPY = player.y;
+    this.litW = map.width;
+
     this.display.clear();
 
     // terrain within the viewport window
@@ -528,14 +615,7 @@ export class CanvasRenderer {
           glyph = '^';
           color = '#e0904a';
         }
-        color = isVis
-          ? this.lit(
-              color,
-              chebyshev(wx, wy, player.x, player.y),
-              effR,
-              EDGE_MIN_TERRAIN,
-            )
-          : dim(color, FOG_DIM);
+        color = isVis ? this.litVis(color, i, effR) : dim(color, FOG_DIM);
         // living terrain: water shimmers, marsh reeds sway (per-tile phase)
         if (isVis && !this.reduceMotion) {
           if (t === 'water')
@@ -573,7 +653,9 @@ export class CanvasRenderer {
       const sx = bx - camX;
       const sy = by - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
-      const pulse = this.reduceMotion ? 0.7 : 0.45 + 0.4 * Math.abs(Math.sin(now * 0.012));
+      const pulse = this.reduceMotion
+        ? 0.7
+        : 0.45 + 0.4 * Math.abs(Math.sin(now * 0.012));
       const bg = dim('#7a1512', pulse);
       this.display.draw(sx, sy, '✷', dim('#ff6a4a', 0.6 + 0.4 * pulse), bg);
     }
@@ -588,12 +670,7 @@ export class CanvasRenderer {
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const base = a.used ? '#6a6a6a' : '#d6a4ff';
       const color = isVis
-        ? this.lit(
-            base,
-            chebyshev(a.x, a.y, player.x, player.y),
-            effR,
-            EDGE_MIN_ENTITY,
-          )
+        ? this.litVis(base, i, effR, true)
         : dim(base, FOG_DIM);
       this.display.draw(sx, sy, '‡', color, null);
     }
@@ -605,12 +682,7 @@ export class CanvasRenderer {
       const sy = it.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const def = ITEMS[it.defId];
-      const color = this.lit(
-        def.color,
-        chebyshev(it.x, it.y, player.x, player.y),
-        effR,
-        EDGE_MIN_ENTITY,
-      );
+      const color = this.litVis(def.color, idx(it.x, it.y, map.width), effR, true);
       this.display.draw(sx, sy, def.glyph, color, null);
     }
 
@@ -625,12 +697,7 @@ export class CanvasRenderer {
       // champion color; else the monster's own color
       const baseColor =
         statusTint(m.effects) ?? (m.elite ? ELITE[m.elite].color : def.color);
-      const color = this.lit(
-        baseColor,
-        chebyshev(m.x, m.y, player.x, player.y),
-        effR,
-        EDGE_MIN_ENTITY,
-      );
+      const color = this.litVis(baseColor, idx(m.x, m.y, map.width), effR, true);
       this.display.draw(sx, sy, def.glyph, color, null);
     }
 
@@ -648,10 +715,10 @@ export class CanvasRenderer {
   }
 
   /**
-   * The transparent overlay atop the rot.js canvas carries two effects, painted
-   * each frame and kept aligned/scrolled with the base:
-   *   1. a soft warm torch-glow around the player + pools cast by fire tiles
-   *      (additive light — softens the hard per-cell falloff), then
+   * The transparent overlay atop the rot.js canvas, painted each frame and kept
+   * aligned/scrolled with the base:
+   *   1. additive bloom on bright sources + per-biome atmosphere + decals, all
+   *      clipped together to the visible area so nothing bleeds past walls, then
    *   2. cracked-wall knockout fissures in the background color (see below).
    */
   private paintOverlay(
@@ -680,9 +747,10 @@ export class CanvasRenderer {
     const cw = overlay.width / this.cols;
     const ch = overlay.height / this.rows;
 
-    // 1) soft torch-glow + biome atmosphere, then clipped to the visible area
-    // together so neither bleeds into the dark past the walls
-    this.paintGlow(ctx, state, camX, camY, effR, visible, cw, ch);
+    // 1) additive bloom halos on the brightest sources + biome atmosphere, then
+    // clipped to the visible area so neither bleeds into the dark past the walls.
+    // (The per-tile light map already provides the torch/ambient glow.)
+    this.paintBloom(ctx, state, camX, camY, visible, cw, ch);
     this.paintAtmosphere(
       ctx,
       LEVELS[state.currentLevel].biome,
@@ -711,7 +779,11 @@ export class CanvasRenderer {
     if (this.crackAny) {
       const { map } = state;
       const palette = LEVELS[state.currentLevel].palette;
-      const wallBase = terrainColor('crackedWall', palette, LEVELS[state.currentLevel].biome);
+      const wallBase = terrainColor(
+        'crackedWall',
+        palette,
+        LEVELS[state.currentLevel].biome,
+      );
       const player = state.player;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -727,12 +799,7 @@ export class CanvasRenderer {
           // the crack is the wall's own color, darker — a shadowed fracture
           // that stays legible under the torch glow (vs. a flat knockout)
           const shown = isVis
-            ? this.lit(
-                wallBase,
-                chebyshev(wx, wy, player.x, player.y),
-                effR,
-                EDGE_MIN_TERRAIN,
-              )
+            ? this.litVis(wallBase, i, effR)
             : dim(wallBase, FOG_DIM);
           ctx.strokeStyle = dim(shown, CRACKED_WALL_CRACK_DIM);
           drawFissure(ctx, sx * cw, sy * ch, cw, ch, i);
@@ -741,55 +808,70 @@ export class CanvasRenderer {
     }
   }
 
-  /** A warm radial glow on the player (scaled to their light radius) plus a
-   * smaller pool under each visible fire tile, blended additively. */
-  private paintGlow(
+
+  /** Subtle additive bloom on the brightest sources — fire, the Sunblade, and
+   * in-flight bolts — as a soft radial-gradient glow (wide, smooth falloff, no
+   * hard core), blended with `lighter` so those things radiate. Painted before
+   * the visible-clip so it never bleeds past walls. */
+  private paintBloom(
     ctx: CanvasRenderingContext2D,
     state: GameState,
     camX: number,
     camY: number,
-    effR: number,
     visible: Set<number>,
     cw: number,
     ch: number,
   ) {
     const now = this.reduceMotion ? 0 : performance.now();
-    const player = state.player;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter'; // light adds, it doesn't occlude
-
-    const px = (player.x - camX + 0.5) * cw;
-    const py = (player.y - camY + 0.5) * ch;
-    const flick = this.reduceMotion
-      ? 1
-      : 0.94 + 0.06 * Math.sin(now * 0.006) + 0.04 * Math.sin(now * 0.017);
-    // a lit torch makes the glow bloom brighter/warmer; bare light is a faint ember
-    const boost = player.hasTorch ? 1 : GLOW_UNLIT;
-    const radius = Math.max(cw * 2.5, effR * cw * GLOW_RADIUS_SCALE * flick);
-    const g = ctx.createRadialGradient(px, py, cw * 0.3, px, py, radius);
-    // concentrated near the player, falling off fast so distance reads clearly
-    g.addColorStop(0, `rgba(255, 182, 108, ${0.17 * boost})`);
-    g.addColorStop(0.4, `rgba(255, 150, 72, ${0.055 * boost})`);
-    g.addColorStop(0.75, `rgba(255, 140, 60, ${0.012 * boost})`);
-    g.addColorStop(1, 'rgba(255, 140, 60, 0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
-
     const w = state.map.width;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // a soft light bloom: bright-ish center easing smoothly to transparent
+    const glow = (sx: number, sy: number, hex: string, radius: number, peak: number) => {
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+      g.addColorStop(0, rgba(hex, peak));
+      g.addColorStop(0.35, rgba(hex, peak * 0.4));
+      g.addColorStop(0.7, rgba(hex, peak * 0.1));
+      g.addColorStop(1, rgba(hex, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(sx - radius, sy - radius, radius * 2, radius * 2);
+    };
+
+    // lingering fire — flickering orange bloom per tile
     for (const f of state.fireTiles) {
       if (!visible.has(f.i)) continue;
       const fx = ((f.i % w) - camX + 0.5) * cw;
       const fy = (Math.floor(f.i / w) - camY + 0.5) * ch;
-      const wob = this.reduceMotion
-        ? 0
-        : 0.5 * Math.abs(Math.sin(now * 0.02 + f.i));
-      const fr = cw * (1.7 + wob);
-      const fg = ctx.createRadialGradient(fx, fy, cw * 0.2, fx, fy, fr);
-      fg.addColorStop(0, 'rgba(255, 140, 50, 0.18)');
-      fg.addColorStop(1, 'rgba(255, 120, 40, 0)');
-      ctx.fillStyle = fg;
-      ctx.fillRect(fx - fr, fy - fr, fr * 2, fr * 2);
+      const flick = this.reduceMotion
+        ? 0.85
+        : 0.62 + 0.38 * Math.abs(Math.sin(now * 0.02 + f.i));
+      glow(fx, fy, '#ff8a30', cw * 2.6, 0.15 * flick);
     }
+
+    // the Sunblade on the ground — a gently pulsing gold radiance
+    for (const it of state.items) {
+      if (ITEMS[it.defId]?.questTag !== 'sunblade') continue;
+      if (!visible.has(idx(it.x, it.y, w))) continue;
+      const sx = (it.x - camX + 0.5) * cw;
+      const sy = (it.y - camY + 0.5) * ch;
+      const pulse = this.reduceMotion ? 0.9 : 0.82 + 0.18 * Math.sin(now * 0.004);
+      glow(sx, sy, '#ffe14d', cw * 3.2, 0.2 * pulse);
+    }
+
+    // in-flight bolts — a warm bloom on the projectile head. Round to the same
+    // cell the head glyph is drawn at (see the projectile FX in `tick`) so the
+    // glow sits exactly under the bolt instead of sliding sub-cell ahead of it.
+    for (const f of this.fx) {
+      if (f.kind !== 'projectile' || now < f.t0) continue;
+      const p = clamp((now - f.t0) / f.dur, 0, 1);
+      const hx = Math.round(f.fromX + (f.toX - f.fromX) * p);
+      const hy = Math.round(f.fromY + (f.toY - f.fromY) * p);
+      const bx = (hx - camX + 0.5) * cw;
+      const by = (hy - camY + 0.5) * ch;
+      glow(bx, by, '#ff9d3c', cw * 2.0, 0.18);
+    }
+
     ctx.restore();
   }
 
