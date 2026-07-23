@@ -1,6 +1,6 @@
 import type { Biome } from "@/game/core/types";
 
-// ── Gradients (multi-stop; painted over aligned monospace art via AsciiArt) ──
+// ── Gradients (multi-stop; clipped onto the gradient-caps titles + wordmark) ──
 // Two halves of one ember gradient — EMBER (top) flows into DAWN (bottom).
 export const G_EMBER =
   "linear-gradient(180deg,#fff2b0 0%,#ffd24d 45%,#ff9d3c 100%)";
@@ -25,22 +25,6 @@ export const G_DAWN =
 export const G_DEATH =
   "linear-gradient(180deg,#9aa1a9 0%,#7a4b4b 52%,#2a1414 100%)";
 
-// ── Title (figlet "Standard") — EMBER and DAWN as separate blocks so each can
-// be centered independently while its own columns stay left-aligned. ──────────
-export const EMBER_ART = String.raw`
- _____ __  __ ____  _____ ____
-| ____|  \/  | __ )| ____|  _ \
-|  _| | |\/| |  _ \|  _| | |_) |
-| |___| |  | | |_) | |___|  _ <
-|_____|_|  |_|____/|_____|_| \_\
-`;
-export const DAWN_ART = String.raw`
- ____    ___        ___   _
-|  _ \  / \ \      / / \ | |
-| | | |/ _ \ \ /\ / /|  \| |
-| |_| / ___ \ V  V / | |\  |
-|____/_/   \_\_/\_/  |_| \_|
-`;
 export const SUBTITLE = "A ROGUELIKE QUEST";
 
 // Biome → chapter-title gradient (paints the narration title). The throne now

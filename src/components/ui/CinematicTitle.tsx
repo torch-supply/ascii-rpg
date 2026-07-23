@@ -48,7 +48,7 @@ export function CinematicTitle({
   return (
     <div className="narr-rise flex flex-col items-center gap-5">
       <h2
-        className={`text-balance font-semibold uppercase leading-tight tracking-[0.2em] ${
+        className={`whitespace-pre-line text-balance font-semibold uppercase leading-tight tracking-[0.2em] ${
           gradient && shimmer ? "ascii-shimmer" : ""
         } ${className}`}
         style={style}

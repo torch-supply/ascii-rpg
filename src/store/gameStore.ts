@@ -1,7 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 
-import type { GameState, PlayerAction, AltarInstance, TurnResult } from "@/game/core/types";
+import type { GameState, PlayerAction, AltarInstance, TurnResult, Biome } from "@/game/core/types";
 import { Rng } from "@/game/core/rng";
 import { resolveTurn } from "@/game/core/actions";
 import { applyAltar } from "@/game/core/altar";
@@ -64,6 +64,8 @@ export interface NarrationData {
   artGradient?: string;
   /** chapter accent (divider + flat-title fallback) — biome palette accent */
   accent?: string;
+  /** biome for the narration's scene ASCII-field background */
+  biome?: Biome;
   onContinue: "beginPlay" | "nextLevel" | "restartLevel" | "victory";
   buttonLabel: string;
 }
@@ -251,10 +253,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
       game: { ...game },
       mode: "narration",
       narration: {
-        title: `${LEVELS[game.currentLevel].title} — cleared`,
+        title: `${LEVELS[game.currentLevel].title}\ncleared`,
         body: LEVELS[game.currentLevel].narration,
         artGradient: BIOME_GRADIENT[LEVELS[nextIdx].biome],
         accent: LEVELS[nextIdx].palette.accent,
+        biome: LEVELS[nextIdx].biome,
         onContinue: "nextLevel",
         buttonLabel: `Onward — ${LEVELS[nextIdx].title}`,
       },
@@ -284,6 +287,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         title: "You Fall",
         body: `Darkness swallows you.\n\nBut the quest is not yet ended. You draw breath, and rise once more.\n\nLives remaining: ${game.player.lives}`,
         accent: "#ff5a5a",
+        biome: LEVELS[game.currentLevel].biome,
         onContinue: "restartLevel",
         buttonLabel: "Rise",
       },
@@ -332,6 +336,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
           body: OPENING.body,
           artGradient: OPENING.gradient,
           accent: LEVELS[0].palette.accent,
+          biome: LEVELS[0].biome,
           onContinue: "beginPlay",
           buttonLabel: "Descend into the pit",
         },

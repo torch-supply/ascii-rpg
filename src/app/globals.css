@@ -199,6 +199,20 @@ body {
   animation: narrRise 700ms ease-out both;
 }
 
+/* Victory "dawn": the gold field + glow rise from near-dark to full on mount,
+   like the sun cresting. A one-time eased brighten (not a loop). */
+@keyframes dawnRise {
+  from {
+    opacity: 0.1;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.dawn-rise {
+  animation: dawnRise 2400ms ease-out both;
+}
+
 /* Title shimmer: a bright band sweeps across the letters over the ember base.
    The moving layer is background layer 1; the ember gradient (layer 2) is fixed. */
 @keyframes titleShimmer {
@@ -217,23 +231,12 @@ body {
   .ember-flicker,
   .ascii-shimmer,
   .intro-card,
-  .narr-rise {
+  .narr-rise,
+  .dawn-rise {
     animation: none;
   }
   .ember-spark,
   .dmg-num {
     display: none;
   }
-}
-
-/* Preserve ASCII art whitespace + tight, aligned rows */
-.ascii {
-  white-space: pre;
-  line-height: 1;
-  font-family: var(--font-mono);
-  display: inline-block; /* gradient background-clip maps to the art box */
-  /* Critical: parents use text-align:center, which would otherwise center
-     each line individually and break column alignment. The box stays centered
-     by the flex container; the characters inside must line up. */
-  text-align: left;
 }

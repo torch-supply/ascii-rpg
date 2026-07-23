@@ -1,122 +1,136 @@
 "use client";
 
 import { gameStore, useGameStore, DEV } from "@/store/gameStore";
-import { EMBER_ART, DAWN_ART, G_EMBER, G_DAWN_TITLE, SUBTITLE } from "@/content/ascii";
+import { G_EMBER, G_DAWN_TITLE, SUBTITLE } from "@/content/ascii";
 import { LEVELS } from "@/content/levels";
 import { MenuButton } from "@/components/ui/MenuButton";
-import { AsciiArt } from "@/components/ui/AsciiArt";
 import { AccentDivider } from "@/components/ui/AccentDivider";
-import { Embers } from "@/components/ui/Embers";
+import { AsciiField } from "@/components/ui/AsciiField";
+import { BoxFrame } from "@/components/ui/BoxFrame";
 import { SoundToggle } from "@/components/ui/SoundToggle";
 
 export default function Splash() {
   const hasSave = useGameStore((s) => s.hasSave);
   const saveInfo = useGameStore((s) => s.saveInfo);
   const startNew = () => {
-    if (
-      hasSave &&
-      !window.confirm("Start a new game? This erases your saved run.")
-    ) {
+    if (hasSave && !window.confirm("Start a new game? This erases your saved run.")) {
       return;
     }
-    gameStore.getState().setMode("classSelect"); // pick a class, then descend
+    gameStore.getState().setMode("classSelect");
   };
 
   return (
-    <div className="crt-vignette absolute inset-0 z-20 flex flex-col items-center justify-center gap-7 overflow-auto bg-ink px-6 py-10 text-center">
-      <SoundToggle className="absolute right-4 top-4 z-30" />
-      {/* hero: the wordmark over a soft ember glow + drifting sparks, capped by
-         the same ◈ divider the rest of the game uses */}
-      <div className="narr-rise relative flex flex-col items-center gap-1 px-6 pt-8">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-0"
-          style={{
-            background:
-              "radial-gradient(58% 55% at 50% 40%, rgba(255,140,45,0.16), transparent 70%)",
-          }}
-        />
-        <Embers />
-        <div className="ember-flicker relative z-10 flex flex-col items-center gap-1">
-          <AsciiArt art={EMBER_ART} gradient={G_EMBER} shimmer className="text-[11px] sm:text-base" />
-          <div className="text-sm italic text-[#ff8c00] sm:text-base">of</div>
-          <AsciiArt
-            art={DAWN_ART}
-            gradient={G_DAWN_TITLE}
-            shimmer
-            className="-mt-[18px] text-[11px] sm:text-base"
-          />
-        </div>
-        <div className="relative z-10 mt-3 text-[11px] tracking-[0.4em] text-dim sm:text-xs">
-          {SUBTITLE}
-        </div>
-        <AccentDivider accent="#ffb347" className="relative z-10 mt-4" />
-      </div>
-
-      <p
-        className="narr-rise max-w-md text-balance text-sm leading-relaxed text-dim"
-        style={{ animationDelay: "200ms" }}
-      >
-        Escape the pit. Cross the cursed land. Recover the Sunblade. End the
-        Lich-King Malachar — and rekindle the dawn.
-      </p>
-
+    <div className="absolute inset-0 z-20 flex items-center justify-center overflow-auto bg-ink px-6 py-10">
+      {/* procedural ember ASCII field — denser toward the floor, with rising sparks */}
+      <AsciiField mode="abstract" biome="pit" bottom intensity={0.24} />
+      {/* warm hearth-light over the field + a vignette that pulls focus to center */}
       <div
-        className="narr-rise flex flex-col items-center gap-3"
-        style={{ animationDelay: "340ms" }}
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)",
+        }}
+      />
+
+      <SoundToggle className="absolute right-4 top-4 z-30" />
+
+      <BoxFrame
+        accent="#ffb347"
+        chip="#0c0c0e"
+        className="narr-rise z-10 flex flex-col items-center gap-6 text-center"
+        style={{ background: "rgba(9,9,12,0.5)", padding: "48px 62px" }}
       >
-        {hasSave && saveInfo && (
-          <MenuButton accent autoFocus onClick={() => gameStore.getState().resumeGame()}>
-            ▸ Resume
-            <span className="ml-1 text-xs opacity-80">
-              — Level {saveInfo.level + 1}: {saveInfo.title} · turn{" "}
-              {saveInfo.turn}
-            </span>
+        {/* 2a — gradient-caps wordmark, consistent with every other screen title */}
+        <div className="ember-flicker flex flex-col items-center gap-0">
+          <h1
+            className="m-0 text-5xl font-semibold uppercase leading-none tracking-[0.12em] sm:text-6xl"
+            style={{
+              textIndent: "0.12em",
+              backgroundImage: G_EMBER,
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              color: "transparent",
+            }}
+          >
+            Ember
+          </h1>
+          <div className="my-0.5 text-base italic text-[#ff8c00]">of</div>
+          <h1
+            className="m-0 text-5xl font-semibold uppercase leading-none tracking-[0.12em] sm:text-6xl"
+            style={{
+              textIndent: "0.12em",
+              backgroundImage: G_DAWN_TITLE,
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              color: "transparent",
+            }}
+          >
+            Dawn
+          </h1>
+        </div>
+
+        <div className="text-[11px] tracking-[0.4em] text-dim sm:text-xs">{SUBTITLE}</div>
+        <AccentDivider accent="#ffb347" />
+
+        <p className="max-w-sm text-balance text-sm leading-relaxed text-dim">
+          Escape the pit. Cross the cursed land. Recover the Sunblade. End the
+          Lich-King Malachar — and rekindle the dawn.
+        </p>
+
+        <div className="flex flex-col items-center gap-3">
+          {hasSave && saveInfo && (
+            <MenuButton accent autoFocus onClick={() => gameStore.getState().resumeGame()}>
+              ▸ Resume
+              <span className="ml-1 text-xs opacity-80">
+                — Level {saveInfo.level + 1}: {saveInfo.title} · turn {saveInfo.turn}
+              </span>
+            </MenuButton>
+          )}
+          <MenuButton autoFocus={!hasSave} onClick={startNew}>
+            ▸ New Game
+            {hasSave && <span className="ml-1 text-xs text-dim">(overwrites save)</span>}
           </MenuButton>
+        </div>
+
+        {DEV && (
+          <div className="pointer-events-auto flex flex-col items-center gap-1.5 border border-edge/60 px-4 py-3">
+            <div className="text-[10px] uppercase tracking-[0.3em] text-edge">
+              dev · jump to level (kitted-out)
+            </div>
+            <div className="flex max-w-[85vw] flex-wrap justify-center gap-1">
+              {LEVELS.map((lvl, i) => (
+                <button
+                  key={lvl.id}
+                  title={lvl.title}
+                  onClick={() => gameStore.getState().debugJumpTo(i)}
+                  className="border border-edge px-2 py-1 text-[11px] text-dim transition-colors hover:border-gold hover:text-gold"
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] text-edge">
+              in play: press <span className="text-dim">&gt;</span> to skip to the next level
+            </div>
+          </div>
         )}
 
-        <MenuButton autoFocus={!hasSave} onClick={startNew}>
-          ▸ New Game
-          {hasSave && (
-            <span className="ml-1 text-xs text-dim">(overwrites save)</span>
-          )}
-        </MenuButton>
-      </div>
-
-      {DEV && (
-        <div
-          className="narr-rise pointer-events-auto flex flex-col items-center gap-1.5 border border-edge/60 px-4 py-3"
-          style={{ animationDelay: "440ms" }}
-        >
-          <div className="text-[10px] uppercase tracking-[0.3em] text-edge">
-            dev · jump to level (kitted-out)
-          </div>
-          <div className="flex max-w-[85vw] flex-wrap justify-center gap-1">
-            {LEVELS.map((lvl, i) => (
-              <button
-                key={lvl.id}
-                title={lvl.title}
-                onClick={() => gameStore.getState().debugJumpTo(i)}
-                className="border border-edge px-2 py-1 text-[11px] text-dim transition-colors hover:border-gold hover:text-gold"
-              >
-                {i + 1}
-              </button>
-            ))}
-          </div>
-          <div className="text-[10px] text-edge">
-            in play: press <span className="text-dim">&gt;</span> to skip to the
-            next level
-          </div>
-        </div>
-      )}
-
-      <p
-        className="narr-rise max-w-md text-balance text-xs text-dim"
-        style={{ animationDelay: "520ms" }}
-      >
-        v1 · {LEVELS.length} levels · move with arrows or wasd · bump to attack ·
-        find the way, then live to tell it
-      </p>
+        <p className="max-w-sm text-balance text-xs text-dim">
+          v1 · {LEVELS.length} levels · move with arrows or wasd · bump to attack ·
+          find the way, then live to tell it
+        </p>
+      </BoxFrame>
     </div>
   );
 }

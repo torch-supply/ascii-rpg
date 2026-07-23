@@ -145,6 +145,68 @@ function farthestCell(
   return best === -1 ? null : best;
 }
 
+/** Count open tiles reachable from `from`, optionally treating `blockIdx` as
+ * solid. Used to test whether occupying a cell severs part of the map. */
+function openFloodCount(map: GameMap, from: Pos, blockIdx: number): number {
+  const w = map.width;
+  const h = map.height;
+  const seen = new Uint8Array(w * h);
+  const start = idx(from.x, from.y, w);
+  seen[start] = 1;
+  let count = 1;
+  const stack = [start];
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    const cx = cur % w;
+    const cy = Math.floor(cur / w);
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (seen[ni] || ni === blockIdx || !isOpenTile(map.tiles[ni])) continue;
+      seen[ni] = 1;
+      count++;
+      stack.push(ni);
+    }
+  }
+  return count;
+}
+
+/**
+ * Like `farthestCell`, but skips any cell whose occupation would cut the map in
+ * two — so a reachLocation exit is never planted mid-corridor as the sole
+ * gateway to an unexplored area (stepping on it ends the level, so that area
+ * would be unreachable). Prefers the farthest such non-articulation cell; falls
+ * back to the plain farthest cell if somehow none qualify.
+ */
+function farthestSafeCell(
+  floors: number[],
+  occupied: Set<number>,
+  w: number,
+  from: Pos,
+  map: GameMap
+): number | null {
+  const cands = floors
+    .filter((i) => !occupied.has(i))
+    .map((i) => ({ i, d: manhattan(i % w, Math.floor(i / w), from.x, from.y) }))
+    .sort((a, b) => b.d - a.d);
+  if (cands.length === 0) return null;
+  // A cell is "safe" if blocking it leaves every OTHER open tile still reachable
+  // — i.e. the flood loses exactly that one cell (full − 1), not a whole region.
+  const full = openFloodCount(map, from, -1);
+  for (const { i } of cands) {
+    if (openFloodCount(map, from, i) === full - 1) return i;
+  }
+  return cands[0].i;
+}
+
 /** Convert floor cells into water blobs (impassable). Done BEFORE computing the
  * connected component, so any pockets water seals off are simply never used. */
 function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number) {
@@ -647,9 +709,11 @@ export function generateLevel(
   const playerStart: Pos = { x: startIdx % w, y: Math.floor(startIdx / w) };
   occupied.add(startIdx);
 
-  // Exit (reachLocation goal): the floor cell farthest from the player.
+  // Exit (reachLocation goal): the farthest floor cell that isn't a chokepoint
+  // gating the only path to some area — stepping on the exit ends the level, so
+  // it must never wall off a reachable region behind it.
   if (config.goal.type === "reachLocation") {
-    const exitIdx = farthestCell(floors, occupied, w, playerStart);
+    const exitIdx = farthestSafeCell(floors, occupied, w, playerStart, map);
     if (exitIdx !== null) {
       tiles[exitIdx] = "exit";
       map.exit = { x: exitIdx % w, y: Math.floor(exitIdx / w) };
