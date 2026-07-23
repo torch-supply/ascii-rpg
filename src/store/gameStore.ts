@@ -338,7 +338,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
           accent: LEVELS[0].palette.accent,
           biome: LEVELS[0].biome,
           onContinue: "beginPlay",
-          buttonLabel: "Descend into the pit",
+          buttonLabel: "Wake",
         },
       });
     },

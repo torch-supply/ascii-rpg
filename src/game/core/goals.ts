@@ -1,4 +1,5 @@
 import { LEVELS } from "@/content/levels";
+import { MONSTERS } from "@/content/monsters";
 import type { GameState, GoalConfig } from "./types";
 
 export function goalConfigFor(state: GameState): GoalConfig {
@@ -23,8 +24,9 @@ export function goalLabel(state: GameState): string {
     case "findItem":
       return goal.questTag === "sunblade" ? "Find the Sunblade (*)" : `Find the ${goal.questTag}`;
     case "killTarget": {
+      const name = MONSTERS[goal.monsterId]?.name ?? "the guardian";
       const alive = state.monsters.some((m) => m.isGoalTarget);
-      return alive ? "Slay the guardian" : "Guardian slain!";
+      return alive ? `Slay ${name}` : `${name} — slain!`;
     }
     case "killCount": {
       const have = Math.min(state.levelKills, goal.count);

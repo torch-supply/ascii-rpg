@@ -2,6 +2,7 @@
 
 import { gameStore } from "@/store/gameStore";
 import { MenuButton } from "@/components/ui/MenuButton";
+import { BoxFrame } from "@/components/ui/BoxFrame";
 
 const ROWS: [string, string][] = [
   ["↑ ↓ ← →  /  w a s d", "Move (bump a monster to attack it)"],
@@ -18,7 +19,12 @@ const ROWS: [string, string][] = [
 export default function HelpModal() {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-ink/80 px-4">
-      <div className="flex w-full max-w-lg flex-col gap-4 border border-edge bg-panel px-7 py-6">
+      <BoxFrame
+        accent="#ffb347"
+        chip="#0c0c0e"
+        className="flex w-full max-w-lg flex-col gap-4"
+        style={{ background: "rgba(16,16,20,0.94)", padding: "26px 30px" }}
+      >
         <h2 className="text-balance text-center text-lg uppercase tracking-[0.3em] text-gold">
           How to Play
         </h2>
@@ -51,7 +57,7 @@ export default function HelpModal() {
             ▸ Back
           </MenuButton>
         </div>
-      </div>
+      </BoxFrame>
     </div>
   );
 }

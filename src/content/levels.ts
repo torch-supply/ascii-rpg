@@ -14,7 +14,7 @@ import type { LevelConfig } from "@/game/core/types";
 export const LEVELS: LevelConfig[] = [
   {
     id: "dungeon_depths",
-    title: "The Dungeon Depths",
+    title: "The Pit",
     biome: "dungeon",
     palette: { wall: "#6b6b7c", floor: "#3b3b46", accent: "#ffe14d" },
     mapWidth: 40,
