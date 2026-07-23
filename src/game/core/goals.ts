@@ -1,5 +1,6 @@
 import { LEVELS } from "@/content/levels";
 import { MONSTERS } from "@/content/monsters";
+import { ITEMS } from "@/content/items";
 import type { GameState, GoalConfig } from "./types";
 
 export function goalConfigFor(state: GameState): GoalConfig {
@@ -19,10 +20,17 @@ export function goalLabel(state: GameState): string {
         sigil: "Dusk Sigils",
       };
       const name = names[goal.questTag] ?? goal.questTag;
-      return `Collect ${name} — ${have}/${goal.count}`;
+      // Append the collectible's real map glyph (moonstone/sigil render as "*").
+      const def = Object.values(ITEMS).find((d) => d.questTag === goal.questTag);
+      const glyph = def ? ` (${def.glyph})` : "";
+      return `Collect ${name}${glyph} — ${have}/${goal.count}`;
     }
-    case "findItem":
-      return goal.questTag === "sunblade" ? "Find the Sunblade (*)" : `Find the ${goal.questTag}`;
+    case "findItem": {
+      // Show the item's real map glyph (and name), so the hint matches what the
+      // player actually sees on the ground — e.g. the Sunblade renders as "/".
+      const def = Object.values(ITEMS).find((d) => d.questTag === goal.questTag);
+      return def ? `Find ${def.name} (${def.glyph})` : `Find the ${goal.questTag}`;
+    }
     case "killTarget": {
       const name = MONSTERS[goal.monsterId]?.name ?? "the guardian";
       const alive = state.monsters.some((m) => m.isGoalTarget);
