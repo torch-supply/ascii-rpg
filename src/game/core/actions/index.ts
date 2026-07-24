@@ -926,7 +926,9 @@ function tickFlood(state: GameState, events: GameEvent[]) {
         const ni = idx(nx, ny, w);
         if (
           floodable.has(ni) &&
-          map.tiles[ni] === "floor" &&
+          // floor floods; water flows THROUGH an open door, but a door pulled
+          // shut ([c]) holds it back (it's no longer "doorOpen" here)
+          (map.tiles[ni] === "floor" || map.tiles[ni] === "doorOpen") &&
           !occupied.has(ni)
         ) {
           front.push(ni);
@@ -1836,7 +1838,7 @@ function actMonster(
 /** Spawn up to `count` monsters (from the level's spawn table) on a ring around
  * the player — close enough to close in within a few turns, never on top of you
  * or another monster. Respects a concurrent `cap`. Returns how many spawned.
- * Shared by the survive siege and by overtime pressure. */
+ * Drives the survive-level siege (`maybeReinforce`). */
 function spawnWave(
   state: GameState,
   rng: Rng,
@@ -1911,38 +1913,6 @@ function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
   const spawned = spawnWave(state, rng, waveSize, siege.cap);
   if (spawned > 1) msg(events, "The dead swarm the wall!");
   else if (spawned === 1) msg(events, "More of the dead surge onto the wall.");
-}
-
-/** Once a (non-survive) level's turn budget runs out, the clock stops being a
- * hard death and becomes rising danger: reinforcements close in, faster and in
- * bigger waves the longer you overstay. You die to monsters, not a timer. */
-function applyOvertimePressure(
-  state: GameState,
-  rng: Rng,
-  events: GameEvent[],
-) {
-  const config = LEVELS[state.currentLevel];
-  if (config.goal.type === "survive") return; // its own siege already drives this
-  if (state.turnsLeft > 0) return; // still within the turn budget
-  const ot = CONFIG.overtime;
-  const over = -state.turnsLeft; // 0 the moment the budget empties, then grows
-
-  if (over === 0)
-    msg(
-      events,
-      "Your time runs short — the dark stirs and begins to close in.",
-    );
-
-  const every = Math.max(
-    ot.minEvery,
-    ot.startEvery - Math.floor(over / ot.rampEvery),
-  );
-  if (state.turnCount % every !== 0) return;
-  const waveSize = 1 + Math.floor(over / ot.rampWave);
-  const spawned = spawnWave(state, rng, waveSize, ot.cap);
-  if (spawned > 1) msg(events, "The dark disgorges more hunters.");
-  else if (spawned === 1)
-    msg(events, "Something slips out of the dark after you.");
 }
 
 function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
@@ -2041,7 +2011,6 @@ export function resolveTurn(
   }
 
   maybeReinforce(state, rng, events); // survive siege
-  applyOvertimePressure(state, rng, events); // ran out the budget? the world closes in
   advanceMonsters(state, rng, events);
 
   if (state.player.hp <= 0) {

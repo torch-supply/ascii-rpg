@@ -178,11 +178,12 @@ function carveSubBiomeWing(map: GameMap, spec: SubBiomeSpec, id: number) {
 // Each region's terrain expresses its theme (and rewards a matching counter):
 // marsh water → Levitation/Rimewalk; scorched oil → Emberstep; frost ice → …
 const BIOME_HAZARDS: Partial<
-  Record<string, { type: TileType; density?: number }[]>
+  Record<string, { type: TileType; density?: number; clumps?: number }[]>
 > = {
   marsh: [{ type: "water", density: 0.16 }],
   throne: [{ type: "oil", density: 0.3 }], // scorched hollow
   mountain: [{ type: "ice", density: 0.25 }], // frozen patch
+  cavern: [{ type: "glowcap", density: 0.12 }], // bioluminescent fungi (light)
 };
 
 /** Scatter the region's hazard kit as small blobs confined to the tagged region
@@ -196,13 +197,64 @@ function scatterRegionHazards(map: GameMap, spec: SubBiomeSpec, id: number) {
   const w = map.width;
   const region = map.region;
 
-  for (const hz of hazards) {
-    const regionFloors: number[] = [];
+  const dirs4 = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const regionFloorsNow = () => {
+    const arr: number[] = [];
     for (let i = 0; i < region.length; i++) {
-      if (region[i] === id && map.tiles[i] === "floor") regionFloors.push(i);
+      if (region[i] === id && map.tiles[i] === "floor") arr.push(i);
     }
+    return arr;
+  };
+
+  for (const hz of hazards) {
+    const regionFloors = regionFloorsNow();
     if (regionFloors.length === 0) break;
     const target = Math.round(regionFloors.length * (hz.density ?? 0.15));
+    if (target <= 0) continue;
+
+    // Clustered: a few CONTIGUOUS patches grown by flood-fill from single seeds
+    // — reads as distinct "pockets" (a glowing hollow) rather than scattered dots.
+    if (hz.clumps && hz.clumps > 0) {
+      const per = Math.max(1, Math.round(target / hz.clumps));
+      for (let c = 0; c < hz.clumps; c++) {
+        const floors = regionFloorsNow();
+        if (floors.length === 0) break;
+        const seed = floors[mapInt(0, floors.length - 1)];
+        const seen = new Set<number>([seed]);
+        const q = [seed];
+        let placed = 0;
+        let qi = 0;
+        while (qi < q.length && placed < per) {
+          const cur = q[qi++];
+          if (map.tiles[cur] === "floor") {
+            map.tiles[cur] = hz.type;
+            placed++;
+          }
+          const cx = cur % w;
+          const cy = Math.floor(cur / w);
+          for (const [dx, dy] of dirs4) {
+            const ni = (cy + dy) * w + (cx + dx);
+            if (
+              ni >= 0 &&
+              ni < region.length &&
+              !seen.has(ni) &&
+              region[ni] === id &&
+              map.tiles[ni] === "floor"
+            ) {
+              seen.add(ni);
+              q.push(ni);
+            }
+          }
+        }
+      }
+      continue;
+    }
+
     let placed = 0;
     let guard = 0;
     while (placed < target && guard++ < 1000) {
@@ -396,14 +448,15 @@ function placeSecretVault(
  * margin to be clear floor, so it only ever sits in an open clearing and can
  * never sever a corridor. Skipped silently if no spot fits this seed.
  */
-function placeStructure(
+function placeOneStructure(
+  spec: NonNullable<LevelConfig["structures"]>[number],
   config: LevelConfig,
   map: GameMap,
   items: ItemInstance[],
   levelIndex: number,
+  sIndex: number,
+  main: Set<number>,
 ) {
-  const spec = config.structure;
-  if (!spec) return;
   const w = map.width;
   const h = map.height;
   const tiles = map.tiles;
@@ -416,7 +469,7 @@ function placeStructure(
 
   const cands: number[] = [];
   for (let i = 0; i < tiles.length; i++)
-    if (tiles[i] === "floor") cands.push(i);
+    if (tiles[i] === "floor" && main.has(i)) cands.push(i);
   for (let k = cands.length - 1; k > 0; k--) {
     const j = mapInt(0, k);
     [cands[k], cands[j]] = [cands[j], cands[k]];
@@ -479,7 +532,7 @@ function placeStructure(
         const cell = interior[Math.min(interior.length - 1, n)];
         const def = ITEMS[entry.itemId];
         const inst: ItemInstance = {
-          id: `it${levelIndex}_b${n}`,
+          id: `it${levelIndex}_s${sIndex}_${n}`,
           defId: entry.itemId,
           x: cell % w,
           y: Math.floor(cell / w),
@@ -491,9 +544,28 @@ function placeStructure(
         items.push(inst);
         n++;
       }
-      return; // one structure per level
+      return; // one building placed for this spec
     }
   }
+}
+
+/** Place each freestanding building in `config.structures` — several clustered
+ * reads as a hamlet. Stamped in turn, each re-scanning for its own clearing so
+ * they never overlap (a prior building's walls are no longer floor). */
+function placeStructures(
+  config: LevelConfig,
+  map: GameMap,
+  items: ItemInstance[],
+  levelIndex: number,
+  main: Set<number>,
+) {
+  const specs = config.structures;
+  if (!specs) return;
+  // Only build on the main reachable component (passed in) — a hut stranded in
+  // an isolated pocket would be sealed off later (its door + loot walled away).
+  specs.forEach((spec, i) =>
+    placeOneStructure(spec, config, map, items, levelIndex, i, main),
+  );
 }
 
 /**
@@ -525,17 +597,34 @@ function computeFloodPlan(
   }
   const floodable: number[] = [];
   for (const i of walkableReachable(map, from)) {
-    if (!protectedSet.has(i) && map.tiles[i] === "floor") floodable.push(i);
+    if (protectedSet.has(i)) continue;
+    const t = map.tiles[i];
+    // Floor floods; an OPEN door is a conduit the water flows through, so it's
+    // floodable too — but a CLOSED door holds the water back (checked live in
+    // `tickFlood`), so pulling a door shut ([c]) walls off the flood that way.
+    if (t === "floor" || t === "doorOpen") floodable.push(i);
   }
-  const seeds = floodable
+  // Origin seeds are pools, so pick from FLOOR tiles only (not doorways), spread
+  // across the whole near→far range (count scaled to area) so black water wells
+  // up ALL OVER the crypt — including just off the player's route — rather than
+  // as one distant tide. The dry spine still keeps the objective path safe.
+  const floorFloodable = floodable.filter((i) => map.tiles[i] === "floor");
+  const byDist = floorFloodable
     .slice()
     .sort(
       (a, b) =>
-        manhattan(b % w, Math.floor(b / w), from.x, from.y) -
-        manhattan(a % w, Math.floor(a / w), from.x, from.y),
-    )
-    .slice(0, 3);
-  return { floodable, seeds };
+        manhattan(a % w, Math.floor(a / w), from.x, from.y) -
+        manhattan(b % w, Math.floor(b / w), from.x, from.y),
+    ); // near → far
+  const seedCount = Math.min(
+    5,
+    Math.max(3, Math.round(floorFloodable.length / 90)),
+  );
+  const seedSet = new Set<number>();
+  for (let k = 0; k < seedCount && byDist.length; k++) {
+    seedSet.add(byDist[Math.floor(((k + 0.5) / seedCount) * byDist.length)]);
+  }
+  return { floodable, seeds: [...seedSet] };
 }
 
 function buildTiles(config: LevelConfig): TileType[] {
@@ -552,6 +641,42 @@ function buildTiles(config: LevelConfig): TileType[] {
     tiles[idx(w - 1, y, w)] = "wall";
   }
   return tiles;
+}
+
+/** The 4-connected floor component reachable from `start` (over "floor" tiles
+ * only). Used so the player + all spawns share the SAME component the
+ * freestanding huts opened onto — stamping huts can flip which component is
+ * "largest", so we anchor to a known main-area tile instead of re-taking the
+ * largest. A shut door isn't "floor", so hut interiors stay excluded. */
+function floorComponentFrom(map: GameMap, start: number): number[] {
+  const { width: w, height: h, tiles } = map;
+  if (tiles[start] !== "floor") return [];
+  const seen = new Uint8Array(w * h);
+  seen[start] = 1;
+  const comp = [start];
+  const stack = [start];
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    const cx = cur % w;
+    const cy = Math.floor(cur / w);
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (seen[ni] || tiles[ni] !== "floor") continue;
+      seen[ni] = 1;
+      comp.push(ni);
+      stack.push(ni);
+    }
+  }
+  return comp;
 }
 
 /**
@@ -1019,6 +1144,7 @@ function isOpenTile(t: TileType): boolean {
     t === "oil" ||
     t === "forage" ||
     t === "ice" ||
+    t === "glowcap" ||
     t === "crackedWall"
   );
 }
@@ -1216,11 +1342,22 @@ export function generateLevel(
 
   // Freestanding buildings are stamped BEFORE the component pass so their
   // door-sealed interiors drop out of `floors` (no spawns/items land inside).
+  // They build on the current main component; we then anchor `floors` to THAT
+  // same component — stamping huts can flip which component is "largest" on a
+  // fragmented (water-heavy) map, which would otherwise strand player and huts
+  // in different regions.
+  const mainComp = largestFloorComponent(map);
   const items: ItemInstance[] = [];
-  placeStructure(config, map, items, levelIndex);
+  placeStructures(config, map, items, levelIndex, new Set(mainComp));
 
-  // Only ever place onto the largest connected region so nothing is unreachable.
-  const floors = largestFloorComponent(map);
+  // The player + all spawns live on the component the huts opened onto (excludes
+  // their door-sealed interiors — a floor-only flood can't cross a shut door).
+  // Only re-anchor when structures were stamped; without them this equals
+  // `mainComp`, so structure-free levels keep their exact prior layouts.
+  const anchor = mainComp.find((i) => map.tiles[i] === "floor") ?? mainComp[0];
+  const floors = config.structures?.length
+    ? floorComponentFrom(map, anchor)
+    : mainComp;
 
   const occupied = new Set<number>();
   const monsters: MonsterInstance[] = [];
@@ -1385,6 +1522,10 @@ export function generateLevel(
       if (m.isGoalTarget) objectives.push({ x: m.x, y: m.y });
     for (const it of items)
       if (it.questTag) objectives.push({ x: it.x, y: it.y });
+    // Altars are interactive POIs (you step onto them to trigger the offer), so
+    // keep a dry path to each — otherwise the flood submerges the altar tile and
+    // it renders as a stranded `+` you can't reach.
+    for (const a of altars) objectives.push({ x: a.x, y: a.y });
     const plan = computeFloodPlan(map, playerStart, objectives);
     floodable = plan.floodable;
     floodSeeds = plan.seeds;

@@ -63,9 +63,9 @@ export default function HelpModal() {
         </div>
 
         <p className="text-balance text-center text-sm leading-relaxed text-dim">
-          A turn-based roguelike: the world only moves when you do. Explore in
+          A turn-based ASCII RPG: the world only moves when you do. Explore in
           the torchlight, fight what you must, and complete each level&apos;s
-          goal (shown top-right) before your turns run out.
+          goal (shown top-right) to press on toward the Throne.
         </p>
 
         {/* controls — two columns, each a key + description on a ruled row */}

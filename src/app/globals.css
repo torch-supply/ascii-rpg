@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Terminal / roguelike theme tokens (Tailwind v4 @theme -> utilities like bg-ink, text-gold) */
+/* Terminal / ASCII-RPG theme tokens (Tailwind v4 @theme -> utilities like bg-ink, text-gold) */
 @theme {
   --color-ink: #0d0d0d;
   --color-panel: #121216;

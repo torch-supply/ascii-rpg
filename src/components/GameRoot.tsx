@@ -40,7 +40,7 @@ const CANVAS_MODES = new Set([
 ]);
 
 /** Danger level (0–1) fed to the adaptive music: 0 anywhere but active play,
- * rising with low HP, a boss in view, the survive-siege progress, and overtime. */
+ * rising with low HP, a boss in view, and the survive-siege progress. */
 function dangerIntensity(s: GameStore): number {
   if (s.mode !== "playing" || !s.game) return 0;
   const g = s.game;
@@ -61,7 +61,6 @@ function dangerIntensity(s: GameStore): number {
       x,
       0.35 + 0.5 * Math.min(1, g.turnCount / (goal as { turns: number }).turns),
     );
-  else if (g.turnsLeft <= 0) x = Math.max(x, 0.6); // overtime — the dark closes in
   return Math.min(1, x);
 }
 

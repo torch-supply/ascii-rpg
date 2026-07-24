@@ -12,6 +12,7 @@ import { Rng } from "@/game/core/rng";
 import { resolveTurn } from "@/game/core/actions";
 import { applyAltar } from "@/game/core/altar";
 import { beginLevel, createPlayer, clonePlayer } from "@/game/core/state";
+import { levelParBonus } from "@/game/core/goals";
 import { giveItem } from "@/game/core/inventory";
 import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
@@ -63,6 +64,7 @@ export interface RunResult {
   kills: number;
   turns: number;
   gold: number;
+  parBonus: number; // accumulated par-time efficiency bonus (score)
   timeMs: number;
   victory: boolean;
   mutators: string[]; // active run modifiers (for score multiplier + display)
@@ -226,6 +228,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       kills: game.player.kills,
       turns: game.player.totalTurns,
       gold: game.player.goldEarned,
+      parBonus: game.player.parBonus ?? 0,
       timeMs: runPlayMs,
       victory,
       mutators: game.mutators ?? [],
@@ -252,6 +255,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
 
   const handleLevelComplete = () => {
     const game = get().game!;
+    // Par-for-score: reward clearing this level under its turn "par" (no effect
+    // on survive levels). Accrued once here, at the moment of the clear.
+    game.player.parBonus =
+      (game.player.parBonus ?? 0) +
+      levelParBonus(LEVELS[game.currentLevel], game.turnCount);
     armInputSettle(); // don't let the clearing keypress skip the cleared card
     const isLast = game.currentLevel >= LEVELS.length - 1;
     // on the final level the victory music is the payoff — skip the level-clear jingle

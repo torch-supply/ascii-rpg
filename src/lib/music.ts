@@ -179,6 +179,23 @@ const LEVEL_MOODS: Record<Biome, Track> = {
       tick: { chance: 0.12, freq: 2600, q: 1, dur: 0.03, peak: 0.03 },
     }, // low rumble + ember crackle
   },
+  cavern: {
+    root: 92.5, // deep and spacious
+    scale: MINOR_PENT,
+    stepMs: 640, // slow, unhurried — a place to linger
+    density: 0.34,
+    wave: "sine",
+    peak: 0.06,
+    droneEvery: 6,
+    droneWave: "sine",
+    sparkle: 0.2, // frequent high bells — glittering spores
+    cutoff: 900, // soft, dark timbre
+    echo: { time: 0.42, feedback: 0.44, wet: 0.4 }, // long, wet cave reverb
+    texture: {
+      bed: { filter: "lowpass", freq: 160, q: 0.8, peak: 0.05, every: 5 },
+      tick: { chance: 0.07, freq: 900, q: 8, dur: 0.18, peak: 0.035 }, // distant drips
+    },
+  },
 };
 
 // A warmer, cozier major theme for the shop — small room, faint hearth.

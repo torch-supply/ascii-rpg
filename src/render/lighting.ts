@@ -36,6 +36,9 @@ const BIOME_AMBIENT: Record<Biome, BiomeAmbient> = {
   crypt: { center: [96, 104, 96], edge: [86, 94, 88] },
   castle: { center: [102, 92, 122], edge: [90, 82, 108] },
   throne: { center: [114, 98, 94], edge: [100, 88, 84] },
+  // a dim, neutral rock cave — readable natural walls; the teal comes from the
+  // fungi's own (local) light, not the ambient
+  cavern: { center: [86, 84, 82], edge: [72, 70, 68] },
 };
 export function ambientForBiome(biome: Biome): BiomeAmbient {
   return BIOME_AMBIENT[biome] ?? BIOME_AMBIENT.dungeon;
@@ -51,6 +54,7 @@ const SUNBLADE_LIGHT: [number, number, number] = [255, 225, 120];
 const ALTAR_LIGHT: [number, number, number] = [150, 95, 225];
 const BOSS_LIGHT: [number, number, number] = [95, 40, 130]; // cold necrotic aura
 const BARRAGE_LIGHT: [number, number, number] = [215, 45, 30]; // dark-fire telegraph
+const GLOWCAP_LIGHT: [number, number, number] = [58, 168, 146]; // bioluminescent teal (soft)
 
 const LOW_FUEL = 20; // torch starts guttering at/under this (matches HUD warning)
 const REFLECTIVITY = 0.12; // how much surfaces bounce light (0–1)
@@ -124,6 +128,16 @@ export function computeLightMap(
       ? 1
       : 0.68 + 0.32 * Math.abs(Math.sin(now * 0.02 + f.i));
     lighting.setLight(f.i % w, Math.floor(f.i / w), scale(FIRE_LIGHT, ff));
+  }
+
+  // ── bioluminescent fungi — glowing teal light, each on its own gentle pulse ──
+  const tiles = map.tiles;
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] !== "glowcap") continue;
+    const gp = reduceMotion
+      ? 1
+      : 0.72 + 0.28 * Math.abs(Math.sin(now * 0.006 + i));
+    lighting.setLight(i % w, Math.floor(i / w), scale(GLOWCAP_LIGHT, gp));
   }
 
   // ── the Sunblade on the ground gives off a warm gold light ──────────────────

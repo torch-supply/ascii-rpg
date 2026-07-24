@@ -28,6 +28,7 @@ export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
     kills: 0,
     totalTurns: 0,
     goldEarned: 0,
+    parBonus: 0,
     baseLightRadius: 8,
     lightRadius: 8,
     hasTorch: false,

@@ -18,7 +18,11 @@ import { Prose } from "@/components/ui/Prose";
 type FieldBiome =
   "pit" | "forest" | "marsh" | "mountain" | "castle" | "crypt" | "throne";
 function fieldBiome(b: Biome | undefined): FieldBiome {
-  return !b || b === "dungeon" ? "pit" : b;
+  // `cavern` is only ever a sub-region, never a level biome, so it won't reach
+  // here in practice; fall it back to the crypt field art (both dark/underground).
+  if (!b || b === "dungeon") return "pit";
+  if (b === "cavern") return "crypt";
+  return b;
 }
 
 export default function Narration() {

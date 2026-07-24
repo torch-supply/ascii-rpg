@@ -66,12 +66,18 @@ export function giveItem(p: PlayerState, defId: string) {
       if ((def.reduction ?? 0) > p.armorReduction) equipArmor(p, defId);
       else addToBag(p, defId);
       break;
-    case "torch":
+    case "torch": {
+      // A torch is your light source, not a bag item — buying/finding another
+      // ADDS its fuel (extra turns to burn). Adopt the brighter one; never
+      // downgrade (a plain torch over a lantern just refuels, keeps the lantern).
+      const curBonus =
+        p.hasTorch && p.torchId ? (ITEMS[p.torchId].lightBonus ?? 0) : -1;
+      if ((def.lightBonus ?? 0) > curBonus) p.torchId = defId;
       p.hasTorch = true;
-      p.torchId = defId;
-      p.torchFuel = def.fuel ?? CONFIG.torchFuel;
+      p.torchFuel = (p.torchFuel ?? 0) + (def.fuel ?? CONFIG.torchFuel);
       recomputeLight(p);
       break;
+    }
     case "ammo":
       addToBag(p, defId, def.value ?? 1); // `value` = arrows per bundle
       break;

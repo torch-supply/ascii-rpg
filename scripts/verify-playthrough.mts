@@ -55,6 +55,7 @@ const PASSABLE = new Set([
   "oil",
   "forage",
   "ice",
+  "glowcap",
   "doorOpen",
   "door",
   "crackedWall",
@@ -385,7 +386,7 @@ function playLevel(
       "player left the map",
     );
     note(
-      g.monsters.length > CONFIG.siege.cap + CONFIG.overtime.cap + 40,
+      g.monsters.length > CONFIG.siege.cap + 40,
       "monster count blew past caps",
     );
     prevTurn = g.turnCount;

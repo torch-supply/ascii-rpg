@@ -14,6 +14,7 @@ export const TERRAIN_GLYPH: Record<TileType, string> = {
   water: "~",
   ice: "▒", // frozen water — a walkable bridge (Frostwalk)
   forage: "%", // default; terrainGlyph swaps per biome (berries vs. arcane mote)
+  glowcap: "ψ", // glowing fungus cluster
 };
 
 // Per-biome glyph overrides give each region its own silhouette (colored by the
@@ -45,6 +46,7 @@ export const EXIT_COLOR = "#ffd700";
 export const TRAP_COLOR = "#ff5a3c";
 export const WATER_COLOR = "#3a6ea5";
 export const OIL_COLOR = "#6b6f3a";
+export const GLOWCAP_COLOR = "#6ad6c2"; // soft luminous teal — reads as its own light
 export const DOOR_COLOR = "#b07a3f"; // closed door — warm wood, reads as a barrier
 export const DOOR_OPEN_COLOR = "#6e5330"; // open door — dim, out of the way
 /** Cracked walls tint the biome wall color a touch toward this warm ochre —
@@ -61,7 +63,8 @@ export const FOG_DIM = 0.34;
 // Per-biome ambient particles drawn on the overlay canvas (clipped to the
 // visible area, off under reduced-motion). "mist" is a few drifting soft blobs;
 // the rest are many small moving motes.
-export type WeatherKind = "mist" | "snow" | "embers" | "dust";
+export type WeatherKind =
+  "mist" | "snow" | "embers" | "dust" | "spores" | "rain";
 export interface AtmosphereDef {
   kind: WeatherKind;
   color: string;
@@ -74,6 +77,14 @@ export const BIOME_ATMOSPHERE: Partial<Record<Biome, AtmosphereDef>> = {
   mountain: { kind: "snow", color: "#e6ecff", count: 80, alpha: 0.55 },
   throne: { kind: "embers", color: "#ff8040", count: 44, alpha: 0.6 },
   castle: { kind: "dust", color: "#b8ad94", count: 34, alpha: 0.15 },
+  cavern: { kind: "spores", color: "#8ff0dc", count: 30, alpha: 0.4 }, // drifting glow-spores
+};
+
+// Level-wide weather (`LevelConfig.weather`) — overrides the base biome's
+// atmosphere for the whole level. Keyed by the core `weather` string.
+export const WEATHER_ATMOSPHERE: Partial<Record<string, AtmosphereDef>> = {
+  rain: { kind: "rain", color: "#9fb4d0", count: 64, alpha: 0.3 }, // gentle rain
+  storm: { kind: "rain", color: "#a9c0e0", count: 110, alpha: 0.46 }, // driving rain (+ lightning)
 };
 
 export function terrainColor(
@@ -103,6 +114,8 @@ export function terrainColor(
       return OIL_COLOR;
     case "ice":
       return "#bfe8ff"; // pale frost
+    case "glowcap":
+      return GLOWCAP_COLOR;
     case "water":
       return WATER_COLOR;
   }

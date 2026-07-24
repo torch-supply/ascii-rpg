@@ -1,7 +1,8 @@
 import { LEVELS } from "@/content/levels";
 import { MONSTERS } from "@/content/monsters";
 import { ITEMS } from "@/content/items";
-import type { GameState, GoalConfig } from "./types";
+import { CONFIG } from "@/content/config";
+import type { GameState, GoalConfig, LevelConfig } from "./types";
 
 export function goalConfigFor(state: GameState): GoalConfig {
   return LEVELS[state.currentLevel].goal;
@@ -76,4 +77,20 @@ export function isGoalComplete(state: GameState): boolean {
     case "survive":
       return state.turnCount >= goal.turns;
   }
+}
+
+/**
+ * Par-for-score bonus for clearing `config` in `turnCount` turns. The turn limit
+ * is no longer a threat (no countdown/overtime on non-survive levels) — it's a
+ * PAR TIME: finishing under it grants up to `CONFIG.parBonusMax`, scaling from
+ * full (instant clear) down to 0 (at/over par). Survive levels earn nothing —
+ * spending turns IS their goal, so "efficiency" doesn't apply.
+ */
+export function levelParBonus(config: LevelConfig, turnCount: number): number {
+  if (config.goal.type === "survive") return 0;
+  const frac = Math.max(
+    0,
+    Math.min(1, (config.turnLimit - turnCount) / config.turnLimit),
+  );
+  return Math.round(CONFIG.parBonusMax * frac);
 }

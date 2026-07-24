@@ -25,7 +25,7 @@ export const G_DAWN =
 export const G_DEATH =
   "linear-gradient(180deg,#9aa1a9 0%,#7a4b4b 52%,#2a1414 100%)";
 
-export const SUBTITLE = "A ROGUELIKE QUEST";
+export const SUBTITLE = "AN ASCII RPG";
 
 // Biome → chapter-title gradient (paints the narration title). The throne now
 // gets its own royal gradient too, since it's a gradient title, not a drawing.
@@ -37,6 +37,9 @@ export const BIOME_GRADIENT: Record<Biome, string> = {
   crypt: G_CRYPT,
   castle: G_CASTLE,
   throne: G_THRONE,
+  // cavern only ever appears as a sub-region, never a whole-level biome, so this
+  // title gradient is unused in practice — present to satisfy the exhaustive map.
+  cavern: "linear-gradient(180deg,#bff5ec 0%,#4fd8c0 45%,#1f6b60 100%)",
 };
 
 // ── Narrative set-pieces ────────────────────────────────────────────────────

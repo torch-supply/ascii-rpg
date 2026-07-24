@@ -5,7 +5,7 @@ import { LEVELS } from "@/content/levels";
 import { createPlayer, beginLevel, recomputeLight } from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
-import { isGoalComplete } from "@/game/core/goals";
+import { isGoalComplete, levelParBonus } from "@/game/core/goals";
 import {
   idx,
   isWalkable,
@@ -285,17 +285,26 @@ console.log("\n[6] Level 4 findItem goal");
   check("questProgress sunblade >= 1 → goalComplete", isGoalComplete(game));
 }
 
-// ─── 7. Turn budget → overtime (not a timeout death) ────────────────────────
-console.log("\n[7] Turn-budget exhaustion is no longer lethal");
+// ─── 7. Turn budget is inert on non-survive levels (par-for-score only) ──────
+console.log("\n[7] Turn-budget exhaustion is harmless (no countdown/overtime)");
 {
-  const player = createPlayer();
-  const game = beginLevel("combat-seed", 0, player);
-  // run the turn budget down to empty in one wait
+  const game = beginLevel("combat-seed", 0, createPlayer()); // dungeon: reachLocation
   const rng = new Rng(3);
+  // an invincible, stationary player never completes the reach-goal, so we can
+  // overstay the budget freely and watch what (doesn't) happen
+  game.player.hp = 99999;
+  game.player.maxHp = 99999;
+  const before = game.monsters.length;
   game.turnsLeft = 1;
-  const res = resolveTurn(game, { type: "wait" }, rng);
-  check("running out the turn budget doesn't kill you", !res.playerDied);
-  check("the budget has crossed into overtime", game.turnsLeft <= 0);
+  let died = false;
+  for (let i = 0; i < 80; i++) {
+    if (resolveTurn(game, { type: "wait" }, rng).playerDied) died = true;
+  }
+  check("running out the turn budget never kills you", !died);
+  check(
+    "the spent clock spawns NO reinforcements (overtime removed)",
+    game.monsters.length <= before,
+  );
 }
 
 // ─── 8. Connectivity — no more "trapped with no way out" (regression) ───────
@@ -1476,16 +1485,17 @@ console.log("\n[25] Shop selling");
   );
 }
 
-// ─── 26. Turn budget vs map size ────────────────────────────────────────────
-// The path to each level's objective must fit its turn "par" with headroom for
-// exploration + combat. Overtime is no longer an instant death, but par should
-// still be reachable at a relaxed pace before the world turns hostile. Uses the
-// shortest walkable beeline to the farthest objective (a floor: real play needs
-// more), and requires turnLimit ≥ that × EXPLORE_FACTOR.
-console.log("\n[26] Turn budget vs map size");
+// ─── 26. Turn "par" vs map size ─────────────────────────────────────────────
+// The turn limit is no longer a threat — just a par-for-score target (see
+// `levelParBonus`), so this is now only a sanity floor: par must be at least
+// *reachable* (the shortest walkable beeline to the farthest objective fits
+// within it), so the efficiency bonus is earnable rather than impossible. This
+// no longer constrains map size — a bigger, slower level just means a tighter
+// (still-beatable) par. Informational ratio table below.
+console.log("\n[26] Turn par vs map size (reachability floor only)");
 {
   const seeds = ["s1", "s2", "s3", "xyzzy", "blackwood", "999"];
-  const EXPLORE_FACTOR = 2.0;
+  const EXPLORE_FACTOR = 1.0;
   let bad = 0;
   let checked = 0;
 
@@ -1518,9 +1528,9 @@ console.log("\n[26] Turn budget vs map size");
   }
 
   check(
-    `objectives fit the turn budget with ${EXPLORE_FACTOR}× headroom (${checked} level×seed)`,
+    `every objective's beeline fits within its turn par (par is earnable, ${checked} level×seed)`,
     bad === 0,
-    `(a level dipped below ${EXPLORE_FACTOR}× — see the per-level list above)`,
+    `(a level's beeline exceeded its turn par — see the per-level list above)`,
   );
 }
 
@@ -1542,6 +1552,25 @@ console.log("\n[27] Equipment swapping");
     p.bag.filter((b) => b.defId === "w_dagger").length === 0 &&
       p.bag.some((b) => b.defId === "w_short"),
   );
+
+  // Torches aren't bag items — a second one ADDS fuel (extra turns to burn),
+  // and a brighter one upgrades the light without a plain torch downgrading it.
+  const t = createPlayer();
+  giveItem(t, "i_torch"); // first torch → full fuel
+  const torchFuel = t.torchFuel;
+  check("a torch equips at full fuel", torchFuel === ITEMS.i_torch.fuel);
+  giveItem(t, "i_torch"); // second torch → fuel STACKS (the bug: it used to reset)
+  check(
+    "buying a second torch adds its fuel (not a no-op)",
+    t.torchFuel === torchFuel + (ITEMS.i_torch.fuel ?? 0),
+  );
+  giveItem(t, "i_lantern"); // brighter → upgrades light + adds its fuel
+  check("a brighter lantern upgrades the light", t.torchId === "i_lantern");
+  giveItem(t, "i_torch"); // dimmer → refuels only, keeps the lantern
+  check(
+    "a plain torch over a lantern refuels without downgrading",
+    t.torchId === "i_lantern",
+  );
 }
 
 // ─── 28. No unreachable open areas ──────────────────────────────────────────
@@ -1560,6 +1589,7 @@ console.log("\n[28] No unreachable open areas");
     "oil",
     "forage",
     "ice",
+    "glowcap",
     "crackedWall",
   ]);
   const dirs = [
@@ -1876,37 +1906,38 @@ console.log(
   }
 }
 
-// ─── 31. Overtime pressure replaces the timeout death ───────────────────────
-// Drive a non-survive level well past its budget: no death from the clock, and
-// the world reinforces (monster count climbs) up to the overtime cap.
-console.log("\n[31] Overtime pressure (soft clock)");
+// ─── 31. Par-for-score bonus ─────────────────────────────────────────────────
+// The turn limit is now a par time: clearing under it grants a score bonus that
+// scales from full (instant) down to 0 (at/over par); survive levels earn none.
+console.log("\n[31] Par-for-score bonus");
 {
-  const g = beginLevel("overtime-seed", 0, createPlayer()); // dungeon: reachLocation
-  const rng = new Rng(7);
-  // isolate the clock from HP: an invincible, stationary player never completes
-  // the reach-goal, so we can overstay freely
-  g.player.hp = 99999;
-  g.player.maxHp = 99999;
-  const before = g.monsters.length;
-  g.turnsLeft = 2; // right at the edge, then overstay ~80 turns
-  let died = false;
-  let sawOvertimeMsg = false;
-  for (let i = 0; i < 80; i++) {
-    const res = resolveTurn(g, { type: "wait" }, rng);
-    if (res.events.some((e) => e.kind === "message" && /close in/.test(e.text)))
-      sawOvertimeMsg = true;
-    if (res.playerDied) {
-      died = true;
-      break;
-    }
-  }
-  check("overstaying the budget never triggers a timeout death", !died);
-  check("crossing par announces the closing dark", sawOvertimeMsg);
-  check("the world reinforces during overtime", g.monsters.length > before);
+  const reach = LEVELS.find((l) => l.goal.type !== "survive")!;
+  const survive = LEVELS.find((l) => l.goal.type === "survive");
+
   check(
-    "overtime respects its concurrent cap",
-    g.monsters.length <= CONFIG.overtime.cap,
+    "an instant clear earns ~the full par bonus",
+    levelParBonus(reach, 0) === CONFIG.parBonusMax,
   );
+  check(
+    "clearing at par earns nothing",
+    levelParBonus(reach, reach.turnLimit) === 0,
+  );
+  check(
+    "clearing past par earns nothing (never negative)",
+    levelParBonus(reach, reach.turnLimit + 200) === 0,
+  );
+  check(
+    "clearing at half par earns ~half the bonus",
+    Math.abs(
+      levelParBonus(reach, Math.floor(reach.turnLimit / 2)) -
+        CONFIG.parBonusMax / 2,
+    ) <= 1,
+  );
+  if (survive)
+    check(
+      "survive levels earn no par bonus (spending turns is the goal)",
+      levelParBonus(survive, 1) === 0,
+    );
 }
 
 // ─── 32. Traps are always avoidable (never the only path) ───────────────────
@@ -2542,6 +2573,11 @@ console.log("\n[40] Run modifiers");
     "swarm raises the monster budget",
     swarm.monsterBudget > base.monsterBudget,
   );
+  const forsaken = applyLevelMutators(base, ["forsaken"]);
+  check(
+    "forsaken removes forage heals and thins item drops",
+    forsaken.forageCount === 0 && forsaken.itemDropCount < base.itemDropCount,
+  );
   check(
     "an unknown mutator id is a no-op",
     applyLevelMutators(base, ["nope"]) === base,
@@ -2568,11 +2604,140 @@ console.log("\n[40] Run modifiers");
   const g2 = beginLevel("mut-seed", 0, createPlayer("warrior"), [
     "swarm",
     "treacherous",
-    "hunted",
+    "forsaken",
   ]);
   check(
     "a heavily-mutated level still has the player on a floor tile",
     isWalkable(g2.map, g2.player.x, g2.player.y),
+  );
+}
+
+// ─── 41. Flood keeps altars reachable (never submerged) ─────────────────────
+// Regression: an altar on a floodable tile drowned into water but still rendered
+// its glyph — a stranded `+` you couldn't step on. Altars must be protected.
+console.log("\n[41] Flood never submerges an altar");
+{
+  const floodLevels = LEVELS.map((l, i) => [l, i] as const).filter(
+    ([l]) => l.flood && (l.altarCount ?? 0) > 0,
+  );
+  let bad = 0;
+  let checkedAltars = 0;
+  for (const [, li] of floodLevels) {
+    for (const seed of ["u1", "u2", "u3", "abc", "777", "flood9"]) {
+      const g = beginLevel(seed, li, createPlayer());
+      const floodable = new Set(g.floodable ?? []);
+      for (const a of g.altars) {
+        checkedAltars++;
+        const ai = idx(a.x, a.y, g.map.width);
+        // an altar tile must not be marked floodable, and must be walkable now
+        if (floodable.has(ai) || !isWalkable(g.map, a.x, a.y)) bad++;
+      }
+    }
+  }
+  check(
+    `no altar on a flood level is ever floodable (${checkedAltars} altars across ${floodLevels.length} level(s)×6 seeds)`,
+    bad === 0,
+    `(${bad} altars would submerge)`,
+  );
+}
+
+// ─── 42. Flood respects doors (close one to wall off the water) ─────────────
+// Water flows THROUGH an open door but a door pulled shut ([c]) holds it back —
+// player agency against getting boxed in by the rising flood.
+console.log("\n[42] Flood: open door conducts water, closed door blocks it");
+{
+  const ci = LEVELS.findIndex((l) => l.id === "sunken_crypt");
+  const flood = LEVELS[ci].flood!;
+  // hand-built patch: water — door — floor in a row; tick one flood step and see
+  // whether the water crosses the door tile.
+  const runFloodStep = (doorClosed: boolean): string => {
+    const g = beginLevel("door-flood", ci, createPlayer());
+    g.monsters = [];
+    g.player.hp = g.player.maxHp = 1e9;
+    const w = g.map.width;
+    g.player.x = w - 4;
+    g.player.y = g.map.height - 4; // well away from the patch
+    const y = 5;
+    const a = idx(3, y, w);
+    const b = idx(4, y, w);
+    const c = idx(5, y, w);
+    g.map.tiles[a] = "water"; // the advancing flood
+    g.map.tiles[b] = doorClosed ? "door" : "doorOpen";
+    g.map.tiles[c] = "floor";
+    g.floodable = [b, c]; // only the door + tile beyond may flood
+    g.floodSeeds = [];
+    g.floodStep = 1; // spread phase (step 0 seeds the origins)
+    g.turnCount = flood.startTurn - 1; // → a flood tick fires on this turn
+    resolveTurn(g, { type: "wait" }, new Rng(1));
+    return g.map.tiles[b];
+  };
+  check("water flows through an OPEN door", runFloodStep(false) === "water");
+  check("a CLOSED door holds the water back", runFloodStep(true) === "door");
+}
+
+// ─── 43. Every placed item is reachable ─────────────────────────────────────
+// Regression: freestanding-structure / secret-vault loot could strand in a
+// floor component the player never reaches (huts placed off the main
+// component, or a `floorComponentFrom` mismatch). [8] only checks OBJECTIVES;
+// this checks ALL items — walking from the player over everything you can
+// traverse OR open/break (doors + cracked walls), mirroring `isOpenTile`.
+console.log("\n[43] Every placed item is reachable (incl. gated loot)");
+{
+  const OPEN = new Set<string>([
+    "floor",
+    "doorOpen",
+    "door", // openable
+    "exit",
+    "trap",
+    "trapSprung",
+    "oil",
+    "forage",
+    "ice",
+    "glowcap",
+    "crackedWall", // breakable
+  ]);
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const seeds = ["u1", "u2", "u3", "abc", "777", "hamlet", "vault", "999"];
+  let stranded = 0;
+  let checkedItems = 0;
+  for (let li = 0; li < LEVELS.length; li++) {
+    for (const seed of seeds) {
+      const g = beginLevel(seed, li, createPlayer());
+      const w = g.map.width;
+      const h = g.map.height;
+      const seen = new Uint8Array(w * h);
+      const start = idx(g.player.x, g.player.y, w);
+      seen[start] = 1;
+      const stack = [start];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        const cx = cur % w;
+        const cy = Math.floor(cur / w);
+        for (const [dx, dy] of dirs) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const ni = ny * w + nx;
+          if (seen[ni] || !OPEN.has(g.map.tiles[ni])) continue;
+          seen[ni] = 1;
+          stack.push(ni);
+        }
+      }
+      for (const it of g.items) {
+        checkedItems++;
+        if (!seen[idx(it.x, it.y, w)]) stranded++;
+      }
+    }
+  }
+  check(
+    `no item is stranded unreachable (${checkedItems} items across ${seeds.length}×${LEVELS.length})`,
+    stranded === 0,
+    `(${stranded} unreachable — a hut/vault sealed off its loot?)`,
   );
 }
 

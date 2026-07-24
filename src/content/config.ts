@@ -40,18 +40,12 @@ export const CONFIG = {
     ringMax: 10, // ..to this many tiles from the player (they arrive in a few turns)
     cap: 22, // max concurrent monsters during the hold
   },
-  /** Overtime pressure: on non-"survive" levels, running out the turn budget is
-   * NOT an instant death. Instead the level turns hostile — reinforcements close
-   * in from a ring (reusing the siege geometry), spawning faster and in larger
-   * waves the longer you overstay, so dawdling gets lethal via monsters you can
-   * actually fight rather than a silent clock. */
-  overtime: {
-    startEvery: 9, // at par, a wave every N turns — a gentle trickle, not a flood
-    minEvery: 4, // cadence floor as you overstay (never faster than this)
-    rampEvery: 30, // tighten the cadence by 1 turn every N turns past par
-    rampWave: 50, // +1 to wave size every N turns past par (stays ~1 for a long while)
-    cap: 12, // hard ceiling on TOTAL monsters during overtime — keep it fightable
-  },
+  /** Par-for-score: `LevelConfig.turnLimit` is no longer a threat on non-survive
+   * levels (there's no countdown or overtime) — it's a PAR TIME. Clearing a level
+   * in fewer turns awards up to this many bonus score points, scaling linearly
+   * from `parBonusMax` (instant clear) down to 0 (at/over par). Survive levels —
+   * whose whole point is spending turns — earn no par bonus. */
+  parBonusMax: 120,
   /** Malachar's boss fight (behavior "bossLich"). Values are indexed by phase
    * (0: HP>2/3, 1: HP>1/3, 2: HP≤1/3) so the fight escalates as he weakens. */
   lich: {
@@ -98,7 +92,7 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "28",
+  contentVersion: "36",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */

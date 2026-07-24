@@ -17,14 +17,19 @@ export const LEVELS: LevelConfig[] = [
     title: "The Pit",
     biome: "dungeon",
     palette: { wall: "#6b6b7c", floor: "#3b3b46", accent: "#ffe14d" },
-    // a raw cavern breaks out of the dug cellblock — a natural tunnel contrast
+    // a bioluminescent grotto breaks out of the dug cellblock — a near-dark
+    // cavern lit by its own glowing fungi (navigate toward the teal glow)
     subBiomes: [
       {
-        biome: "dungeon",
-        palette: { wall: "#5a4d42", floor: "#2b241d", accent: "#c9a87a" },
+        biome: "cavern",
+        // readable warm cave rock (the walls you can SEE are the walls that
+        // block) — the teal glow comes from the fungi's own light, not the tiles
+        palette: { wall: "#5c5048", floor: "#241f1b", accent: "#79f2dc" },
         layout: "cellular",
-        size: 0.4,
-        hazards: [],
+        size: 0.46, // a larger natural cave now the Pit is bigger
+        // SEVERAL glowing fungal hollows scattered through the cave — distinct
+        // pockets of light to find, not the whole wing lit up
+        hazards: [{ type: "glowcap", density: 0.15, clumps: 3 }],
       },
     ],
     // a neighboring cell — a shut door to open, a little relief inside
@@ -32,16 +37,19 @@ export const LEVELS: LevelConfig[] = [
       gate: "door",
       loot: [{ itemId: "p_heal" }, { itemId: "c_gold" }],
     },
-    mapWidth: 40,
-    mapHeight: 24,
+    // A deliberately larger opening level — room to explore the cave and its
+    // glowing hollows. Density scaled to match (not a bigger grind); par raised
+    // to suit (the turn limit is a score target now, so a roomy par is fine).
+    mapWidth: 56,
+    mapHeight: 34,
     generator: "digger",
-    monsterBudget: 6,
+    monsterBudget: 9,
     spawnTable: [
       { monsterId: "rat", weight: 6 },
       { monsterId: "bat", weight: 4 },
     ],
-    turnLimit: 420,
-    itemDropCount: 4,
+    turnLimit: 540,
+    itemDropCount: 6,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_heal", weight: 3 },
@@ -50,12 +58,12 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.15,
     baseLightRadius: 8,
-    trapCount: 3,
-    doorCount: 2,
-    forageCount: 3,
+    trapCount: 4,
+    doorCount: 3,
+    forageCount: 5,
     goal: { type: "reachLocation" },
     narration:
-      "You haul yourself out of the pit into cold night air. No stars — only a black wall of trees ahead, whispering. The Blackwood. Somewhere in it lies the path the dead don't want you to find.",
+      "You haul yourself out of the pit into cold night air. No stars — only a black wall of trees ahead, whispering, and the sagging roofs of a hamlet the wood has all but swallowed. The Blackwood. Somewhere past its ruins lies the path the dead don't want you to find.",
     shopTier: 1,
   },
   {
@@ -63,6 +71,8 @@ export const LEVELS: LevelConfig[] = [
     title: "The Blackwood",
     biome: "forest",
     palette: { wall: "#3f7a45", floor: "#2f4326", accent: "#7fdfff" },
+    // a cold rain falls through the cursed wood (gentle — no lightning here)
+    weather: "rain",
     subBiomes: [
       // a boggy marsh patch soaks through part of the wood (water pools)
       {
@@ -80,22 +90,53 @@ export const LEVELS: LevelConfig[] = [
         hazards: [],
       },
     ],
-    // a freestanding woodsman's hut in a clearing — walls, a shut door, loot in
-    structure: {
-      loot: [{ itemId: "p_gheal" }, { itemId: "c_gold" }],
-    },
-    mapWidth: 48,
-    mapHeight: 30,
+    // the ruins of a woodcutters' hamlet, swallowed by the cursed wood — several
+    // huts to break into (the shards lie scattered among them and the trees)
+    structures: [
+      {
+        // a woodsman's cabin — timber, a healing cache
+        size: { w: 4, h: 4 },
+        palette: { wall: "#9c6b3f", floor: "#4a3626", accent: "#c98a4a" },
+        loot: [{ itemId: "p_gheal" }, { itemId: "c_gold" }],
+      },
+      {
+        // a moss-grown cottage — stone, a little coin
+        size: { w: 4, h: 3 },
+        palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
+        loot: [{ itemId: "c_gold" }],
+      },
+      {
+        // a burned-out shell — char, picked clean long ago (empty)
+        size: { w: 3, h: 3 },
+        palette: { wall: "#5a4b46", floor: "#241d1a", accent: "#a07a5a" },
+        loot: [],
+      },
+      {
+        // a collapsed shed — timber, a stashed draught + gear
+        size: { w: 3, h: 4 },
+        palette: { wall: "#8a6a48", floor: "#3e2f22", accent: "#c0966a" },
+        loot: [{ itemId: "a_leather" }, { itemId: "p_heal" }],
+      },
+      {
+        // a storehouse gone to moss — greyed stone, coin only
+        size: { w: 4, h: 3 },
+        palette: { wall: "#64705a", floor: "#2e3328", accent: "#98b078" },
+        loot: [{ itemId: "c_gold" }],
+      },
+    ],
+    // a big, open cursed wood — room to roam, a hamlet scattered through it
+    mapWidth: 84,
+    mapHeight: 52,
     generator: "cellular",
-    monsterBudget: 9,
+    monsterBudget: 20,
     spawnTable: [
       { monsterId: "rat", weight: 3 },
       { monsterId: "bat", weight: 4 },
       { monsterId: "goblin", weight: 4 },
       { monsterId: "spider", weight: 3 },
     ],
-    turnLimit: 380,
-    itemDropCount: 4,
+    turnLimit: 720,
+    itemDropCount: 9,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_heal", weight: 3 },
@@ -103,9 +144,9 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.15,
     baseLightRadius: 6,
-    trapCount: 2,
-    waterCount: 10,
-    forageCount: 6,
+    trapCount: 4,
+    waterCount: 22,
+    forageCount: 14,
     goal: { type: "collectX", questTag: "moonstone", count: 3 },
     narration:
       "The three shards flare as one, and a silver thread pulls you downward — toward a reek of rot and black standing water. The Mire. Whatever the dead are guarding, the only path runs through it.",
@@ -116,32 +157,43 @@ export const LEVELS: LevelConfig[] = [
     title: "The Mire",
     biome: "marsh",
     palette: { wall: "#5f7a3c", floor: "#2e3a28", accent: "#7fdfff" },
-    // a firmer, grassy hummock — a dry rest-island amid the black water
     subBiomes: [
+      // firmer, grassy hummocks — dry islands of footing amid the black water
       {
         biome: "forest",
         palette: { wall: "#5aa85f", floor: "#3e5a30", accent: "#d8f0a0" },
-        scale: 0.15,
-        threshold: 0.26,
+        scale: 0.14,
+        threshold: 0.2, // larger/more islands across the bigger bog
         hazards: [],
       },
+      // a tangled reed-thicket labyrinth — a marsh `maze` (green ♠ reed walls),
+      // distinct from the crypt's bone catacombs; a wing to get lost in
+      {
+        biome: "marsh",
+        palette: { wall: "#4f6b3a", floor: "#2a3826", accent: "#8fd0a0" },
+        layout: "maze",
+        size: 0.38,
+      },
     ],
-    // a half-sunken wayshrine of the old dawn-faith — mossy stone, offerings in
-    structure: {
-      palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
-      loot: [{ itemId: "p_detect" }, { itemId: "p_gheal" }],
-    },
-    mapWidth: 50,
-    mapHeight: 30,
+    // a half-sunken wayshrine of the old dawn-faith — a lone ruin, offerings in
+    structures: [
+      {
+        palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
+        loot: [{ itemId: "p_detect" }, { itemId: "p_gheal" }],
+      },
+    ],
+    // a big, sprawling wetland — water channels, reed maze, and dry hummocks
+    mapWidth: 72,
+    mapHeight: 46,
     generator: "cellular",
-    monsterBudget: 10,
+    monsterBudget: 16,
     spawnTable: [
       { monsterId: "spider", weight: 4 },
       { monsterId: "imp", weight: 2 },
       { monsterId: "goblin", weight: 3 },
     ],
-    turnLimit: 350,
-    itemDropCount: 4,
+    turnLimit: 620,
+    itemDropCount: 6,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_heal", weight: 3 },
@@ -150,15 +202,15 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.15,
     baseLightRadius: 6,
-    trapCount: 3,
-    forageCount: 6,
-    waterCount: 46,
+    trapCount: 4,
+    forageCount: 10,
+    waterCount: 64,
     oilCount: 16,
     eliteChance: 0.1,
     altarCount: 1,
     goal: { type: "reachLocation" },
     narration:
-      "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into ice and bare rock — the Frostspine Pass — and something enormous is breathing on the wind.",
+      "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into a warren of ice-choked caves and black crevasses — the Frostspine Pass — and something enormous is breathing on the wind.",
     shopTier: 3,
   },
   {
@@ -166,31 +218,43 @@ export const LEVELS: LevelConfig[] = [
     title: "The Frostspine Pass",
     biome: "mountain",
     palette: { wall: "#7d8ea0", floor: "#40454f", accent: "#a9e0ff" },
-    // a sheltered ice grotto — a frozen pocket (Rimewalk/Levitation country)
     subBiomes: [
+      // a sheltered ice grotto — a broad frozen pocket (Rimewalk/Levitation)
       {
         biome: "mountain",
         palette: { wall: "#5a6b7a", floor: "#2c343d", accent: "#bfe8ff" },
-        scale: 0.15,
-        threshold: 0.22,
+        scale: 0.14,
+        threshold: 0.16, // a larger frozen cavern in the bigger network
+        hazards: [{ type: "ice", density: 0.32 }],
+      },
+      // a second, smaller frozen hollow deeper in the caves
+      {
+        biome: "mountain",
+        palette: { wall: "#52616f", floor: "#28303a", accent: "#bfe8ff" },
+        scale: 0.17,
+        threshold: 0.26,
         hazards: [{ type: "ice", density: 0.3 }],
       },
     ],
     // a ruined border watchpost — the realm's last outpost before Blackhall
-    structure: {
-      palette: { wall: "#8792a0", floor: "#3a4048", accent: "#c6d6e6" },
-      loot: [{ itemId: "a_chain" }, { itemId: "c_gold" }],
-    },
-    mapWidth: 52,
-    mapHeight: 32,
+    structures: [
+      {
+        palette: { wall: "#8792a0", floor: "#3a4048", accent: "#c6d6e6" },
+        loot: [{ itemId: "a_chain" }, { itemId: "c_gold" }],
+      },
+    ],
+    // a sprawling mountain cave network, the pass choked with impassable
+    // crevasses (deep chasms you weave around — or glide/freeze across)
+    mapWidth: 72,
+    mapHeight: 46,
     generator: "cellular",
-    monsterBudget: 12,
+    monsterBudget: 17,
     spawnTable: [
       { monsterId: "goblin", weight: 5 },
       { monsterId: "skeleton", weight: 5 },
     ],
-    turnLimit: 320,
-    itemDropCount: 3,
+    turnLimit: 640,
+    itemDropCount: 5,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_heal", weight: 2 },
@@ -198,9 +262,9 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.25,
     baseLightRadius: 5,
-    trapCount: 3,
-    waterCount: 18,
-    forageCount: 5,
+    trapCount: 4,
+    waterCount: 44,
+    forageCount: 8,
     eliteChance: 0.12,
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
@@ -222,18 +286,20 @@ export const LEVELS: LevelConfig[] = [
         hazards: [{ type: "oil", density: 0.32 }],
       },
     ],
-    mapWidth: 52,
-    mapHeight: 32,
-    generator: "digger",
-    monsterBudget: 13,
+    // a grander gate approach — bigger halls, thick with the dead (a cull goal
+    // wants density, so the horde scales with the size)
+    mapWidth: 66,
+    mapHeight: 42,
+    generator: "rogue", // a defended gatehouse — a grid of connected chambers
+    monsterBudget: 18,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "ghoul", weight: 4 },
       { monsterId: "gargoyle", weight: 2 },
       { monsterId: "gate_captain", weight: 1 },
     ],
-    turnLimit: 360,
-    itemDropCount: 4,
+    turnLimit: 560,
+    itemDropCount: 6,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_heal", weight: 2 },
@@ -302,17 +368,27 @@ export const LEVELS: LevelConfig[] = [
     title: "The Sunken Crypt",
     biome: "crypt",
     palette: { wall: "#6a6a5a", floor: "#262620", accent: "#9fe0b0" },
-    // a bone-walled catacomb maze fills one wing of the crypt (structural contrast)
     subBiomes: [
+      // a bone-walled catacomb maze fills one wing of the crypt (structural contrast)
       {
         biome: "crypt",
         palette: { wall: "#585044", floor: "#1c1c17", accent: "#9fe0b0" },
         layout: "maze",
         size: 0.36,
       },
+      // bioluminescent fungi have colonized a damp hollow — glowing islands that
+      // stay dry+lit as the flood rises around them (the crypt's dark makes them
+      // blaze); cool wet cave rock, distinct from the Pit's warm grotto
+      {
+        biome: "cavern",
+        palette: { wall: "#3f4a48", floor: "#1a2220", accent: "#79f2dc" },
+        scale: 0.13,
+        threshold: 0.12, // a generous blob so the fragmented crypt floor still
+        hazards: [{ type: "glowcap", density: 0.2, clumps: 2 }], // yields full hollows
+      },
     ],
     // the sunken crypt lives up to its name — it floods as you hunt the Sunblade
-    flood: { startTurn: 18, interval: 5, maxSteps: 16 },
+    flood: { startTurn: 20, interval: 10, maxSteps: 7 },
     mapWidth: 54,
     mapHeight: 34,
     generator: "digger",
@@ -341,7 +417,7 @@ export const LEVELS: LevelConfig[] = [
     altarCount: 1,
     goal: { type: "findItem", questTag: "sunblade" },
     narration:
-      "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. There is no way up but the ramparts — open to the dead sky, and to whatever wheels across it.",
+      "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. There is no way up but the ramparts — open to a black, thundering sky, and to whatever wheels across it.",
     shopTier: 7,
   },
   {
@@ -349,6 +425,9 @@ export const LEVELS: LevelConfig[] = [
     title: "The Ramparts",
     biome: "castle",
     palette: { wall: "#4a5a72", floor: "#232a38", accent: "#a9e0ff" },
+    // exposed to the dead sky — a black storm drives rain and lightning across
+    // the open battlements as you hold the line
+    weather: "storm",
     // a wind-frozen stretch of battlement — glazed with treacherous ice
     subBiomes: [
       {
@@ -397,17 +476,18 @@ export const LEVELS: LevelConfig[] = [
       gate: "door",
       loot: [{ itemId: "p_gheal" }, { itemId: "p_bomb" }, { itemId: "c_gold" }],
     },
-    mapWidth: 48,
-    mapHeight: 30,
+    // a longer, grander approach to the throne — more hall to fight through
+    mapWidth: 60,
+    mapHeight: 40,
     generator: "digger",
-    monsterBudget: 13,
+    monsterBudget: 17,
     spawnTable: [
       { monsterId: "wraith", weight: 4 },
       { monsterId: "skeleton", weight: 3 },
       { monsterId: "ghoul", weight: 3 },
     ],
-    turnLimit: 350,
-    itemDropCount: 4,
+    turnLimit: 540,
+    itemDropCount: 6,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_gheal", weight: 2 },

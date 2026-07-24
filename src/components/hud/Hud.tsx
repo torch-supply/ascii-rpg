@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 /**
  * Design 3a — "refined terminal": the existing 3-row header + footer, restyled
  * with clearer hierarchy, segmented glow gauges (HP / turns), and a color-coded
- * message log. All live data (effects, ammo, survive/overtime, goal) is
+ * message log. All live data (effects, ammo, survive countdown, goal) is
  * preserved verbatim — only the chrome changed.
  */
 
@@ -85,18 +85,14 @@ export function HudBar() {
     ? (p.bag.find((b) => b.defId === weapon.ranged!.ammoId)?.count ?? 0)
     : null;
   const hpPct = Math.max(0, Math.round((p.hp / p.maxHp) * 100));
+  // The turn budget is no longer a threat on normal levels (no countdown /
+  // overtime) — it's just a par-for-score target. The only visible turn gauge is
+  // the "hold out N turns" countdown on survive levels, where the clock IS the
+  // goal.
   const survive = level.goal.type === "survive";
-  const surviveLeft = survive
-    ? Math.max(0, (level.goal as { turns: number }).turns - game.turnCount)
-    : 0;
-  const overtime = !survive && game.turnsLeft <= 0;
-  const turnLabel = overtime ? "OVERTIME" : survive ? "HOLD" : "TURNS";
-  const turnsVal = survive ? surviveLeft : game.turnsLeft;
-  const turnsMax = survive
-    ? (level.goal as { turns: number }).turns
-    : level.turnLimit;
-  const turnPct = Math.max(0, Math.round((turnsVal / turnsMax) * 100));
-  const lowTurns = !survive && game.turnsLeft <= 40;
+  const surviveMax = survive ? (level.goal as { turns: number }).turns : 1;
+  const surviveLeft = survive ? Math.max(0, surviveMax - game.turnCount) : 0;
+  const turnPct = Math.max(0, Math.round((surviveLeft / surviveMax) * 100));
 
   const hpFill =
     hpPct > 40
@@ -104,16 +100,8 @@ export function HudBar() {
       : "linear-gradient(90deg,#7d2f2f,#ff5555)";
   const hpGlow =
     hpPct > 40 ? "0 0 10px rgba(63,191,63,.55)" : "0 0 10px rgba(255,85,85,.5)";
-  const turnFill = lowTurns
-    ? "linear-gradient(90deg,#7d2f2f,#ff5555)"
-    : survive
-      ? "linear-gradient(90deg,#94823a,#ffd24d)"
-      : "linear-gradient(90deg,#3a7d94,#7fdfff)";
-  const turnGlow = lowTurns
-    ? "0 0 10px rgba(255,85,85,.5)"
-    : survive
-      ? "0 0 10px rgba(255,210,77,.45)"
-      : "0 0 10px rgba(127,223,255,.45)";
+  const turnFill = "linear-gradient(90deg,#94823a,#ffd24d)";
+  const turnGlow = "0 0 10px rgba(255,210,77,.45)";
 
   return (
     <div
@@ -191,21 +179,17 @@ export function HudBar() {
             <span className="text-edge">/{p.maxHp}</span>
           </span>
         </SegGauge>
-        <SegGauge
-          label={turnLabel}
-          pct={turnPct}
-          fill={turnFill}
-          glow={turnGlow}
-          width={150}
-        >
-          <span
-            className={
-              lowTurns ? "text-hp blink" : survive ? "text-gold" : "text-magic"
-            }
+        {survive && (
+          <SegGauge
+            label="HOLD"
+            pct={turnPct}
+            fill={turnFill}
+            glow={turnGlow}
+            width={150}
           >
-            {overtime ? "⚠" : turnsVal}
-          </span>
-        </SegGauge>
+            <span className="text-gold">{surviveLeft}</span>
+          </SegGauge>
+        )}
       </div>
 
       {/* row 3 — equipped loadout + active effects + objective */}

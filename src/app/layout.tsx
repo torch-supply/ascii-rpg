@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Ember of Dawn — an ASCII roguelike",
+  title: "Ember of Dawn — an ASCII RPG",
   description:
-    "A single-player ASCII roguelike RPG. Escape the pit, cross the cursed land, recover the Sunblade, and end the Lich-King.",
+    "A single-player ASCII RPG. Escape the pit, cross the cursed land, recover the Sunblade, and end the Lich-King.",
 };
 
 export default function RootLayout({

@@ -17,6 +17,7 @@ export type TileType =
   | "oil" // walkable slick; fire ignites it and races across it
   | "ice" // frozen water (Frostwalk) — permanent walkable bridge
   | "forage" // walkable; step on it to heal a little, then it's spent (→ floor)
+  | "glowcap" // walkable glowing fungus: emits colored light (bioluminescent grotto)
   | "water"; // impassable but transparent (chasm / water)
 
 export interface GameMap {
@@ -51,7 +52,14 @@ export interface SubBiomeSpec {
    * water pools or a scorched hollow's oil. Carved pre-connectivity, so
    * reachability guarantees hold. Omit to use the biome's default kit
    * (`BIOME_HAZARDS` in generate.ts); pass `[]` for none. */
-  hazards?: { type: TileType; density?: number }[];
+  hazards?: {
+    type: TileType;
+    density?: number;
+    /** if set, place the hazard as this many CONTIGUOUS patches (a glowing
+     * hollow, an oil pool) grown by flood-fill, instead of many scattered
+     * specks — total tiles still = density × region floor. */
+    clumps?: number;
+  }[];
   /** if set, carve the region's STRUCTURE with this generator in a rectangular
    * wing (e.g. a `maze` catacomb), bridged to the main map. Overrides the
    * default organic noise-blob shaping. */
@@ -67,7 +75,14 @@ export interface Pos {
 
 // ── Content definitions (immutable registries) ──────────────────────────────
 export type Biome =
-  "dungeon" | "forest" | "marsh" | "mountain" | "castle" | "crypt" | "throne";
+  | "dungeon"
+  | "forest"
+  | "marsh"
+  | "mountain"
+  | "castle"
+  | "crypt"
+  | "throne"
+  | "cavern"; // dark bioluminescent grotto — glowing fungi light it, not a torch
 export type GeneratorKind =
   | "digger"
   | "uniform"
@@ -222,22 +237,27 @@ export interface LevelConfig {
    * ONLY through a single gate — a cracked wall to blast/bash (default) or a
    * shut door to simply open. Skipped on seeds with no valid spot. */
   secretVault?: { gate?: "door" | "crackedWall"; loot: { itemId: string }[] };
-  /** optional FREESTANDING building stamped onto open ground: a visible wall box
-   * with a floor interior and one shut door, loot inside — reads as an actual
+  /** optional FREESTANDING buildings stamped onto open ground: each a visible
+   * wall box with a floor interior, one shut door, and loot — reads as an actual
    * structure (a hut in the woods, a shrine in a clearing), unlike `secretVault`
-   * which digs a room into existing wall mass. Its walls render as a built `#`
-   * in `palette` (default warm timber) so it stands out from the biome. Skipped
-   * if no clearing fits. */
-  structure?: {
+   * which digs a room into existing wall mass. Walls render as a built `#` in
+   * `palette` (default warm timber). SEVERAL entries read as a hamlet. Each is
+   * skipped if no clearing fits. */
+  structures?: {
     size?: { w: number; h: number };
     palette?: Palette;
     loot: { itemId: string }[];
-  };
+  }[];
   /** signature set-piece: the level slowly floods during play. Flooding begins
    * at `startTurn`, rises one ring every `interval` turns, up to `maxSteps`
    * rings. A protected dry spine (start→objectives) never floods, so the goal
    * stays reachable; side areas submerge — Levitation/Rimewalk are clutch. */
   flood?: { startTurn: number; interval: number; maxSteps: number };
+  /** cosmetic level-wide weather that overrides the base biome's atmosphere:
+   * `"rain"` = gentle falling rain; `"storm"` = heavier rain PLUS periodic
+   * lightning flashes. Purely render-side; mapped to an atmosphere in `tiles.ts`
+   * (and `"storm"` gates `paintLightning`). */
+  weather?: "rain" | "storm";
   mapWidth: number;
   mapHeight: number;
   generator: GeneratorKind;
@@ -332,6 +352,8 @@ export interface PlayerState {
   kills: number;
   totalTurns: number;
   goldEarned: number;
+  /** accumulated par-time score bonus (levels cleared under their turn "par") */
+  parBonus: number;
   baseLightRadius: number;
   lightRadius: number;
   hasTorch: boolean;

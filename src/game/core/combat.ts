@@ -3,7 +3,7 @@ import { CONFIG } from "@/content/config";
 import { classDef } from "@/content/classes";
 
 // Damage formulas. The min-1 floor guarantees combat always resolves — no
-// infinite stalemate — which is the classic roguelike rule.
+// infinite stalemate — the classic min-1 damage rule.
 
 export function playerAttackDamage(
   player: PlayerState,

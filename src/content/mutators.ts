@@ -47,11 +47,15 @@ export const MUTATORS: Mutator[] = [
     applyLevel: (c) => ({ ...c, trapCount: (c.trapCount ?? 0) * 2 }),
   },
   {
-    id: "hunted",
-    name: "Hunted",
-    blurb: "20% less time on the clock before the world turns on you.",
+    id: "forsaken",
+    name: "Forsaken",
+    blurb: "The land offers nothing — no forage heals, and scarcer spoils.",
     scoreMult: 0.25,
-    applyLevel: (c) => ({ ...c, turnLimit: Math.round(c.turnLimit * 0.8) }),
+    applyLevel: (c) => ({
+      ...c,
+      forageCount: 0, // no wild growth / arcane motes to recover HP from
+      itemDropCount: Math.max(1, Math.round(c.itemDropCount * 0.6)), // fewer finds
+    }),
   },
   {
     id: "champions",

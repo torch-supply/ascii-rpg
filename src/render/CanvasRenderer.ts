@@ -23,6 +23,7 @@ import {
 } from "./lighting";
 import {
   BIOME_ATMOSPHERE,
+  WEATHER_ATMOSPHERE,
   CRACKED_WALL_CRACK_DIM,
   dim,
   FOG_DIM,
@@ -841,6 +842,7 @@ export class CanvasRenderer {
       overlay.width,
       overlay.height,
     );
+    this.paintLightning(ctx, state, overlay.width, overlay.height);
     this.paintDecals(ctx, state, camX, camY, visible, cw, ch);
     this.clipToVisible(
       ctx,
@@ -937,6 +939,17 @@ export class CanvasRenderer {
       glow(fx, fy, "#ff8a30", cw * 2.6, 0.15 * flick);
     }
 
+    // bioluminescent fungi — soft teal halos, each gently pulsing
+    for (const i of visible) {
+      if (state.map.tiles[i] !== "glowcap") continue;
+      const gx = ((i % w) - camX + 0.5) * cw;
+      const gy = (Math.floor(i / w) - camY + 0.5) * ch;
+      const pulse = this.reduceMotion
+        ? 0.85
+        : 0.66 + 0.34 * Math.abs(Math.sin(now * 0.006 + i));
+      glow(gx, gy, "#4fd6c0", cw * 1.9, 0.09 * pulse);
+    }
+
     // the Sunblade on the ground — a gently pulsing gold radiance
     for (const it of state.items) {
       if (ITEMS[it.defId]?.questTag !== "sunblade") continue;
@@ -970,6 +983,34 @@ export class CanvasRenderer {
    * and skipped under reduced-motion. Each biome present (the level's + any
    * sub-biome) draws its own weather, gated per-particle to the world tile under
    * it, so a sub-region's atmosphere only drifts over that region. */
+  /** Storm lightning (levels with `weather:"rain"`): a periodic white flash over
+   * the visible scene — a quick main strike + a smaller aftershock, then dark.
+   * Driven purely by the clock; the caller clips it to the visible FOV. Off
+   * under reduced-motion. */
+  private paintLightning(
+    ctx: CanvasRenderingContext2D,
+    state: GameState,
+    w: number,
+    h: number,
+  ) {
+    if (this.reduceMotion) return;
+    if (LEVELS[state.currentLevel].weather !== "storm") return; // only the storm flashes
+    const t = performance.now() % 6400; // one strike per ~6.4s
+    let f = 0;
+    if (t < 55)
+      f = t / 55; // flash in
+    else if (t < 170)
+      f = 1 - (t - 55) / 115; // fade out
+    else if (t < 210)
+      f = 0.45 * ((t - 170) / 40); // aftershock in
+    else if (t < 320) f = 0.45 * (1 - (t - 210) / 110); // aftershock out
+    if (f <= 0.01) return;
+    ctx.save();
+    ctx.fillStyle = `rgba(200,216,255,${(0.17 * f).toFixed(3)})`;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
   private paintAtmosphere(
     ctx: CanvasRenderingContext2D,
     state: GameState,
@@ -989,7 +1030,14 @@ export class CanvasRenderer {
       for (const b of map.regionBiome)
         if (!present.includes(b)) present.push(b);
     }
-    if (!present.some((b) => BIOME_ATMOSPHERE[b])) return;
+    // a level-wide `weather` overrides the BASE biome's atmosphere (sub-regions
+    // keep their own) — e.g. a storm's driving rain instead of the biome default.
+    const weather = LEVELS[state.currentLevel].weather;
+    const atmFor = (b: Biome) =>
+      b === levelBiome && weather
+        ? WEATHER_ATMOSPHERE[weather]
+        : BIOME_ATMOSPHERE[b];
+    if (!present.some((b) => atmFor(b))) return;
 
     // biome of the world tile under an overlay pixel (weather is screen-space,
     // gated by whatever region currently sits beneath it)
@@ -1005,7 +1053,7 @@ export class CanvasRenderer {
     const now = performance.now();
     ctx.save();
     for (const biome of present) {
-      const atm = BIOME_ATMOSPHERE[biome];
+      const atm = atmFor(biome);
       if (!atm) continue;
       // The base biome fills most of the screen — keep the whole-screen drift,
       // gated per-particle. A SUB-biome covers only a patch, so scatter its
@@ -1041,8 +1089,17 @@ export class CanvasRenderer {
         }
       } else {
         const size = Math.max(1.5, cw * 0.14);
-        const rising = atm.kind === "embers";
-        const fall = atm.kind === "snow" ? 0.03 : rising ? 0.02 : 0.012;
+        const rising = atm.kind === "embers" || atm.kind === "spores";
+        const fall =
+          atm.kind === "rain"
+            ? 0.06 // driving rain falls fast
+            : atm.kind === "snow"
+              ? 0.03
+              : atm.kind === "spores"
+                ? 0.009 // spores waft up slow
+                : rising
+                  ? 0.02
+                  : 0.012;
         // scale mote count to a sub-region's size so a small patch isn't a blizzard
         const n = cells
           ? Math.min(atm.count, Math.max(6, Math.round(cells.length * 0.4)))
@@ -1065,7 +1122,9 @@ export class CanvasRenderer {
             if (biomeAtPx(x, y) !== biome) continue;
           }
           ctx.globalAlpha = atm.alpha * (0.55 + 0.45 * frac(i + 13));
-          ctx.fillRect(x, y, size, size);
+          // rain draws as a thin falling streak; everything else as a mote
+          if (atm.kind === "rain") ctx.fillRect(x, y, 1.5, ch * 0.5);
+          else ctx.fillRect(x, y, size, size);
         }
         ctx.globalAlpha = 1;
       }

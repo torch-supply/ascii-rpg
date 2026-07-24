@@ -73,6 +73,7 @@ const PASSABLE = new Set([
   "oil",
   "forage",
   "ice",
+  "glowcap",
 ]);
 function stepToward(
   g: GameState,

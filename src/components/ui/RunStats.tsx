@@ -54,8 +54,9 @@ export function RunStats({ animate = false }: { animate?: boolean }) {
 
   const ids = r.mutators ?? [];
   const mult = mutatorScoreMult(ids); // 1.0 with no trials
+  const parBonus = r.parBonus ?? 0;
   const score = Math.round(
-    (r.gold + r.kills * 10 + (r.victory ? 500 : 0)) * mult,
+    (r.gold + r.kills * 10 + parBonus + (r.victory ? 500 : 0)) * mult,
   );
   const cu = (n: number) => Math.round(n * t); // count-up toward the final value
   const rows: [string, string, boolean?][] = [
@@ -63,6 +64,9 @@ export function RunStats({ animate = false }: { animate?: boolean }) {
     ["Foes slain", String(cu(r.kills))],
     ["Gold gathered", String(cu(r.gold))],
     ["Turns taken", String(cu(r.turns))],
+    ...(parBonus > 0
+      ? ([["Efficiency", `+${cu(parBonus)}`]] as [string, string, boolean?][])
+      : []),
     ["Time", fmtTime(r.timeMs * t)],
   ];
   const trials = ids
