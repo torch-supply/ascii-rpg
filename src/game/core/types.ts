@@ -338,6 +338,8 @@ export interface PlayerState {
   torchFuel: number;
   /** active timed effects: id -> turns remaining (e.g. ward, might) */
   effects: Record<string, number>;
+  /** turns until the class active ability is ready again (0 = ready) */
+  abilityCooldown: number;
 }
 
 export type GameStatus = "playing" | "levelComplete" | "gameOver" | "victory";
@@ -394,7 +396,8 @@ export type PlayerAction =
   | { type: "throwAt"; defId: string; x: number; y: number }
   | { type: "shootAt"; x: number; y: number }
   | { type: "closeDoor" } // shut an adjacent open door (break LOS / block a chaser)
-  | { type: "blinkTo"; defId: string; x: number; y: number }; // teleport (Phial of Blinking)
+  | { type: "blinkTo"; defId: string; x: number; y: number } // teleport (Phial of Blinking)
+  | { type: "ability"; dx?: number; dy?: number }; // class active ([q]); dx/dy for directional ones
 
 // ── Turn resolution result ─────────────────────────────────────────────────
 export interface TurnResult {

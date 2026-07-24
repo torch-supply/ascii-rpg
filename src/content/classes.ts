@@ -4,6 +4,17 @@ import { CONFIG } from "@/content/config";
 // Character classes — a starting kit + a couple of passive traits, picked on a
 // New Game. Data-driven like levels/monsters/items; `createPlayer(classId)`
 // applies the kit, and the traits are read at their combat sites (see below).
+/** A class's signature active ability (bound to `[q]`, on a turn cooldown). The
+ * EFFECT is coded per `id` in `actions/` (useAbility); this is just the data. */
+export interface ClassAbility {
+  id: "cleave" | "dash" | "scorch";
+  name: string;
+  cooldown: number; // turns before it can be used again
+  aim: "none" | "dir"; // "dir" abilities need a direction (press q, then a move key)
+  range?: number; // reach for directional abilities
+  blurb: string; // shown in the HUD tooltip / help
+}
+
 export interface ClassDef {
   id: string;
   name: string;
@@ -14,6 +25,8 @@ export interface ClassDef {
   armorId: string; // starting (equipped) armor
   bag: BagEntry[]; // starting consumables / ammo
   maxHp: number;
+  /** signature active ability (`[q]`); absent on the neutral wanderer */
+  ability?: ClassAbility;
   // ── passives (all optional; a class with none is just a kit) ──
   /** flat damage shaved off enemy melee + ranged hits (min-1 floor kept) */
   damageReduction?: number;
@@ -50,6 +63,13 @@ export const CLASSES: Record<string, ClassDef> = {
     bag: [{ defId: "p_heal", count: 1 }],
     maxHp: 26,
     damageReduction: 1,
+    ability: {
+      id: "cleave",
+      name: "Cleave",
+      cooldown: 5,
+      aim: "none",
+      blurb: "Sweep your weapon through every adjacent foe at once.",
+    },
   },
   rogue: {
     id: "rogue",
@@ -63,6 +83,14 @@ export const CLASSES: Record<string, ClassDef> = {
     maxHp: 16,
     sneakMultiplier: 3,
     critChance: 0.2,
+    ability: {
+      id: "dash",
+      name: "Dash",
+      cooldown: 4,
+      aim: "dir",
+      range: 3,
+      blurb: "Leap up to 3 tiles in a direction — reposition or escape.",
+    },
   },
   pyromancer: {
     id: "pyromancer",
@@ -78,6 +106,14 @@ export const CLASSES: Record<string, ClassDef> = {
     ],
     maxHp: 18,
     bombPower: 6,
+    ability: {
+      id: "scorch",
+      name: "Scorch",
+      cooldown: 6,
+      aim: "dir",
+      range: 3,
+      blurb: "Breathe a widening cone of fire that sets the ground ablaze.",
+    },
   },
 };
 

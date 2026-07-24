@@ -4,13 +4,12 @@ import { gameStore, useGameStore } from "@/store/gameStore";
 import { ITEMS } from "@/content/items";
 import { classDef } from "@/content/classes";
 import { MenuButton } from "@/components/ui/MenuButton";
-import { AsciiField } from "@/components/ui/AsciiField";
 import { BoxFrame } from "@/components/ui/BoxFrame";
 
 /**
- * Design 4b — "character sheet": the [i] overlay as a two-pane box-framed modal
- * (Equipped & Stats · Bag) over a faint ember field. Same data and store calls
- * as before; equip/use is still keyboard-driven (the numbers are labels).
+ * The [i] overlay: a two-pane box-framed character sheet (Equipped & Stats ·
+ * Bag) over a plain dim scrim — no animated field, matching the pause/help
+ * modals. Equip/use is keyboard-driven (the numbers are labels).
  */
 export default function InventoryModal() {
   const game = useGameStore((s) => s.game);
@@ -22,33 +21,14 @@ export default function InventoryModal() {
   const torch = p.torchId ? ITEMS[p.torchId] : null;
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center px-4">
-      {/* dimmed level behind: a faint ember field bleeds through the scrim */}
-      <AsciiField mode="abstract" biome="pit" bottom intensity={0.24} />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(200px 150px at 22% 42%, rgba(224,150,60,0.06), transparent 66%), rgba(6,7,6,0.62)",
-        }}
-      />
-
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-ink/80 px-4">
       <BoxFrame
         accent="#ffb347"
         chip="#0b0b0d"
-        className="relative z-10 w-[min(92vw,45rem)]"
-        style={{ background: "rgba(9,10,12,0.72)" }}
+        className="w-[min(92vw,45rem)]"
+        style={{ background: "rgba(16,16,20,0.94)" }}
       >
-        {/* a second faint field + gradient, contained inside the panel */}
-        <AsciiField mode="abstract" biome="pit" bottom intensity={0.24} style={{ zIndex: 0 }} />
-        <div
-          aria-hidden
-          className="absolute inset-0 z-0"
-          style={{ background: "linear-gradient(180deg,rgba(10,10,13,.55),rgba(10,10,13,.8))" }}
-        />
-
-        <div className="relative z-[1] flex flex-col gap-[18px] px-8 py-7 text-sm">
+        <div className="flex flex-col gap-[18px] px-8 py-7 text-sm">
           <div className="flex flex-col items-center gap-[11px]">
             <h2 className="m-0 text-lg font-semibold uppercase tracking-[0.34em] text-gold" style={{ textIndent: "0.34em" }}>
               Inventory

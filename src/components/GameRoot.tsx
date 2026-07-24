@@ -5,6 +5,7 @@ import { gameStore, useGameStore, type GameStore } from "@/store/gameStore";
 import { KeyboardInput } from "@/game/input/KeyboardInput";
 import { LEVELS } from "@/content/levels";
 import { MONSTERS } from "@/content/monsters";
+import { classDef } from "@/content/classes";
 import { idx } from "@/game/core/grid";
 import { playMusic, stopMusic, setMusicIntensity } from "@/lib/music";
 import { resumeAudio } from "@/lib/sound";
@@ -53,6 +54,9 @@ function dangerIntensity(s: GameStore): number {
 export default function GameRoot() {
   const mode = useGameStore((s) => s.mode);
   const targetingKind = useGameStore((s) => s.targeting?.kind ?? null);
+  const abilityName = useGameStore(
+    (s) => (s.game ? classDef(s.game.player.classId).ability?.name : null) ?? "Ability",
+  );
 
   useEffect(() => {
     // detect an existing save (client-only — safe in an effect)
@@ -126,11 +130,13 @@ export default function GameRoot() {
             {mode === "targeting" && (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
                 <span className="border border-gold/50 bg-panel/90 px-3 py-1 text-xs text-gold">
-                  {targetingKind === "ranged"
-                    ? "Take aim — move cursor · Enter to loose an arrow · Esc to cancel"
-                    : targetingKind === "blink"
-                      ? "Choose where to blink — move cursor · Enter to teleport · Esc to cancel"
-                      : "Aim the firebomb — move cursor · Enter to throw · Esc to cancel"}
+                  {targetingKind === "ability"
+                    ? `${abilityName} — press a direction · Esc to cancel`
+                    : targetingKind === "ranged"
+                      ? "Take aim — move cursor · Enter to loose an arrow · Esc to cancel"
+                      : targetingKind === "blink"
+                        ? "Choose where to blink — move cursor · Enter to teleport · Esc to cancel"
+                        : "Aim the firebomb — move cursor · Enter to throw · Esc to cancel"}
                 </span>
               </div>
             )}

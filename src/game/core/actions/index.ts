@@ -1061,6 +1061,121 @@ function equipFromBag(
 }
 
 /** Apply the player's action. Returns whether a turn was consumed. */
+// ── class active abilities ([q]) ─────────────────────────────────────────────
+/** Dispatch the player's class ability. Sets the cooldown on a successful use;
+ * a no-op (e.g. a dash into a wall) costs neither the turn nor the cooldown. */
+function useAbility(
+  state: GameState,
+  dx: number,
+  dy: number,
+  events: GameEvent[],
+  rng: Rng
+): boolean {
+  const p = state.player;
+  const ab = classDef(p.classId).ability;
+  if (!ab) {
+    msg(events, "You have no special ability.");
+    return false;
+  }
+  if (p.abilityCooldown > 0) {
+    msg(events, `${ab.name} isn't ready yet (${p.abilityCooldown}).`);
+    return false;
+  }
+  let used = false;
+  switch (ab.id) {
+    case "cleave":
+      used = abilityCleave(state, events, rng);
+      break;
+    case "dash":
+      used = abilityDash(state, dx, dy, events);
+      break;
+    case "scorch":
+      used = abilityScorch(state, dx, dy, events);
+      break;
+  }
+  if (used) p.abilityCooldown = ab.cooldown;
+  return used;
+}
+
+/** Warrior — Cleave: one sweep hits every adjacent monster (a full weapon blow). */
+function abilityCleave(state: GameState, events: GameEvent[], rng: Rng): boolean {
+  const p = state.player;
+  const around = [
+    [-1, -1], [0, -1], [1, -1],
+    [-1, 0], [1, 0],
+    [-1, 1], [0, 1], [1, 1],
+  ];
+  const targets = around
+    .map(([dx, dy]) => monsterAt(state, p.x + dx, p.y + dy))
+    .filter((m): m is MonsterInstance => !!m);
+  events.push({ kind: "blast", x: p.x, y: p.y, radius: 1 }); // a sweeping ring
+  msg(
+    events,
+    targets.length
+      ? "You sweep your blade in a wide arc!"
+      : "You sweep your blade through empty air.",
+  );
+  for (const m of targets) {
+    if (state.monsters.includes(m)) resolvePlayerAttack(state, m, events, rng);
+  }
+  return true; // a swing always spends the turn + cooldown
+}
+
+/** Rogue — Dash: leap up to `range` tiles in a direction, stopping before any
+ * blocker. Reposition/escape only (no strike). */
+function abilityDash(state: GameState, dx: number, dy: number, events: GameEvent[]): boolean {
+  if (dx === 0 && dy === 0) return false;
+  const p = state.player;
+  const range = classDef(p.classId).ability?.range ?? 3;
+  let nx = p.x;
+  let ny = p.y;
+  let steps = 0;
+  for (let s = 0; s < range; s++) {
+    const tx = nx + dx;
+    const ty = ny + dy;
+    if (!isWalkable(state.map, tx, ty) || monsterAt(state, tx, ty)) break;
+    nx = tx;
+    ny = ty;
+    steps++;
+  }
+  if (steps === 0) {
+    msg(events, "The way is blocked — you can't dash there.");
+    return false; // no movement → no turn spent
+  }
+  events.push({ kind: "projectile", from: { x: p.x, y: p.y }, to: { x: nx, y: ny }, glyph: "·" });
+  p.x = nx;
+  p.y = ny;
+  events.push({ kind: "step" });
+  springTrap(state, events); // you land fully — a trap underfoot bites
+  pickUp(state, events);
+  forageOnTile(state, events);
+  msg(events, `You dash ${steps} tile${steps > 1 ? "s" : ""} in a blur.`);
+  return true;
+}
+
+/** Pyromancer — Scorch: a widening cone of fire that sets the ground ablaze —
+ * the lingering fire then sears whatever stands in it (via `tickFires`). */
+function abilityScorch(state: GameState, dx: number, dy: number, events: GameEvent[]): boolean {
+  if (dx === 0 && dy === 0) return false;
+  const p = state.player;
+  const w = state.map.width;
+  const px = -dy; // perpendicular (90° rotation of the aim)
+  const py = dx;
+  let lit = 0;
+  for (let s = 1; s <= 3; s++) {
+    const half = s - 1; // depth 1 → 1 wide, 2 → 3 wide, 3 → 5 wide
+    for (let lat = -half; lat <= half; lat++) {
+      const tx = p.x + dx * s + px * lat;
+      const ty = p.y + dy * s + py * lat;
+      if (!inBounds(state.map, tx, ty)) continue;
+      if (igniteTile(state, idx(tx, ty, w), CONFIG.fire.duration)) lit++;
+    }
+  }
+  events.push({ kind: "blast", x: p.x + dx * 2, y: p.y + dy * 2, radius: 2 });
+  msg(events, lit ? "You breathe a roaring cone of fire!" : "Your flames gutter against cold stone.");
+  return true; // the burst always spends the turn + cooldown
+}
+
 function applyPlayerAction(
   state: GameState,
   action: PlayerAction,
@@ -1068,6 +1183,8 @@ function applyPlayerAction(
   rng: Rng
 ): boolean {
   switch (action.type) {
+    case "ability":
+      return useAbility(state, action.dx ?? 0, action.dy ?? 0, events, rng);
     case "wait":
       return true;
     case "move":
@@ -1690,6 +1807,12 @@ export function resolveTurn(
   tickEffects(state, events); // then the player's DoTs/buffs tick
   tickMonsterStatus(state, rng, events); // and every monster's debuffs tick
   tickFlood(state, events); // the crypt fills — water creeps into the floodable set
+  // count the ability cooldown down — but NOT on the turn it was just used (a
+  // refused/on-cooldown ability returns early above, so reaching here on an
+  // "ability" turn means it fired and just set the cooldown).
+  if (action.type !== "ability" && state.player.abilityCooldown > 0) {
+    state.player.abilityCooldown -= 1;
+  }
   recomputeFOV(state);
   senseTraps(state);
 

@@ -7,7 +7,7 @@ export type InputCommand =
   | { kind: "action"; action: PlayerAction }
   | {
       kind: "ui";
-      cmd: "pause" | "inventory" | "help" | "confirm" | "cancel" | "fire" | "mute" | "debugSkip";
+      cmd: "pause" | "inventory" | "help" | "confirm" | "cancel" | "fire" | "ability" | "mute" | "debugSkip";
     }
   | { kind: "bagSlot"; n: number };
 
@@ -54,6 +54,9 @@ export function keyToCommand(e: KeyboardEvent): InputCommand | null {
     case "f":
     case "F":
       return { kind: "ui", cmd: "fire" }; // aim/fire the equipped bow
+    case "q":
+    case "Q":
+      return { kind: "ui", cmd: "ability" }; // class active ability
     case "m":
     case "M":
       return { kind: "ui", cmd: "mute" }; // toggle SFX

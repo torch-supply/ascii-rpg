@@ -1868,5 +1868,93 @@ console.log("\n[38] Lose-interest (break contact to shake pursuers)");
   check("it stays chasing while it can still see you", chaseThenWait(8) === "chase");
 }
 
+// ─── 39. Class active abilities ([q]) ───────────────────────────────────────
+console.log("\n[39] Class abilities");
+{
+  // Warrior — Cleave: one use hits EVERY adjacent monster + goes on cooldown,
+  // and can't be re-used while cooling down.
+  const g = beginLevel("ability-cleave", 0, createPlayer("warrior"));
+  const p = g.player;
+  p.hp = 9999;
+  p.maxHp = 9999;
+  const adj = [
+    { x: p.x + 1, y: p.y },
+    { x: p.x - 1, y: p.y },
+    { x: p.x, y: p.y + 1 },
+    { x: p.x, y: p.y - 1 },
+  ].filter((n) => isWalkable(g.map, n.x, n.y));
+  g.monsters = adj.slice(0, 2).map((n, i) => ({
+    id: `cl${i}`,
+    defId: "skeleton",
+    x: n.x,
+    y: n.y,
+    hp: 30,
+    state: "chase" as const,
+  }));
+  const hp0 = g.monsters.map((m) => m.hp);
+  const res = resolveTurn(g, { type: "ability" }, new Rng(1));
+  check("cleave takes the turn", res.tookTurn);
+  check(
+    "cleave damages every adjacent monster",
+    g.monsters.length === hp0.length && g.monsters.every((m, i) => m.hp < hp0[i])
+  );
+  check("cleave sets the cooldown", g.player.abilityCooldown === 5);
+  const hp1 = g.monsters.map((m) => m.hp);
+  const res2 = resolveTurn(g, { type: "ability" }, new Rng(2));
+  check(
+    "ability refused while on cooldown (no turn, no damage)",
+    !res2.tookTurn && g.monsters.every((m, i) => m.hp === hp1[i])
+  );
+
+  // Rogue — Dash: leaps in a clear direction (player repositions).
+  {
+    const gd = beginLevel("ability-dash", 1, createPlayer("rogue"));
+    const pd = gd.player;
+    gd.monsters = [];
+    // find a cardinal with ≥1 clear tile
+    const dir = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ].find(([dx, dy]) => isWalkable(gd.map, pd.x + dx, pd.y + dy));
+    if (dir) {
+      const [dx, dy] = dir;
+      const x0 = pd.x;
+      const y0 = pd.y;
+      const rd = resolveTurn(gd, { type: "ability", dx, dy }, new Rng(3));
+      check("dash takes the turn", rd.tookTurn);
+      check(
+        "dash moves the player along the aim",
+        (gd.player.x !== x0 || gd.player.y !== y0) &&
+          Math.sign(gd.player.x - x0) === dx &&
+          Math.sign(gd.player.y - y0) === dy
+      );
+      check("dash sets the cooldown", gd.player.abilityCooldown === 4);
+    } else {
+      check("dash test setup found a clear direction", false);
+    }
+  }
+
+  // Pyromancer — Scorch: a directional cone lights fire tiles.
+  {
+    const gs = beginLevel("ability-scorch", 0, createPlayer("pyromancer"));
+    const ps = gs.player;
+    gs.monsters = [];
+    gs.fireTiles = [];
+    const dir = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ].find(([dx, dy]) => isWalkable(gs.map, ps.x + dx, ps.y + dy));
+    const [dx, dy] = dir ?? [1, 0];
+    const rs = resolveTurn(gs, { type: "ability", dx, dy }, new Rng(4));
+    check("scorch takes the turn", rs.tookTurn);
+    check("scorch ignites fire tiles ahead", gs.fireTiles.length > 0);
+    check("scorch sets the cooldown", gs.player.abilityCooldown === 6);
+  }
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
 process.exit(failures === 0 ? 0 : 1);

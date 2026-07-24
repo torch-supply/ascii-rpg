@@ -11,7 +11,7 @@ import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
 import { ITEMS, SHOP_TIERS, sellPrice, type ShopEntry } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
-import { CLASS_LIST } from "@/content/classes";
+import { CLASS_LIST, classDef } from "@/content/classes";
 import { OPENING, BIOME_GRADIENT } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
 import { emitEffects } from "@/lib/effectBus";
@@ -42,8 +42,9 @@ export type UIMode =
 
 export interface TargetingData {
   /** "firebomb" throws the potion `defId`; "ranged" fires the equipped bow;
-   * "blink" teleports the player to the chosen tile (Phial of Blinking) */
-  kind: "firebomb" | "ranged" | "blink";
+   * "blink" teleports the player to the chosen tile (Phial of Blinking);
+   * "ability" aims a directional class ability (fires on the next move key) */
+  kind: "firebomb" | "ranged" | "blink" | "ability";
   defId: string;
   x: number;
   y: number;
@@ -104,6 +105,8 @@ export interface GameStore {
   beginTargeting: (defId: string) => void;
   beginRangedTargeting: () => void;
   beginBlinkTargeting: (defId: string) => void;
+  /** trigger the class active ability ([q]); directional ones open a quick aim */
+  triggerAbility: () => void;
   moveCursor: (dx: number, dy: number) => void;
   confirmTarget: () => void;
   cancelTarget: () => void;
@@ -613,6 +616,28 @@ export const gameStore = createStore<GameStore>((set, get) => {
       });
     },
 
+    triggerAbility: () => {
+      const { game, mode } = get();
+      if (!game || mode !== "playing") return;
+      const ab = classDef(game.player.classId).ability;
+      if (!ab) return;
+      if (game.player.abilityCooldown > 0) {
+        playSfx("uiBack"); // a soft "not ready" nudge
+        return;
+      }
+      if (ab.aim === "none") {
+        get().submitAction({ type: "ability" });
+        return;
+      }
+      // directional: open a quick aim — the next move key sets the direction
+      const p = game.player;
+      set({
+        mode: "targeting",
+        targeting: { kind: "ability", defId: ab.id, x: p.x, y: p.y, range: ab.range ?? 3 },
+      });
+      playSfx("uiSelect");
+    },
+
     moveCursor: (dx: number, dy: number) => {
       const { targeting, game } = get();
       if (!targeting || !game) return;
@@ -630,6 +655,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const { targeting } = get();
       if (!targeting) return;
       const { kind, defId, x, y } = targeting;
+      // a directional ability fires on a MOVE key, not a tile confirm — so a bare
+      // confirm here just cancels the aim.
+      if (kind === "ability") {
+        get().cancelTarget();
+        return;
+      }
       set({ mode: "playing", targeting: null });
       if (kind === "ranged") get().submitAction({ type: "shootAt", x, y });
       else if (kind === "blink") get().submitAction({ type: "blinkTo", defId, x, y });
@@ -664,8 +695,14 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const { mode } = get();
       if (cmd.kind === "action") {
         if (mode === "playing") get().submitAction(cmd.action);
-        else if (mode === "targeting" && cmd.action.type === "move")
-          get().moveCursor(cmd.action.dx, cmd.action.dy);
+        else if (mode === "targeting" && cmd.action.type === "move") {
+          const t = get().targeting;
+          if (t?.kind === "ability") {
+            // aiming a directional ability — this move key IS the direction
+            set({ mode: "playing", targeting: null });
+            get().submitAction({ type: "ability", dx: cmd.action.dx, dy: cmd.action.dy });
+          } else get().moveCursor(cmd.action.dx, cmd.action.dy);
+        }
         return;
       }
       if (cmd.kind === "bagSlot") {
@@ -707,6 +744,10 @@ export const gameStore = createStore<GameStore>((set, get) => {
         case "fire":
           if (mode === "playing") get().beginRangedTargeting();
           else if (mode === "targeting") get().confirmTarget();
+          break;
+        case "ability":
+          if (mode === "playing") get().triggerAbility();
+          else if (mode === "targeting") get().cancelTarget(); // q again backs out of the aim
           break;
         case "inventory":
           if (mode === "playing") {

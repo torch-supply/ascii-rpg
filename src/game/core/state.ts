@@ -33,6 +33,7 @@ export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
     torchId: null,
     torchFuel: 0,
     effects: {},
+    abilityCooldown: 0,
   };
 }
 

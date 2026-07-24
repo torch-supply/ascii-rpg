@@ -1,19 +1,31 @@
-"use client";
+'use client';
 
-import { gameStore } from "@/store/gameStore";
-import { MenuButton } from "@/components/ui/MenuButton";
-import { BoxFrame } from "@/components/ui/BoxFrame";
+import { BoxFrame } from '@/components/ui/BoxFrame';
+import { MenuButton } from '@/components/ui/MenuButton';
+import { gameStore } from '@/store/gameStore';
 
-const ROWS: [string, string][] = [
-  ["↑ ↓ ← →  /  w a s d", "Move (bump a monster to attack it)"],
-  [".  or  Space", "Wait one turn"],
-  ["f", "Fire the equipped bow (aim, then Enter)"],
-  ["c", "Close an adjacent open door (bump a shut door to open it)"],
-  ["i", "Open inventory"],
-  ["1 – 9", "In inventory: use / equip a bag item by slot"],
-  ["p  or  Esc", "Pause"],
-  ["?", "This help"],
-  ["Enter", "Confirm / continue"],
+// [keys, description, wide?] — `wide` rows span both columns (the movement row's
+// key is long, so it gets its own full-width line).
+const ROWS: [string, string, boolean?][] = [
+  ['↑ ↓ ← →  ·  wasd', 'Move — bump a monster to attack it', true],
+  ['.  ·  Space', 'Wait one turn'],
+  ['f', 'Fire the equipped bow (aim, Enter)'],
+  ['q', 'Class ability (aim with a direction)'],
+  ['c', 'Close an adjacent door'],
+  ['i', 'Open inventory'],
+  ['1 – 9', 'Use / equip a bag item'],
+  ['p  ·  Esc', 'Pause'],
+  ['?', 'This help'],
+  ['Enter', 'Confirm / continue'],
+];
+
+const LEGEND: [string, string, string][] = [
+  ['@', '#ffffff', 'you'],
+  ['g', '#3fbf3f', 'monster'],
+  ['$', '#ffd700', 'gold'],
+  ['!', '#ff5fa2', 'potion'],
+  ['*', '#7fdfff', 'quest'],
+  ['>', '#ffd700', 'exit'],
 ];
 
 export default function HelpModal() {
@@ -22,38 +34,70 @@ export default function HelpModal() {
       <BoxFrame
         accent="#ffb347"
         chip="#0c0c0e"
-        className="flex w-full max-w-lg flex-col gap-4"
-        style={{ background: "rgba(16,16,20,0.94)", padding: "26px 30px" }}
+        className="flex w-[min(92vw,44rem)] flex-col gap-5"
+        style={{ background: 'rgba(16,16,20,0.94)', padding: '32px 40px' }}
       >
-        <h2 className="text-balance text-center text-lg uppercase tracking-[0.3em] text-gold">
-          How to Play
-        </h2>
-        <p className="text-balance text-center text-xs leading-relaxed text-dim">
+        {/* title + ◈ divider — matches the inventory / shop headers */}
+        <div className="flex flex-col items-center gap-3">
+          <h2
+            className="m-0 text-lg font-semibold uppercase tracking-[0.34em] text-gold"
+            style={{ textIndent: '0.34em' }}
+          >
+            How to Play
+          </h2>
+          <div className="flex w-[300px] max-w-full items-center gap-3">
+            <span
+              className="h-px flex-1"
+              style={{
+                background: 'linear-gradient(to right,transparent,#ffb347)',
+              }}
+            />
+            <span className="text-xs text-[#ffb347]">◈</span>
+            <span
+              className="h-px flex-1"
+              style={{
+                background: 'linear-gradient(to left,transparent,#ffb347)',
+              }}
+            />
+          </div>
+        </div>
+
+        <p className="text-balance text-center text-sm leading-relaxed text-dim">
           A turn-based roguelike: the world only moves when you do. Explore in
           the torchlight, fight what you must, and complete each level&apos;s
           goal (shown top-right) before your turns run out.
         </p>
-        <div className="flex flex-col gap-1.5 text-[13px]">
-          {ROWS.map(([keys, desc]) => (
-            <div key={keys} className="flex items-baseline justify-between gap-4">
-              <span className="text-magic">{keys}</span>
-              <span className="text-right text-fg">{desc}</span>
+
+        {/* controls — two columns, each a key + description on a ruled row */}
+        <div className="grid grid-cols-1 gap-x-8 text-sm sm:grid-cols-2 border-t border-[#242430]">
+          {ROWS.map(([keys, desc, wide]) => (
+            <div
+              key={keys}
+              className={`flex items-baseline gap-3 border-b border-[#242430] py-2 ${wide ? 'sm:col-span-2' : ''}`}
+            >
+              <span className="min-w-[6.5rem] shrink-0 font-semibold text-magic">
+                {keys}
+              </span>
+              <span className="text-fg">{desc}</span>
             </div>
           ))}
         </div>
-        <div className="flex flex-col gap-1 border-t border-edge pt-3 text-[12px] text-dim">
-          <span>
-            <span className="text-fg">@</span> you ·{" "}
-            <span style={{ color: "#3fbf3f" }}>g</span>{" "}
-            <span style={{ color: "#d9d9d9" }}>s</span> monsters ·{" "}
-            <span className="text-gold">$</span> gold ·{" "}
-            <span style={{ color: "#ff5fa2" }}>!</span> potion ·{" "}
-            <span style={{ color: "#7fdfff" }}>*</span> quest ·{" "}
-            <span className="text-gold">&gt;</span> exit
-          </span>
+
+        {/* glyph legend */}
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1  text-sm text-dim">
+          {LEGEND.map(([glyph, color, label]) => (
+            <span key={label}>
+              <span style={{ color }}>{glyph}</span> {label}
+            </span>
+          ))}
         </div>
+
         <div className="flex justify-center pt-1">
-          <MenuButton accent autoFocus onClick={() => gameStore.getState().setMode("playing")}>
+          <MenuButton
+            accent
+            autoFocus
+            onClick={() => gameStore.getState().setMode('playing')}
+          >
             ▸ Back
           </MenuButton>
         </div>

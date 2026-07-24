@@ -214,6 +214,16 @@ export function HudBar() {
             <span className="text-fg">▣ {armor.name}</span>
             <span className="text-dim"> ({armor.reduction})</span>
           </span>
+          {cls.ability && (
+            <span title={cls.ability.blurb}>
+              <span className="text-dim">[q]</span> {cls.ability.name}
+              {p.abilityCooldown > 0 ? (
+                <span className="text-edge"> ({p.abilityCooldown})</span>
+              ) : (
+                <span className="text-good"> ✦</span>
+              )}
+            </span>
+          )}
           {p.hasTorch && p.torchFuel > 0 && (
             <span className={p.torchFuel <= 20 ? 'text-hp' : 'text-gold'}>
               ( {p.torchId ? ITEMS[p.torchId].name : 'Torch'} {p.torchFuel}
@@ -474,6 +484,7 @@ export function HudFooter() {
         </span>
         <span className="whitespace-nowrap">
           <span className="text-dim">[f]</span>ire ·{' '}
+          <span className="text-dim">[q]</span>power ·{' '}
           <span className="text-dim">[c]</span>lose ·{' '}
           <span className="text-dim">[i]</span>nv ·{' '}
           <span className="text-dim">[p]</span>ause ·{' '}

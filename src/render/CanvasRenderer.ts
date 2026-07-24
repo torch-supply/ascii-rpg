@@ -205,7 +205,7 @@ export class CanvasRenderer {
   private cell = 0;
 
   private lastState: GameState | null = null;
-  private targeting: { x: number; y: number } | null = null;
+  private targeting: { x: number; y: number; kind?: string } | null = null;
   private camX = 0;
   private camY = 0;
   private fx: Fx[] = [];
@@ -300,7 +300,7 @@ export class CanvasRenderer {
     }
   }
 
-  draw(state: GameState, targeting?: { x: number; y: number } | null) {
+  draw(state: GameState, targeting?: { x: number; y: number; kind?: string } | null) {
     if (this.cols === 0) this.fit();
     this.lastState = state;
     this.targeting = targeting ?? null;
@@ -343,8 +343,22 @@ export class CanvasRenderer {
     });
   }
 
-  /** Firebomb aiming overlay: a reticle at the target + its 3x3 blast ring. */
+  /** Aiming overlay. For a directional class ability: chevrons on the four
+   * cardinal tiles around the player ("press a way to go"). Otherwise (firebomb
+   * / ranged / blink): a reticle at the target tile + its 3x3 blast ring. */
   private drawTargeting(tx: number, ty: number) {
+    if (this.targeting?.kind === 'ability') {
+      const arrows: [number, number, string][] = [
+        [0, -1, '↑'],
+        [0, 1, '↓'],
+        [-1, 0, '←'],
+        [1, 0, '→'],
+      ];
+      for (const [dx, dy, glyph] of arrows) {
+        this.drawCell(tx + dx, ty + dy, glyph, '#ffdd55');
+      }
+      return;
+    }
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         const center = dx === 0 && dy === 0;
