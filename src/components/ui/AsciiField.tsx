@@ -194,7 +194,7 @@ export function AsciiField({
             dy = (cy - cyMid) / (g.rows * 0.6);
           const d = Math.sqrt(dx * dx + dy * dy);
           const vign = smooth(0.32, 1.08, d);
-          const a = 1.15 * intensity * (0.35 + 0.65 * v) * (0.2 + 0.8 * vign);
+          const a = 1.32 * intensity * (0.35 + 0.65 * v) * (0.2 + 0.8 * vign);
           if (a < 0.015) continue;
           ctx.globalAlpha = Math.min(0.92, a);
           if (biome === 'pit') {

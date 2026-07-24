@@ -26,6 +26,37 @@ export interface GameMap {
   tiles: TileType[];
   /** The single "exit" tile, present on reachLocation levels. */
   exit?: Pos;
+  // ── sub-biome regions (cosmetic) ──
+  // Per-tile region id (0 = base level biome). Plain number[] (not a typed
+  // array) so it JSON-roundtrips through the save like `tiles`. Present only on
+  // levels with a `subBiome`. The renderer/lighting resolve each tile's look via
+  // `regionBiome[id]` / `regionPalette[id]` (index 0 = the level's own).
+  region?: number[];
+  regionBiome?: Biome[];
+  regionPalette?: Palette[];
+}
+
+/** A secondary biome region carved into a level: a distinct palette + biome tag
+ * (glyphs / atmosphere / lighting ambient) over an organic noise blob. Cosmetic
+ * — it doesn't change terrain or mechanics. */
+export interface SubBiomeSpec {
+  biome: Biome;
+  palette: Palette;
+  /** noise frequency — smaller = larger, smoother blobs (default 0.13) */
+  scale?: number;
+  /** noise cutoff — higher = smaller region (default 0.2) */
+  threshold?: number;
+  /** hazard terrain scattered as blobs inside the region — a kit, e.g. a bog's
+   * water pools or a scorched hollow's oil. Carved pre-connectivity, so
+   * reachability guarantees hold. Omit to use the biome's default kit
+   * (`BIOME_HAZARDS` in generate.ts); pass `[]` for none. */
+  hazards?: { type: TileType; density?: number }[];
+  /** if set, carve the region's STRUCTURE with this generator in a rectangular
+   * wing (e.g. a `maze` catacomb), bridged to the main map. Overrides the
+   * default organic noise-blob shaping. */
+  layout?: GeneratorKind;
+  /** wing size as a fraction of the map (w & h), for `layout` carves (default 0.42) */
+  size?: number;
 }
 
 export interface Pos {
@@ -42,7 +73,12 @@ export type Biome =
   | "castle"
   | "crypt"
   | "throne";
-export type GeneratorKind = "digger" | "uniform" | "cellular";
+export type GeneratorKind =
+  | "digger"
+  | "uniform"
+  | "cellular"
+  | "rogue" // classic rooms + connecting corridors
+  | "maze"; // dense perfect maze (DividedMaze) — for labyrinth wings
 
 export type MonsterBehavior =
   | "wander"
@@ -189,6 +225,16 @@ export interface LevelConfig {
   title: string;
   biome: Biome;
   palette: Palette;
+  /** optional secondary biome region carved into the level (cosmetic) */
+  subBiome?: SubBiomeSpec;
+  /** optional hidden vault: a sealed room reachable only by breaking a cracked
+   * wall, holding the listed loot. Skipped on seeds with no valid spot. */
+  secretVault?: { loot: { itemId: string }[] };
+  /** signature set-piece: the level slowly floods during play. Flooding begins
+   * at `startTurn`, rises one ring every `interval` turns, up to `maxSteps`
+   * rings. A protected dry spine (start→objectives) never floods, so the goal
+   * stays reachable; side areas submerge — Levitation/Rimewalk are clutch. */
+  flood?: { startTurn: number; interval: number; maxSteps: number };
   mapWidth: number;
   mapHeight: number;
   generator: GeneratorKind;
@@ -319,6 +365,12 @@ export interface GameState {
   crackedWallHits: Record<number, number>;
   /** lasting floor stains: tile index -> decal kind (scorch / blood) */
   decals: Record<number, DecalKind>;
+  /** flooding set-piece (levels with `LevelConfig.flood`): floor tiles that MAY
+   * flood (off the protected dry spine), the initial water origins, and how many
+   * rings have risen so far. Absent on non-flooding levels. */
+  floodable?: number[];
+  floodSeeds?: number[];
+  floodStep?: number;
   /** risk/reward shrines on the level */
   altars: AltarInstance[];
   /** tiles telegraphed by the lich's barrage — they detonate at the start of

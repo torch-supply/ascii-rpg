@@ -16,6 +16,7 @@ import { createDisplay } from './Display';
 import {
   AMBIENT_ENTITY,
   ambientForBiome,
+  type BiomeAmbient,
   computeLightMap,
   type ExtraLight,
   type LightMap,
@@ -218,9 +219,10 @@ export class CanvasRenderer {
   private litPX = 0;
   private litPY = 0;
   private litW = 1;
-  // per-biome ambient floor (center → edge), set each render from the level
-  private ambCenter: [number, number, number] = [104, 100, 120];
-  private ambEdge: [number, number, number] = [90, 88, 102];
+  // per-region ambient floor (center → edge), indexed by tile region id, set
+  // each render from the level's biome + any sub-biome
+  private regionArr: number[] | null = null;
+  private ambByRegion: BiomeAmbient[] = [];
   // smooth-scroll: slide the canvas one cell when the camera follows the player
   private lastCamX = 0;
   private lastCamY = 0;
@@ -531,8 +533,11 @@ export class CanvasRenderer {
       const d = Math.hypot(ex - this.litPX, ey - this.litPY);
       const t = Math.min(1, d / Math.max(1, effR));
       const af = 1 - t * t * (3 - 2 * t); // 1 at player → 0 at the vision edge
-      const c = this.ambCenter;
-      const e = this.ambEdge;
+      // per-region ambient tint (sub-biome patches glow in their own color)
+      const ra = this.ambByRegion[this.regionArr ? this.regionArr[i] : 0]
+        ?? this.ambByRegion[0];
+      const c = ra.center;
+      const e = ra.edge;
       amb = [
         e[0] + (c[0] - e[0]) * af,
         e[1] + (c[1] - e[1]) * af,
@@ -580,10 +585,38 @@ export class CanvasRenderer {
       : Math.sin(now * 0.005) * 0.5 + Math.sin(now * 0.013) * 0.3;
     const effR = Math.max(2, player.lightRadius + flicker);
 
-    // colored multi-source light for this frame (see ./lighting)
-    const amb = ambientForBiome(level.biome);
-    this.ambCenter = amb.center;
-    this.ambEdge = amb.edge;
+    // colored multi-source light for this frame (see ./lighting). Ambient is
+    // per-region so a sub-biome patch is lit in its own tint.
+    this.regionArr = map.region ?? null;
+    this.ambByRegion = (map.regionBiome ?? [level.biome]).map(ambientForBiome);
+
+    // ── dynamic set-piece lighting beats (modulate the ambient) ──
+    // Throne: the fire FLARES as the lich makes his last stand (phase 3, ≤1/3
+    // HP) — the hall brightens + warms in a pulse, cresting with the danger
+    // music. Crypt: the braziers GUTTER as the flood drowns it — ambient dims
+    // and cools the higher the water rises.
+    if (level.biome === "throne") {
+      const boss = state.monsters.find((m) => MONSTERS[m.defId].isBoss);
+      if (boss && boss.hp / MONSTERS[boss.defId].maxHp <= 1 / 3) {
+        const p = this.reduceMotion ? 0.8 : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.006));
+        const warm = (c: [number, number, number]): [number, number, number] => [
+          Math.min(255, c[0] + 100 * p),
+          Math.min(255, c[1] + 42 * p),
+          Math.max(0, c[2] - 12 * p),
+        ];
+        this.ambByRegion = this.ambByRegion.map((a) => ({ center: warm(a.center), edge: warm(a.edge) }));
+      }
+    } else if (level.flood && state.floodStep) {
+      const t = Math.min(1, state.floodStep / Math.max(1, level.flood.maxSteps));
+      const k = 1 - 0.45 * t; // dim toward 55% at full flood
+      const drown = (c: [number, number, number]): [number, number, number] => [
+        c[0] * k,
+        c[1] * k,
+        Math.min(255, c[2] * k * 1.2), // hold the blue → reads colder as it darkens
+      ];
+      this.ambByRegion = this.ambByRegion.map((a) => ({ center: drown(a.center), edge: drown(a.edge) }));
+    }
+
     this.lightMap = computeLightMap(
       state,
       now,
@@ -608,8 +641,12 @@ export class CanvasRenderer {
         if (!isVis && !isExp) continue; // unseen -> background
 
         const t = map.tiles[i];
-        let glyph = terrainGlyph(t, level.biome);
-        let color = terrainColor(t, palette, level.biome);
+        // resolve this tile's biome/palette (sub-biome region or the level's own)
+        const rid = map.region ? map.region[i] : 0;
+        const rBiome = map.regionBiome ? map.regionBiome[rid] : level.biome;
+        const rPalette = map.regionPalette ? map.regionPalette[rid] : palette;
+        let glyph = terrainGlyph(t, rBiome);
+        let color = terrainColor(t, rPalette, rBiome);
         // a sensed/detected (but still armed) trap shows as a faint warning ^
         if (t === 'trap' && knownTraps.has(i)) {
           glyph = '^';
@@ -620,7 +657,7 @@ export class CanvasRenderer {
         if (isVis && !this.reduceMotion) {
           if (t === 'water')
             color = dim(color, 0.82 + 0.18 * Math.sin(now * 0.004 + i * 0.9));
-          else if (level.biome === 'marsh' && t === 'wall')
+          else if (rBiome === 'marsh' && t === 'wall')
             color = dim(color, 0.9 + 0.1 * Math.sin(now * 0.0035 + i * 0.6));
         }
         this.display.draw(sx, sy, glyph, color, null);
@@ -753,7 +790,9 @@ export class CanvasRenderer {
     this.paintBloom(ctx, state, camX, camY, visible, cw, ch);
     this.paintAtmosphere(
       ctx,
-      LEVELS[state.currentLevel].biome,
+      state,
+      camX,
+      camY,
       cw,
       ch,
       overlay.width,
@@ -778,13 +817,8 @@ export class CanvasRenderer {
     }
     if (this.crackAny) {
       const { map } = state;
-      const palette = LEVELS[state.currentLevel].palette;
-      const wallBase = terrainColor(
-        'crackedWall',
-        palette,
-        LEVELS[state.currentLevel].biome,
-      );
-      const player = state.player;
+      const levelPalette = LEVELS[state.currentLevel].palette;
+      const levelBiome = LEVELS[state.currentLevel].biome;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       for (let sy = 0; sy < this.rows; sy++) {
@@ -796,6 +830,10 @@ export class CanvasRenderer {
           if (map.tiles[i] !== 'crackedWall') continue;
           const isVis = visible.has(i);
           if (!isVis && !explored.has(i)) continue;
+          const rid = map.region ? map.region[i] : 0;
+          const rBiome = map.regionBiome ? map.regionBiome[rid] : levelBiome;
+          const rPalette = map.regionPalette ? map.regionPalette[rid] : levelPalette;
+          const wallBase = terrainColor('crackedWall', rPalette, rBiome);
           // the crack is the wall's own color, darker — a shadowed fracture
           // that stays legible under the torch glow (vs. a flat knockout)
           const shown = isVis
@@ -877,50 +915,127 @@ export class CanvasRenderer {
 
   /** Per-biome ambient particles (drifting mist blobs, or many small moving
    * motes for snow/embers/dust). Procedural from the clock — no stored state —
-   * and skipped entirely under reduced-motion. */
+   * and skipped under reduced-motion. Each biome present (the level's + any
+   * sub-biome) draws its own weather, gated per-particle to the world tile under
+   * it, so a sub-region's atmosphere only drifts over that region. */
   private paintAtmosphere(
     ctx: CanvasRenderingContext2D,
-    biome: Biome,
+    state: GameState,
+    camX: number,
+    camY: number,
     cw: number,
     ch: number,
     W: number,
     H: number,
   ) {
     if (this.reduceMotion) return;
-    const atm = BIOME_ATMOSPHERE[biome];
-    if (!atm) return;
+    const map = state.map;
+    const levelBiome = LEVELS[state.currentLevel].biome;
+    // biomes in play: the level's own + any distinct sub-biome
+    const present: Biome[] = [levelBiome];
+    if (map.regionBiome) {
+      for (const b of map.regionBiome) if (!present.includes(b)) present.push(b);
+    }
+    if (!present.some((b) => BIOME_ATMOSPHERE[b])) return;
+
+    // biome of the world tile under an overlay pixel (weather is screen-space,
+    // gated by whatever region currently sits beneath it)
+    const biomeAtPx = (px: number, py: number): Biome => {
+      const tx = camX + Math.floor(px / cw);
+      const ty = camY + Math.floor(py / ch);
+      if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return levelBiome;
+      const rid = map.region ? map.region[ty * map.width + tx] : 0;
+      return map.regionBiome ? map.regionBiome[rid] : levelBiome;
+    };
+
     const now = performance.now();
     ctx.save();
+    for (const biome of present) {
+      const atm = BIOME_ATMOSPHERE[biome];
+      if (!atm) continue;
+      // The base biome fills most of the screen — keep the whole-screen drift,
+      // gated per-particle. A SUB-biome covers only a patch, so scatter its
+      // particles across the region's own cells (concentrated there) — otherwise
+      // whole-screen particles almost never land on a small patch.
+      const cells = biome === levelBiome ? null : this.regionCells(state, biome, camX, camY, cw, ch);
+      if (cells && cells.length === 0) continue;
 
-    if (atm.kind === 'mist') {
-      for (let i = 0; i < atm.count; i++) {
-        const drift =
-          Math.sin(now * 0.00006 * (1 + (i % 3)) + i * 1.7) * W * 0.25;
-        const x = (((frac(i) * W + drift) % W) + W) % W;
-        const y = frac(i + 41) * H + Math.sin(now * 0.0001 + i) * ch * 0.5;
-        const r = cw * (3.5 + (i % 3));
-        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, rgba(atm.color, atm.alpha));
-        g.addColorStop(1, rgba(atm.color, 0));
-        ctx.fillStyle = g;
-        ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      if (atm.kind === 'mist') {
+        for (let i = 0; i < atm.count; i++) {
+          let x: number, y: number;
+          if (cells) {
+            // spread the blobs evenly through the region's cells (row-major)
+            const c = cells[Math.floor(((i + 0.5) / atm.count) * cells.length)];
+            x = c.x + Math.sin(now * 0.0004 + i * 1.7) * cw * 1.3;
+            y = c.y + Math.cos(now * 0.0003 + i * 2.1) * ch * 0.9;
+          } else {
+            const drift = Math.sin(now * 0.00006 * (1 + (i % 3)) + i * 1.7) * W * 0.25;
+            x = (((frac(i) * W + drift) % W) + W) % W;
+            y = frac(i + 41) * H + Math.sin(now * 0.0001 + i) * ch * 0.5;
+            if (biomeAtPx(x, y) !== biome) continue;
+          }
+          const r = cw * (3.5 + (i % 3));
+          const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+          g.addColorStop(0, rgba(atm.color, atm.alpha));
+          g.addColorStop(1, rgba(atm.color, 0));
+          ctx.fillStyle = g;
+          ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        }
+      } else {
+        const size = Math.max(1.5, cw * 0.14);
+        const rising = atm.kind === 'embers';
+        const fall = atm.kind === 'snow' ? 0.03 : rising ? 0.02 : 0.012;
+        // scale mote count to a sub-region's size so a small patch isn't a blizzard
+        const n = cells
+          ? Math.min(atm.count, Math.max(6, Math.round(cells.length * 0.4)))
+          : atm.count;
+        ctx.fillStyle = atm.color;
+        for (let i = 0; i < n; i++) {
+          let x: number, y: number;
+          if (cells) {
+            const c = cells[Math.floor(((i + 0.5) / n) * cells.length)];
+            x = c.x + Math.sin(now * 0.001 + i * 2.3) * cw * 0.6;
+            y = c.y + (rising ? -1 : 1) * (((now * fall * (0.6 + frac(i + 7))) % ch) - ch * 0.5);
+          } else {
+            const sway = Math.sin(now * 0.001 + i * 2.3) * cw * 0.5;
+            const drift = now * fall * (0.6 + frac(i + 7)) * (rising ? -1 : 1);
+            x = (((frac(i) * W + sway) % W) + W) % W;
+            y = (((frac(i + 41) * H + drift) % H) + H) % H;
+            if (biomeAtPx(x, y) !== biome) continue;
+          }
+          ctx.globalAlpha = atm.alpha * (0.55 + 0.45 * frac(i + 13));
+          ctx.fillRect(x, y, size, size);
+        }
+        ctx.globalAlpha = 1;
       }
-    } else {
-      const size = Math.max(1.5, cw * 0.14);
-      const rising = atm.kind === 'embers';
-      const fall = atm.kind === 'snow' ? 0.03 : rising ? 0.02 : 0.012;
-      ctx.fillStyle = atm.color;
-      for (let i = 0; i < atm.count; i++) {
-        const sway = Math.sin(now * 0.001 + i * 2.3) * cw * 0.5;
-        const drift = now * fall * (0.6 + frac(i + 7)) * (rising ? -1 : 1);
-        const x = (((frac(i) * W + sway) % W) + W) % W;
-        const y = (((frac(i + 41) * H + drift) % H) + H) % H;
-        ctx.globalAlpha = atm.alpha * (0.55 + 0.45 * frac(i + 13));
-        ctx.fillRect(x, y, size, size);
-      }
-      ctx.globalAlpha = 1;
     }
     ctx.restore();
+  }
+
+  /** Viewport screen-pixel centers of every visible cell whose (sub-)biome is
+   * `biome` — used to scatter a sub-region's atmosphere over its own patch. */
+  private regionCells(
+    state: GameState,
+    biome: Biome,
+    camX: number,
+    camY: number,
+    cw: number,
+    ch: number,
+  ): { x: number; y: number }[] {
+    const map = state.map;
+    const levelBiome = LEVELS[state.currentLevel].biome;
+    const out: { x: number; y: number }[] = [];
+    for (let sy = 0; sy < this.rows; sy++) {
+      for (let sx = 0; sx < this.cols; sx++) {
+        const wx = camX + sx;
+        const wy = camY + sy;
+        if (wx < 0 || wy < 0 || wx >= map.width || wy >= map.height) continue;
+        const rid = map.region ? map.region[wy * map.width + wx] : 0;
+        const bb = map.regionBiome ? map.regionBiome[rid] : levelBiome;
+        if (bb === biome) out.push({ x: (sx + 0.5) * cw, y: (sy + 0.5) * ch });
+      }
+    }
+    return out;
   }
 
   /** Draw persistent floor stains as soft organic blobs (only the visible,
