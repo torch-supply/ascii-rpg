@@ -29,7 +29,7 @@ export interface GameMap {
   // ── sub-biome regions (cosmetic) ──
   // Per-tile region id (0 = base level biome). Plain number[] (not a typed
   // array) so it JSON-roundtrips through the save like `tiles`. Present only on
-  // levels with a `subBiome`. The renderer/lighting resolve each tile's look via
+  // levels with `subBiomes`. The renderer/lighting resolve each tile's look via
   // `regionBiome[id]` / `regionPalette[id]` (index 0 = the level's own).
   region?: number[];
   regionBiome?: Biome[];
@@ -37,8 +37,9 @@ export interface GameMap {
 }
 
 /** A secondary biome region carved into a level: a distinct palette + biome tag
- * (glyphs / atmosphere / lighting ambient) over an organic noise blob. Cosmetic
- * — it doesn't change terrain or mechanics. */
+ * (glyphs / atmosphere / lighting ambient) over either an organic noise blob
+ * (cosmetic) or a structural `layout` wing, optionally seeded with a hazard kit
+ * (water/oil/ice/…) that DOES affect play. */
 export interface SubBiomeSpec {
   biome: Biome;
   palette: Palette;
@@ -213,11 +214,25 @@ export interface LevelConfig {
   title: string;
   biome: Biome;
   palette: Palette;
-  /** optional secondary biome region carved into the level (cosmetic) */
-  subBiome?: SubBiomeSpec;
-  /** optional hidden vault: a sealed room reachable only by breaking a cracked
-   * wall, holding the listed loot. Skipped on seeds with no valid spot. */
-  secretVault?: { loot: { itemId: string }[] };
+  /** optional secondary biome regions carved into the level — each a distinct
+   * palette/biome patch (cosmetic blob) or a structural wing (`layout`) with its
+   * own hazard kit. Multiple entries get successive region ids (1, 2, …). */
+  subBiomes?: SubBiomeSpec[];
+  /** optional hidden vault: a sealed room holding the listed loot, reachable
+   * ONLY through a single gate — a cracked wall to blast/bash (default) or a
+   * shut door to simply open. Skipped on seeds with no valid spot. */
+  secretVault?: { gate?: "door" | "crackedWall"; loot: { itemId: string }[] };
+  /** optional FREESTANDING building stamped onto open ground: a visible wall box
+   * with a floor interior and one shut door, loot inside — reads as an actual
+   * structure (a hut in the woods, a shrine in a clearing), unlike `secretVault`
+   * which digs a room into existing wall mass. Its walls render as a built `#`
+   * in `palette` (default warm timber) so it stands out from the biome. Skipped
+   * if no clearing fits. */
+  structure?: {
+    size?: { w: number; h: number };
+    palette?: Palette;
+    loot: { itemId: string }[];
+  };
   /** signature set-piece: the level slowly floods during play. Flooding begins
    * at `startTurn`, rises one ring every `interval` turns, up to `maxSteps`
    * rings. A protected dry spine (start→objectives) never floods, so the goal

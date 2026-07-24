@@ -17,6 +17,21 @@ export const LEVELS: LevelConfig[] = [
     title: "The Pit",
     biome: "dungeon",
     palette: { wall: "#6b6b7c", floor: "#3b3b46", accent: "#ffe14d" },
+    // a raw cavern breaks out of the dug cellblock — a natural tunnel contrast
+    subBiomes: [
+      {
+        biome: "dungeon",
+        palette: { wall: "#5a4d42", floor: "#2b241d", accent: "#c9a87a" },
+        layout: "cellular",
+        size: 0.4,
+        hazards: [],
+      },
+    ],
+    // a neighboring cell — a shut door to open, a little relief inside
+    secretVault: {
+      gate: "door",
+      loot: [{ itemId: "p_heal" }, { itemId: "c_gold" }],
+    },
     mapWidth: 40,
     mapHeight: 24,
     generator: "digger",
@@ -48,15 +63,27 @@ export const LEVELS: LevelConfig[] = [
     title: "The Blackwood",
     biome: "forest",
     palette: { wall: "#3f7a45", floor: "#2f4326", accent: "#7fdfff" },
-    // a boggy marsh patch soaks through part of the wood (cosmetic sub-biome)
-    subBiome: {
-      biome: "marsh",
-      palette: { wall: "#5f6b3a", floor: "#39402b", accent: "#8fd0a0" },
-      threshold: 0.05,
-      hazards: [{ type: "water", density: 0.16 }], // boggy pools to weave around
+    subBiomes: [
+      // a boggy marsh patch soaks through part of the wood (water pools)
+      {
+        biome: "marsh",
+        palette: { wall: "#5f6b3a", floor: "#39402b", accent: "#8fd0a0" },
+        threshold: 0.05,
+        hazards: [{ type: "water", density: 0.16 }], // pools to weave around
+      },
+      // a brighter, drier glade — a calm clearing amid the black trees
+      {
+        biome: "forest",
+        palette: { wall: "#5aa85f", floor: "#3e5a30", accent: "#d8f0a0" },
+        scale: 0.16,
+        threshold: 0.28,
+        hazards: [],
+      },
+    ],
+    // a freestanding woodsman's hut in a clearing — walls, a shut door, loot in
+    structure: {
+      loot: [{ itemId: "p_gheal" }, { itemId: "c_gold" }],
     },
-    // a hidden cache behind a cracked wall — break in for the reward
-    secretVault: { loot: [{ itemId: "p_gheal" }, { itemId: "c_gold" }] },
     mapWidth: 48,
     mapHeight: 30,
     generator: "cellular",
@@ -89,6 +116,21 @@ export const LEVELS: LevelConfig[] = [
     title: "The Mire",
     biome: "marsh",
     palette: { wall: "#5f7a3c", floor: "#2e3a28", accent: "#7fdfff" },
+    // a firmer, grassy hummock — a dry rest-island amid the black water
+    subBiomes: [
+      {
+        biome: "forest",
+        palette: { wall: "#5aa85f", floor: "#3e5a30", accent: "#d8f0a0" },
+        scale: 0.15,
+        threshold: 0.26,
+        hazards: [],
+      },
+    ],
+    // a half-sunken wayshrine of the old dawn-faith — mossy stone, offerings in
+    structure: {
+      palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
+      loot: [{ itemId: "p_detect" }, { itemId: "p_gheal" }],
+    },
     mapWidth: 50,
     mapHeight: 30,
     generator: "cellular",
@@ -124,6 +166,21 @@ export const LEVELS: LevelConfig[] = [
     title: "The Frostspine Pass",
     biome: "mountain",
     palette: { wall: "#7d8ea0", floor: "#40454f", accent: "#a9e0ff" },
+    // a sheltered ice grotto — a frozen pocket (Rimewalk/Levitation country)
+    subBiomes: [
+      {
+        biome: "mountain",
+        palette: { wall: "#5a6b7a", floor: "#2c343d", accent: "#bfe8ff" },
+        scale: 0.15,
+        threshold: 0.22,
+        hazards: [{ type: "ice", density: 0.3 }],
+      },
+    ],
+    // a ruined border watchpost — the realm's last outpost before Blackhall
+    structure: {
+      palette: { wall: "#8792a0", floor: "#3a4048", accent: "#c6d6e6" },
+      loot: [{ itemId: "a_chain" }, { itemId: "c_gold" }],
+    },
     mapWidth: 52,
     mapHeight: 32,
     generator: "cellular",
@@ -157,12 +214,14 @@ export const LEVELS: LevelConfig[] = [
     palette: { wall: "#6a5c6e", floor: "#2e2833", accent: "#d24a4a" },
     // a scorched hollow — oil-soaked floor; one firebomb turns it into an
     // inferno (an Emberstep region). Borrows the throne biome for its ember look.
-    subBiome: {
-      biome: "throne",
-      palette: { wall: "#4a3a34", floor: "#2a221e", accent: "#ff8c3a" },
-      threshold: 0.12,
-      hazards: [{ type: "oil", density: 0.32 }],
-    },
+    subBiomes: [
+      {
+        biome: "throne",
+        palette: { wall: "#4a3a34", floor: "#2a221e", accent: "#ff8c3a" },
+        threshold: 0.12,
+        hazards: [{ type: "oil", density: 0.32 }],
+      },
+    ],
     mapWidth: 52,
     mapHeight: 32,
     generator: "digger",
@@ -198,6 +257,15 @@ export const LEVELS: LevelConfig[] = [
     title: "The Great Hall",
     biome: "castle",
     palette: { wall: "#5c4b70", floor: "#342d40", accent: "#c04cff" },
+    // a sealed strongroom off the hall — a heavy shut door, rich loot within
+    secretVault: {
+      gate: "door",
+      loot: [
+        { itemId: "a_chain" },
+        { itemId: "p_gheal" },
+        { itemId: "c_gold" },
+      ],
+    },
     mapWidth: 72,
     mapHeight: 46,
     generator: "digger",
@@ -235,12 +303,14 @@ export const LEVELS: LevelConfig[] = [
     biome: "crypt",
     palette: { wall: "#6a6a5a", floor: "#262620", accent: "#9fe0b0" },
     // a bone-walled catacomb maze fills one wing of the crypt (structural contrast)
-    subBiome: {
-      biome: "crypt",
-      palette: { wall: "#585044", floor: "#1c1c17", accent: "#9fe0b0" },
-      layout: "maze",
-      size: 0.36,
-    },
+    subBiomes: [
+      {
+        biome: "crypt",
+        palette: { wall: "#585044", floor: "#1c1c17", accent: "#9fe0b0" },
+        layout: "maze",
+        size: 0.36,
+      },
+    ],
     // the sunken crypt lives up to its name — it floods as you hunt the Sunblade
     flood: { startTurn: 18, interval: 5, maxSteps: 16 },
     mapWidth: 54,
@@ -279,6 +349,16 @@ export const LEVELS: LevelConfig[] = [
     title: "The Ramparts",
     biome: "castle",
     palette: { wall: "#4a5a72", floor: "#232a38", accent: "#a9e0ff" },
+    // a wind-frozen stretch of battlement — glazed with treacherous ice
+    subBiomes: [
+      {
+        biome: "mountain",
+        palette: { wall: "#42566e", floor: "#1e2836", accent: "#bfe8ff" },
+        scale: 0.16,
+        threshold: 0.24,
+        hazards: [{ type: "ice", density: 0.22 }],
+      },
+    ],
     mapWidth: 54,
     mapHeight: 32,
     generator: "digger",
@@ -312,6 +392,11 @@ export const LEVELS: LevelConfig[] = [
     title: "The Dusk Antechamber",
     biome: "castle",
     palette: { wall: "#7a5c4a", floor: "#33281f", accent: "#ffd24d" },
+    // a sealed reliquary — a shut door, a last cache before the throne
+    secretVault: {
+      gate: "door",
+      loot: [{ itemId: "p_gheal" }, { itemId: "p_bomb" }, { itemId: "c_gold" }],
+    },
     mapWidth: 48,
     mapHeight: 30,
     generator: "digger",

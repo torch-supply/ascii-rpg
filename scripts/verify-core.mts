@@ -1545,18 +1545,21 @@ console.log("\n[27] Equipment swapping");
 }
 
 // ─── 28. No unreachable open areas ──────────────────────────────────────────
-// Every open tile the player can see must be reachable (cracked walls count as
-// passable — they're breakable). Guards against teasing walled-off pockets.
+// Every open tile the player can see must be reachable (cracked walls AND shut
+// doors count as passable — you break/open them). Guards against teasing
+// walled-off pockets. Mirrors the engine's canonical `isOpenTile`.
 console.log("\n[28] No unreachable open areas");
 {
   const OPEN = new Set<string>([
     "floor",
     "doorOpen",
+    "door",
     "exit",
     "trap",
     "trapSprung",
     "oil",
     "forage",
+    "ice",
     "crackedWall",
   ]);
   const dirs = [

@@ -70,19 +70,27 @@ function genGrid(kind: GeneratorKind, w: number, h: number): TileType[] {
  * pass, so a severed pocket is simply abandoned/sealed downstream.
  */
 function carveSubBiome(map: GameMap, config: LevelConfig) {
-  const spec = config.subBiome;
-  if (!spec) return;
-  if (spec.layout) carveSubBiomeWing(map, config, spec);
-  else carveSubBiomeBlob(map, config, spec);
-  scatterRegionHazards(map, spec);
+  const specs = config.subBiomes;
+  if (!specs || specs.length === 0) return;
+  // Region id 0 is the base biome; each sub-biome gets the next id (1, 2, …).
+  // The arrays are set up ONCE here so multiple regions accumulate rather than
+  // clobber each other; the carvers just tag cells with their given id.
+  map.region = new Array(map.width * map.height).fill(0);
+  map.regionBiome = [config.biome];
+  map.regionPalette = [config.palette];
+  specs.forEach((spec, i) => {
+    const id = i + 1;
+    map.regionBiome!.push(spec.biome);
+    map.regionPalette!.push(spec.palette);
+    if (spec.layout) carveSubBiomeWing(map, spec, id);
+    else carveSubBiomeBlob(map, spec, id);
+    scatterRegionHazards(map, spec, id);
+  });
 }
 
-/** Organic noise-blob region (cosmetic — never touches `tiles`). */
-function carveSubBiomeBlob(
-  map: GameMap,
-  config: LevelConfig,
-  spec: SubBiomeSpec,
-) {
+/** Organic noise-blob region (cosmetic — never touches `tiles`). Tags the
+ * largest noise component with region `id` in the shared `map.region`. */
+function carveSubBiomeBlob(map: GameMap, spec: SubBiomeSpec, id: number) {
   const w = map.width;
   const h = map.height;
   const scale = spec.scale ?? 0.13;
@@ -122,20 +130,13 @@ function carveSubBiomeBlob(
   }
   if (best.length === 0) return;
 
-  const region = new Array(w * h).fill(0);
-  for (const i of best) region[i] = 1;
-  map.region = region;
-  map.regionBiome = [config.biome, spec.biome];
-  map.regionPalette = [config.palette, spec.palette];
+  const region = map.region!;
+  for (const i of best) region[i] = id;
 }
 
 /** A rectangular wing whose layout is a secondary generator (e.g. a maze),
  * stamped into the map and bridged to the main area by a central corridor. */
-function carveSubBiomeWing(
-  map: GameMap,
-  config: LevelConfig,
-  spec: SubBiomeSpec,
-) {
+function carveSubBiomeWing(map: GameMap, spec: SubBiomeSpec, id: number) {
   const w = map.width;
   const h = map.height;
   const frac = spec.size ?? 0.42;
@@ -145,7 +146,7 @@ function carveSubBiomeWing(
   const ry = Math.max(1, Math.floor((h - rh) / 2)); // …vertically centered
   const grid = genGrid(spec.layout!, rw, rh);
 
-  const region = new Array(w * h).fill(0);
+  const region = map.region!;
   for (let yy = 0; yy < rh; yy++) {
     for (let xx = 0; xx < rw; xx++) {
       const mx = rx + xx;
@@ -153,12 +154,9 @@ function carveSubBiomeWing(
       if (mx <= 0 || my <= 0 || mx >= w - 1 || my >= h - 1) continue; // keep border
       const mi = my * w + mx;
       map.tiles[mi] = grid[yy * rw + xx];
-      region[mi] = 1;
+      region[mi] = id;
     }
   }
-  map.region = region;
-  map.regionBiome = [config.biome, spec.biome];
-  map.regionPalette = [config.palette, spec.palette];
 
   // Arteries through the wing so the perfect maze has escape routes/loops (not
   // just dead-ends) and stays navigable. A horizontal passage that also bridges
@@ -191,7 +189,7 @@ const BIOME_HAZARDS: Partial<
  * — a bog's water pools, a scorched hollow's oil, etc. Each hazard's density is
  * relative to the floor still free after the previous ones. Pre-connectivity
  * (like `placeWater`), so severed pockets are sealed downstream. */
-function scatterRegionHazards(map: GameMap, spec: SubBiomeSpec) {
+function scatterRegionHazards(map: GameMap, spec: SubBiomeSpec, id: number) {
   if (!map.region) return;
   const hazards = spec.hazards ?? BIOME_HAZARDS[spec.biome] ?? [];
   if (hazards.length === 0) return;
@@ -201,7 +199,7 @@ function scatterRegionHazards(map: GameMap, spec: SubBiomeSpec) {
   for (const hz of hazards) {
     const regionFloors: number[] = [];
     for (let i = 0; i < region.length; i++) {
-      if (region[i] === 1 && map.tiles[i] === "floor") regionFloors.push(i);
+      if (region[i] === id && map.tiles[i] === "floor") regionFloors.push(i);
     }
     if (regionFloors.length === 0) break;
     const target = Math.round(regionFloors.length * (hz.density ?? 0.15));
@@ -233,7 +231,7 @@ function scatterRegionHazards(map: GameMap, spec: SubBiomeSpec) {
           if (
             ni >= 0 &&
             ni < region.length &&
-            region[ni] === 1 &&
+            region[ni] === id &&
             map.tiles[ni] === "floor"
           ) {
             cur = ni;
@@ -249,11 +247,12 @@ function scatterRegionHazards(map: GameMap, spec: SubBiomeSpec) {
 
 /**
  * Carve a hidden vault: a fully-walled room reachable ONLY through a single
- * cracked wall, holding the level's `secretVault.loot`. Because `sealUnreachable`
- * treats cracked walls as passable, the vault survives the seal (kept, but
- * physically gated until the player blasts/bashes in). The room is a separate
- * floor component, so normal placement never spills into it. Skipped silently
- * if no valid all-wall spot is found on this seed.
+ * gate — a cracked wall to blast/bash (default) or a shut door to open —
+ * holding the level's `secretVault.loot`. Because `sealUnreachable` treats both
+ * cracked walls and shut doors as passable, the vault survives the seal (kept,
+ * but physically gated until the player breaks/opens in). The room is carved
+ * after normal placement, so it's a separate floor component that spawns/items
+ * never spill into. Skipped silently if no valid all-wall spot is found.
  */
 function placeSecretVault(
   config: LevelConfig,
@@ -358,8 +357,9 @@ function placeSecretVault(
       }
       if (!ok) continue;
 
-      // carve the vault + drop its loot near the center
-      tiles[crackI] = "crackedWall";
+      // carve the vault + drop its loot near the center. The gate is a cracked
+      // wall (blast/bash) by default, or a shut door you simply open.
+      tiles[crackI] = spec.gate === "door" ? "door" : "crackedWall";
       for (const ri of room) tiles[ri] = "floor";
       let n = 0;
       for (const entry of spec.loot) {
@@ -381,6 +381,117 @@ function placeSecretVault(
         n++;
       }
       return;
+    }
+  }
+}
+
+/**
+ * Stamp a FREESTANDING building onto open ground: a wall ring with a floor
+ * interior and one shut door, loot inside. Unlike `placeSecretVault` (a room dug
+ * into existing wall mass, so outdoors you only see a lone door), this reads as
+ * an actual structure standing in the clearing. Called BEFORE the component
+ * pass, so the door-sealed interior falls out of `largestFloorComponent` (no
+ * spawns/items land inside) while the surrounding clearing keeps its
+ * connectivity around the wall box. Requires the footprint PLUS a one-tile
+ * margin to be clear floor, so it only ever sits in an open clearing and can
+ * never sever a corridor. Skipped silently if no spot fits this seed.
+ */
+function placeStructure(
+  config: LevelConfig,
+  map: GameMap,
+  items: ItemInstance[],
+  levelIndex: number,
+) {
+  const spec = config.structure;
+  if (!spec) return;
+  const w = map.width;
+  const h = map.height;
+  const tiles = map.tiles;
+
+  // Try the requested size first (default 4×4), then smaller footprints, so a
+  // hut still lands in tighter clearings rather than being skipped. Every size
+  // keeps a ≥2-tile interior for the loot.
+  const want = spec.size ?? { w: 4, h: 4 };
+  const sizes = [want, { w: 4, h: 3 }, { w: 3, h: 4 }];
+
+  const cands: number[] = [];
+  for (let i = 0; i < tiles.length; i++)
+    if (tiles[i] === "floor") cands.push(i);
+  for (let k = cands.length - 1; k > 0; k--) {
+    const j = mapInt(0, k);
+    [cands[k], cands[j]] = [cands[j], cands[k]];
+  }
+
+  // the rect [x0,y0) of size ww×hh must be entirely in-bounds clear floor
+  const allFloor = (x0: number, y0: number, ww: number, hh: number) => {
+    for (let y = y0; y < y0 + hh; y++)
+      for (let x = x0; x < x0 + ww; x++) {
+        if (x <= 0 || y <= 0 || x >= w - 1 || y >= h - 1) return false;
+        if (tiles[y * w + x] !== "floor") return false;
+      }
+    return true;
+  };
+
+  for (const { w: bw, h: bh } of sizes) {
+    for (const c of cands) {
+      const x0 = c % w;
+      const y0 = Math.floor(c / w);
+      if (!allFloor(x0 - 1, y0 - 1, bw + 2, bh + 2)) continue; // footprint + margin
+
+      const interior: number[] = [];
+      for (let y = y0; y < y0 + bh; y++)
+        for (let x = x0; x < x0 + bw; x++) {
+          const i = y * w + x;
+          const edge =
+            x === x0 || x === x0 + bw - 1 || y === y0 || y === y0 + bh - 1;
+          if (edge) tiles[i] = "wall";
+          else {
+            tiles[i] = "floor";
+            interior.push(i);
+          }
+        }
+      // one shut door on the south wall, offset from the corner (faces the margin)
+      tiles[(y0 + bh - 1) * w + (x0 + 1)] = "door";
+
+      // Give the hut its own cosmetic region so its walls/floor render as built
+      // timber (a warm `#` + wood-brown palette) — distinct from the biome's own
+      // wall glyph (e.g. the forest's trees). The door keeps its tile-based gold
+      // `+`. Region is purely visual; tile TYPES still drive all mechanics.
+      if (!map.region) {
+        map.region = new Array(w * h).fill(0);
+        map.regionBiome = [config.biome];
+        map.regionPalette = [config.palette];
+      }
+      const hutId = map.regionBiome!.length;
+      map.regionBiome!.push("dungeon"); // no wall override → "#", no weather
+      map.regionPalette!.push(
+        spec.palette ?? {
+          wall: "#9c6b3f",
+          floor: "#4a3626",
+          accent: "#c98a4a",
+        }, // warm timber default
+      );
+      for (let y = y0; y < y0 + bh; y++)
+        for (let x = x0; x < x0 + bw; x++) map.region![y * w + x] = hutId;
+
+      let n = 0;
+      for (const entry of spec.loot) {
+        const cell = interior[Math.min(interior.length - 1, n)];
+        const def = ITEMS[entry.itemId];
+        const inst: ItemInstance = {
+          id: `it${levelIndex}_b${n}`,
+          defId: entry.itemId,
+          x: cell % w,
+          y: Math.floor(cell / w),
+        };
+        if (def.category === "coin") {
+          const base = mapInt(CONFIG.coinPile.min, CONFIG.coinPile.max);
+          inst.value = Math.max(1, Math.round(base * config.coinRichness * 3));
+        }
+        items.push(inst);
+        n++;
+      }
+      return; // one structure per level
     }
   }
 }
@@ -901,7 +1012,8 @@ function isOpenTile(t: TileType): boolean {
   return (
     t === "floor" ||
     t === "doorOpen" ||
-    t === "exit" ||
+    t === "door" || // a shut door is traversable (open it) — keeps door-gated
+    t === "exit" || // areas (e.g. a door-gated vault) reachable through the seal
     t === "trap" ||
     t === "trapSprung" ||
     t === "oil" ||
@@ -1102,12 +1214,16 @@ export function generateLevel(
   const map: GameMap = { width: w, height: h, tiles };
   carveSubBiome(map, config); // cosmetic region tag; doesn't touch tiles
 
+  // Freestanding buildings are stamped BEFORE the component pass so their
+  // door-sealed interiors drop out of `floors` (no spawns/items land inside).
+  const items: ItemInstance[] = [];
+  placeStructure(config, map, items, levelIndex);
+
   // Only ever place onto the largest connected region so nothing is unreachable.
   const floors = largestFloorComponent(map);
 
   const occupied = new Set<number>();
   const monsters: MonsterInstance[] = [];
-  const items: ItemInstance[] = [];
   let mCounter = 0;
   let iCounter = 0;
 
