@@ -5,6 +5,7 @@ import { LEVELS } from "@/content/levels";
 import { classDef, DEFAULT_CLASS_ID } from "@/content/classes";
 import { generateLevel } from "./map/generate";
 import { computeVisible } from "./map/fov";
+import { applyLevelMutators } from "@/content/mutators";
 
 export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
   const cls = classDef(classId);
@@ -71,9 +72,13 @@ export function recomputeFOV(state: GameState): void {
 export function beginLevel(
   masterSeed: string,
   levelIndex: number,
-  player: PlayerState
+  player: PlayerState,
+  mutators: string[] = []
 ): GameState {
-  const config = LEVELS[levelIndex];
+  // Run modifiers reshape the level's config (light/spawns/traps/budget/…)
+  // BEFORE generation, so the generator stays a pure function of the config and
+  // all its connectivity/trap guarantees still hold.
+  const config = applyLevelMutators(LEVELS[levelIndex], mutators);
   const data = generateLevel(config, levelIndex, masterSeed);
 
   const p = clonePlayer(player);
@@ -110,6 +115,7 @@ export function beginLevel(
     status: "playing",
     messageLog: [`You enter ${config.title}.`],
     goalDone: false,
+    mutators,
   };
   recomputeFOV(state);
   return state;

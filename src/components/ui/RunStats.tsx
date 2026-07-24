@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
+import { mutatorById, mutatorScoreMult } from "@/content/mutators";
 
 function fmtTime(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -41,7 +42,9 @@ export function RunStats({ animate = false }: { animate?: boolean }) {
   const t = useCountProgress(animate);
   if (!r) return null;
 
-  const score = r.gold + r.kills * 10 + (r.victory ? 500 : 0);
+  const ids = r.mutators ?? [];
+  const mult = mutatorScoreMult(ids); // 1.0 with no trials
+  const score = Math.round((r.gold + r.kills * 10 + (r.victory ? 500 : 0)) * mult);
   const cu = (n: number) => Math.round(n * t); // count-up toward the final value
   const rows: [string, string, boolean?][] = [
     ["Score", String(cu(score)), true],
@@ -50,15 +53,27 @@ export function RunStats({ animate = false }: { animate?: boolean }) {
     ["Turns taken", String(cu(r.turns))],
     ["Time", fmtTime(r.timeMs * t)],
   ];
+  const trials = ids.map((id) => mutatorById(id)?.name).filter(Boolean) as string[];
 
   return (
     <div className="flex w-64 max-w-[85vw] flex-col gap-1 border border-edge bg-panel/60 px-6 py-3 text-sm">
       {rows.map(([k, v, gold]) => (
         <div key={k} className="flex items-baseline justify-between gap-8">
-          <span className="text-dim">{k}</span>
+          <span className="text-dim">
+            {k}
+            {k === "Score" && mult > 1 && (
+              <span className="text-magic"> ×{mult.toFixed(2)}</span>
+            )}
+          </span>
           <span className={gold ? "text-gold" : "text-fg"}>{v}</span>
         </div>
       ))}
+      {trials.length > 0 && (
+        <div className="mt-1 border-t border-edge pt-1.5 text-[11px] leading-snug text-dim">
+          <span className="text-[#6f7078]">Trials: </span>
+          <span className="text-magic">{trials.join(" · ")}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,22 +1,25 @@
-"use client";
+'use client';
 
-import { gameStore, useGameStore, DEV } from "@/store/gameStore";
-import { G_EMBER, G_DAWN_TITLE, SUBTITLE } from "@/content/ascii";
-import { LEVELS } from "@/content/levels";
-import { MenuButton } from "@/components/ui/MenuButton";
-import { AccentDivider } from "@/components/ui/AccentDivider";
-import { AsciiField } from "@/components/ui/AsciiField";
-import { BoxFrame } from "@/components/ui/BoxFrame";
-import { SoundToggle } from "@/components/ui/SoundToggle";
+import { AccentDivider } from '@/components/ui/AccentDivider';
+import { AsciiField } from '@/components/ui/AsciiField';
+import { BoxFrame } from '@/components/ui/BoxFrame';
+import { MenuButton } from '@/components/ui/MenuButton';
+import { SoundToggle } from '@/components/ui/SoundToggle';
+import { G_DAWN_TITLE, G_EMBER, SUBTITLE } from '@/content/ascii';
+import { LEVELS } from '@/content/levels';
+import { DEV, gameStore, useGameStore } from '@/store/gameStore';
 
 export default function Splash() {
   const hasSave = useGameStore((s) => s.hasSave);
   const saveInfo = useGameStore((s) => s.saveInfo);
   const startNew = () => {
-    if (hasSave && !window.confirm("Start a new game? This erases your saved run.")) {
+    if (
+      hasSave &&
+      !window.confirm('Start a new game? This erases your saved run.')
+    ) {
       return;
     }
-    gameStore.getState().setMode("classSelect");
+    gameStore.getState().setMode('classSelect');
   };
 
   return (
@@ -29,7 +32,7 @@ export default function Splash() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)",
+            'radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)',
         }}
       />
       <div
@@ -37,7 +40,7 @@ export default function Splash() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)",
+            'radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)',
         }}
       />
 
@@ -47,19 +50,19 @@ export default function Splash() {
         accent="#ffb347"
         chip="#0c0c0e"
         className="narr-rise z-10 flex flex-col items-center gap-6 text-center"
-        style={{ background: "rgba(9,9,12,0.5)", padding: "48px 62px" }}
+        style={{ background: 'rgba(9,9,12,0.5)', padding: '48px 62px' }}
       >
         {/* 2a — gradient-caps wordmark, consistent with every other screen title */}
         <div className="ember-flicker flex flex-col items-center gap-0">
           <h1
             className="m-0 text-5xl font-semibold uppercase leading-none tracking-[0.12em] sm:text-6xl"
             style={{
-              textIndent: "0.12em",
+              textIndent: '0.12em',
               backgroundImage: G_EMBER,
-              WebkitBackgroundClip: "text",
-              backgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              color: "transparent",
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              color: 'transparent',
             }}
           >
             Ember
@@ -68,19 +71,21 @@ export default function Splash() {
           <h1
             className="m-0 text-5xl font-semibold uppercase leading-none tracking-[0.12em] sm:text-6xl"
             style={{
-              textIndent: "0.12em",
+              textIndent: '0.12em',
               backgroundImage: G_DAWN_TITLE,
-              WebkitBackgroundClip: "text",
-              backgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              color: "transparent",
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              color: 'transparent',
             }}
           >
             Dawn
           </h1>
         </div>
 
-        <div className="text-[11px] tracking-[0.4em] text-dim sm:text-xs">{SUBTITLE}</div>
+        <div className="text-[11px] tracking-[0.4em] text-dim sm:text-xs">
+          {SUBTITLE}
+        </div>
         <AccentDivider accent="#ffb347" />
 
         <p className="max-w-sm text-balance text-sm leading-relaxed text-dim">
@@ -90,16 +95,23 @@ export default function Splash() {
 
         <div className="flex flex-col items-center gap-3">
           {hasSave && saveInfo && (
-            <MenuButton accent autoFocus onClick={() => gameStore.getState().resumeGame()}>
+            <MenuButton
+              accent
+              autoFocus
+              onClick={() => gameStore.getState().resumeGame()}
+            >
               ▸ Resume
               <span className="ml-1 text-xs opacity-80">
-                — Level {saveInfo.level + 1}: {saveInfo.title} · turn {saveInfo.turn}
+                — Level {saveInfo.level + 1}: {saveInfo.title} · turn{' '}
+                {saveInfo.turn}
               </span>
             </MenuButton>
           )}
           <MenuButton autoFocus={!hasSave} onClick={startNew}>
             ▸ New Game
-            {hasSave && <span className="ml-1 text-xs text-dim">(overwrites save)</span>}
+            {hasSave && (
+              <span className="ml-1 text-xs text-dim">(overwrites save)</span>
+            )}
           </MenuButton>
         </div>
 
@@ -121,14 +133,15 @@ export default function Splash() {
               ))}
             </div>
             <div className="text-[10px] text-edge">
-              in play: press <span className="text-dim">&gt;</span> to skip to the next level
+              in play: press <span className="text-dim">&gt;</span> to skip to
+              the next level
             </div>
           </div>
         )}
 
         <p className="max-w-sm text-balance text-xs text-dim">
-          v1 · {LEVELS.length} levels · move with arrows or wasd · bump to attack ·
-          find the way, then live to tell it
+          v1 · {LEVELS.length} levels · move with arrows or wasd · bump to
+          attack · find the way, then live to tell it
         </p>
       </BoxFrame>
     </div>

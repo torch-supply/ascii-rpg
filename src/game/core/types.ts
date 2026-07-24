@@ -385,6 +385,9 @@ export interface GameState {
   status: GameStatus;
   messageLog: string[];
   goalDone: boolean;
+  /** active run modifiers (mutator ids) chosen at New Game — fixed for the run,
+   * applied to each level's config in `beginLevel`. Empty on an unmodified run. */
+  mutators: string[];
 }
 
 // ── Player actions (input intents) ──────────────────────────────────────────

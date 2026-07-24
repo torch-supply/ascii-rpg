@@ -14,6 +14,7 @@ import GameCanvas from "@/components/GameCanvas";
 import { HudBar, HudFooter, BossBar, EliteBars, LevelIntro } from "@/components/hud/Hud";
 import Splash from "@/components/screens/Splash";
 import ClassSelect from "@/components/screens/ClassSelect";
+import MutatorSelect from "@/components/screens/MutatorSelect";
 import Narration from "@/components/screens/Narration";
 import Shop from "@/components/screens/Shop";
 import GameOver from "@/components/screens/GameOver";
@@ -83,7 +84,7 @@ export default function GameRoot() {
       if (s.mode === "shop") return void playMusic("shop");
       if (s.mode === "gameover") return void playMusic("death");
       if (s.mode === "victory") return void playMusic("victory");
-      if (s.mode === "splash" || s.mode === "classSelect")
+      if (s.mode === "splash" || s.mode === "classSelect" || s.mode === "mutators")
         return void playMusic("title");
       const biome = s.game ? LEVELS[s.game.currentLevel].biome : null;
       if (biome) playMusic(`level:${biome}`, biome);
@@ -147,6 +148,7 @@ export default function GameRoot() {
 
       {mode === "splash" && <Splash />}
       {mode === "classSelect" && <ClassSelect />}
+      {mode === "mutators" && <MutatorSelect />}
       {mode === "narration" && <Narration />}
       {mode === "shop" && <Shop />}
       {mode === "gameover" && <GameOver />}

@@ -10,6 +10,11 @@ import { idx, isWalkable, isTransparent, tileAt, chebyshev } from "@/game/core/g
 import { monsterAttackDamage, mitigate } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
+import {
+  applyLevelMutators,
+  applyPlayerMutators,
+  mutatorScoreMult,
+} from "@/content/mutators";
 import { MONSTERS, ELITE } from "@/content/monsters";
 import { ITEMS, sellPrice } from "@/content/items";
 import { giveItem, equipWeapon } from "@/game/core/inventory";
@@ -1954,6 +1959,38 @@ console.log("\n[39] Class abilities");
     check("scorch ignites fire tiles ahead", gs.fireTiles.length > 0);
     check("scorch sets the cooldown", gs.player.abilityCooldown === 6);
   }
+}
+
+// ─── 40. Run modifiers (mutators) ────────────────────────────────────────────
+console.log("\n[40] Run modifiers");
+{
+  const base = LEVELS.find((l) => l.id === "blackwood")!;
+  const dark = applyLevelMutators(base, ["dark"]);
+  check("dark cuts the light radius", dark.baseLightRadius === base.baseLightRadius - 2);
+  const swarm = applyLevelMutators(base, ["swarm"]);
+  check("swarm raises the monster budget", swarm.monsterBudget > base.monsterBudget);
+  check("an unknown mutator id is a no-op", applyLevelMutators(base, ["nope"]) === base);
+
+  check("no mutators → ×1 score", mutatorScoreMult([]) === 1);
+  check("mutators raise the score multiplier", mutatorScoreMult(["dark", "swarm"]) > 1);
+
+  const gp = createPlayer("warrior");
+  applyPlayerMutators(gp, ["glass"]);
+  check("glass drops starting lives to 1", gp.lives === 1);
+
+  // beginLevel threads the ids onto state AND applies them to the config
+  const g = beginLevel("mut-seed", 1, createPlayer("warrior"), ["dark"]);
+  check("beginLevel records the active mutators", g.mutators.includes("dark"));
+  check(
+    "beginLevel applies the level mutator (dimmer light)",
+    g.player.baseLightRadius === base.baseLightRadius - 2
+  );
+  // a mutated level still generates a reachable exit/objective (guarantees hold)
+  const g2 = beginLevel("mut-seed", 0, createPlayer("warrior"), ["swarm", "treacherous", "hunted"]);
+  check(
+    "a heavily-mutated level still has the player on a floor tile",
+    isWalkable(g2.map, g2.player.x, g2.player.y)
+  );
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);

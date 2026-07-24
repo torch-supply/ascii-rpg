@@ -2,6 +2,7 @@
 
 import { SoundToggle } from '@/components/ui/SoundToggle';
 import { classDef } from '@/content/classes';
+import { mutatorById } from '@/content/mutators';
 import { ITEMS } from '@/content/items';
 import { LEVELS } from '@/content/levels';
 import { ELITE, MONSTERS } from '@/content/monsters';
@@ -149,6 +150,16 @@ export function HudBar() {
               {level.title}
             </span>
           </span>
+          {game.mutators?.length > 0 && (
+            <span
+              className="text-magic"
+              title={`Trials: ${game.mutators
+                .map((id) => mutatorById(id)?.name ?? id)
+                .join(', ')}`}
+            >
+              ⚠ {game.mutators.length}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-[18px]">
           <span className="tracking-[2px] text-hp" title="lives">

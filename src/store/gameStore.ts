@@ -12,6 +12,7 @@ import { CONFIG } from "@/content/config";
 import { ITEMS, SHOP_TIERS, sellPrice, type ShopEntry } from "@/content/items";
 import { MONSTERS } from "@/content/monsters";
 import { CLASS_LIST, classDef } from "@/content/classes";
+import { MUTATORS, applyPlayerMutators } from "@/content/mutators";
 import { OPENING, BIOME_GRADIENT } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
 import { emitEffects } from "@/lib/effectBus";
@@ -29,6 +30,7 @@ import {
 export type UIMode =
   | "splash"
   | "classSelect"
+  | "mutators"
   | "playing"
   | "paused"
   | "inventory"
@@ -57,6 +59,7 @@ export interface RunResult {
   gold: number;
   timeMs: number;
   victory: boolean;
+  mutators: string[]; // active run modifiers (for score multiplier + display)
 }
 
 export interface NarrationData {
@@ -91,8 +94,14 @@ export interface GameStore {
 
   // lifecycle
   init: () => void;
-  newGame: (classId: string, seed?: string) => void;
+  newGame: (classId: string, seed?: string, mutators?: string[]) => void;
   chooseClass: (classId: string) => void;
+  /** class chosen, awaiting the trial (mutator) picker */
+  pendingClassId: string;
+  /** mutators toggled on the trial-select screen (before the run starts) */
+  selectedMutators: string[];
+  toggleMutator: (id: string) => void;
+  beginRun: () => void;
   resumeGame: () => void;
   quitToTitle: () => void;
 
@@ -213,6 +222,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       gold: game.player.goldEarned,
       timeMs: runPlayMs,
       victory,
+      mutators: game.mutators ?? [],
     };
   };
   // Commit mutated game state with a fresh top-level identity so subscribers
@@ -309,6 +319,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
     activeAltar: null,
     runResult: null,
     soundOn: true,
+    pendingClassId: "warrior",
+    selectedMutators: [],
 
     init: () => {
       initSound(); // load the persisted SFX preference (client-only)
@@ -316,16 +328,29 @@ export const gameStore = createStore<GameStore>((set, get) => {
       set({ hasSave: !!info, saveInfo: info, soundOn: isSoundOn() });
     },
 
-    chooseClass: (classId: string) => get().newGame(classId),
+    // picking a class advances to the trial (mutator) select, not straight in
+    chooseClass: (classId: string) =>
+      set({ pendingClassId: classId, selectedMutators: [], mode: "mutators" }),
 
-    newGame: (classId: string, seed?: string) => {
+    toggleMutator: (id: string) => {
+      const cur = get().selectedMutators;
+      set({
+        selectedMutators: cur.includes(id) ? cur.filter((m) => m !== id) : [...cur, id],
+      });
+    },
+
+    beginRun: () =>
+      get().newGame(get().pendingClassId || "warrior", undefined, get().selectedMutators),
+
+    newGame: (classId: string, seed?: string, mutators: string[] = []) => {
       const masterSeed =
         seed && seed.trim()
           ? seed.trim()
           : String(Math.floor(Math.random() * 1e9));
       const player = createPlayer(classId);
+      applyPlayerMutators(player, mutators); // one-time run-start tweaks (e.g. Glass)
       const rng = new Rng(gameplaySeed(masterSeed));
-      const game = beginLevel(masterSeed, 0, player);
+      const game = beginLevel(masterSeed, 0, player, mutators);
       runPlayMs = 0;
       sessionStartMs = Date.now();
       armInputSettle(); // the class-pick keypress mustn't skip the opening card
@@ -421,7 +446,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
             set({ mode: "shop", narration: null, shopPurchases: {} });
           } else {
             const player = clonePlayer(game!.player);
-            const ng = beginLevel(game!.masterSeed, completed + 1, player);
+            const ng = beginLevel(game!.masterSeed, completed + 1, player, game!.mutators);
             set({ game: ng, mode: "playing", narration: null });
             persist();
           }
@@ -430,7 +455,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         case "restartLevel": {
           const player = clonePlayer(game!.entryPlayer);
           player.lives = game!.player.lives; // keep the decremented life count
-          const ng = beginLevel(game!.masterSeed, game!.currentLevel, player);
+          const ng = beginLevel(game!.masterSeed, game!.currentLevel, player, game!.mutators);
           set({ game: ng, mode: "playing", narration: null });
           persist();
           break;
@@ -479,7 +504,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       if (inputSettling()) return; // ignore a keypress carried in from the last screen
       const game = get().game!;
       const player = clonePlayer(game.player);
-      const ng = beginLevel(game.masterSeed, game.currentLevel + 1, player);
+      const ng = beginLevel(game.masterSeed, game.currentLevel + 1, player, game.mutators);
       set({ game: ng, mode: "playing", shopPurchases: {} });
       persist();
     },
@@ -531,7 +556,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         });
         return;
       }
-      const ng = beginLevel(game.masterSeed, next, clonePlayer(game.player));
+      const ng = beginLevel(game.masterSeed, next, clonePlayer(game.player), game.mutators);
       set({ game: ng, mode: "playing", narration: null });
     },
 
@@ -718,6 +743,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
           const entry =
             tier != null ? SHOP_TIERS[tier]?.[cmd.n - 1] : undefined;
           if (entry) get().buyShopEntry(entry);
+        } else if (mode === "mutators") {
+          const m = MUTATORS[cmd.n - 1];
+          if (m) {
+            playSfx("uiSelect");
+            get().toggleMutator(m.id);
+          }
         }
         return;
       }
@@ -727,6 +758,9 @@ export const gameStore = createStore<GameStore>((set, get) => {
           if (mode === "classSelect") {
             playSfx("uiBack");
             set({ mode: "splash" }); // back out of class select to the title
+          } else if (mode === "mutators") {
+            playSfx("uiBack");
+            set({ mode: "classSelect" }); // back to class pick
           } else if (mode === "playing") {
             playSfx("uiSelect");
             set({ mode: "paused" });
@@ -774,6 +808,9 @@ export const gameStore = createStore<GameStore>((set, get) => {
             playSfx("uiSelect");
             if (get().hasSave) get().resumeGame();
             else set({ mode: "classSelect" });
+          } else if (mode === "mutators") {
+            playSfx("uiSelect");
+            get().beginRun();
           } else if (mode === "narration") {
             playSfx("uiSelect");
             get().continueNarration();
