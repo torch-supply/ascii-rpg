@@ -1,31 +1,31 @@
-'use client';
+"use client";
 
-import { BoxFrame } from '@/components/ui/BoxFrame';
-import { MenuButton } from '@/components/ui/MenuButton';
-import { gameStore } from '@/store/gameStore';
+import { BoxFrame } from "@/components/ui/BoxFrame";
+import { MenuButton } from "@/components/ui/MenuButton";
+import { gameStore } from "@/store/gameStore";
 
 // [keys, description, wide?] — `wide` rows span both columns (the movement row's
 // key is long, so it gets its own full-width line).
 const ROWS: [string, string, boolean?][] = [
-  ['↑ ↓ ← →  ·  wasd', 'Move — bump a monster to attack it', true],
-  ['.  ·  Space', 'Wait one turn'],
-  ['f', 'Fire the equipped bow (aim, Enter)'],
-  ['q', 'Class ability (aim with a direction)'],
-  ['c', 'Close an adjacent door'],
-  ['i', 'Open inventory'],
-  ['1 – 9', 'Use / equip a bag item'],
-  ['p  ·  Esc', 'Pause'],
-  ['?', 'This help'],
-  ['Enter', 'Confirm / continue'],
+  ["↑ ↓ ← →  ·  wasd", "Move — bump a monster to attack it", true],
+  [".  ·  Space", "Wait one turn"],
+  ["f", "Fire the equipped bow (aim, Enter)"],
+  ["q", "Class ability (aim with a direction)"],
+  ["c", "Close an adjacent door"],
+  ["i", "Open inventory"],
+  ["1 – 9", "Use / equip a bag item"],
+  ["p  ·  Esc", "Pause"],
+  ["?", "This help"],
+  ["Enter", "Confirm / continue"],
 ];
 
 const LEGEND: [string, string, string][] = [
-  ['@', '#ffffff', 'you'],
-  ['g', '#3fbf3f', 'monster'],
-  ['$', '#ffd700', 'gold'],
-  ['!', '#ff5fa2', 'potion'],
-  ['*', '#7fdfff', 'quest'],
-  ['>', '#ffd700', 'exit'],
+  ["@", "#ffffff", "you"],
+  ["g", "#3fbf3f", "monster"],
+  ["$", "#ffd700", "gold"],
+  ["!", "#ff5fa2", "potion"],
+  ["*", "#7fdfff", "quest"],
+  [">", "#ffd700", "exit"],
 ];
 
 export default function HelpModal() {
@@ -35,13 +35,13 @@ export default function HelpModal() {
         accent="#ffb347"
         chip="#0c0c0e"
         className="flex w-[min(92vw,44rem)] flex-col gap-5"
-        style={{ background: 'rgba(16,16,20,0.94)', padding: '32px 40px' }}
+        style={{ background: "rgba(16,16,20,0.94)", padding: "32px 40px" }}
       >
         {/* title + ◈ divider — matches the inventory / shop headers */}
         <div className="flex flex-col items-center gap-3">
           <h2
             className="m-0 text-lg font-semibold uppercase tracking-[0.34em] text-gold"
-            style={{ textIndent: '0.34em' }}
+            style={{ textIndent: "0.34em" }}
           >
             How to Play
           </h2>
@@ -49,14 +49,14 @@ export default function HelpModal() {
             <span
               className="h-px flex-1"
               style={{
-                background: 'linear-gradient(to right,transparent,#ffb347)',
+                background: "linear-gradient(to right,transparent,#ffb347)",
               }}
             />
             <span className="text-xs text-[#ffb347]">◈</span>
             <span
               className="h-px flex-1"
               style={{
-                background: 'linear-gradient(to left,transparent,#ffb347)',
+                background: "linear-gradient(to left,transparent,#ffb347)",
               }}
             />
           </div>
@@ -73,7 +73,7 @@ export default function HelpModal() {
           {ROWS.map(([keys, desc, wide]) => (
             <div
               key={keys}
-              className={`flex items-baseline gap-3 border-b border-[#242430] py-2 ${wide ? 'sm:col-span-2' : ''}`}
+              className={`flex items-baseline gap-3 border-b border-[#242430] py-2 ${wide ? "sm:col-span-2" : ""}`}
             >
               <span className="min-w-[6.5rem] shrink-0 font-semibold text-magic">
                 {keys}
@@ -96,7 +96,7 @@ export default function HelpModal() {
           <MenuButton
             accent
             autoFocus
-            onClick={() => gameStore.getState().setMode('playing')}
+            onClick={() => gameStore.getState().setMode("playing")}
           >
             ▸ Back
           </MenuButton>

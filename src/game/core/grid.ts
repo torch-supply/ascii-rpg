@@ -39,10 +39,20 @@ export function isTransparent(map: GameMap, x: number, y: number): boolean {
   return t !== "wall" && t !== "crackedWall" && t !== "door"; // a shut door blocks sight
 }
 
-export function chebyshev(ax: number, ay: number, bx: number, by: number): number {
+export function chebyshev(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
   return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
-export function manhattan(ax: number, ay: number, bx: number, by: number): number {
+export function manhattan(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
   return Math.abs(ax - bx) + Math.abs(ay - by);
 }

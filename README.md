@@ -34,7 +34,7 @@ npm run test:all   # all three in sequence
 
 - **New Game** lets you pick a **class** — Warrior (tanky melee), Rogue (fragile, stealthy crits), or Pyromancer (bombs & bolts) — each with a distinct starting kit and passives
 - **Move / attack:** arrow keys or `wasd` — walk into a monster to attack it (bump combat)
-- **Fire bow:** `f` (aim, then `Enter`)  ·  **Close door:** `c`  ·  **Wait:** `.` or space  ·  **Inventory:** `i`  ·  **Pause:** `p` / `Esc`  ·  **Mute:** `m`  ·  **Help:** `?`
+- **Fire bow:** `f` (aim, then `Enter`) · **Close door:** `c` · **Wait:** `.` or space · **Inventory:** `i` · **Pause:** `p` / `Esc` · **Mute:** `m` · **Help:** `?`
 - In the **inventory** (`i`), number keys use/equip an item. Firebombs open a **cursor targeting** mode (aim, `Enter` to throw, `Esc` to cancel). Bump a closed door to open it.
 - You have 3 lives; dying costs a life and restarts the level (progress, gear, and coins carry over), and zero lives ends the run. Each level has a **turn budget** — run it out and you don't die, but the level turns hostile: reinforcements close in until you finish the goal or fall.
 

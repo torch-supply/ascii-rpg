@@ -22,7 +22,6 @@ import {
 } from "@/game/core/combat";
 import {
   STATUS,
-  STATUS_KEYS,
   DAMAGING_STATUS,
   applyStatus,
   isStatusKind,
@@ -56,14 +55,18 @@ function monsterAt(
   state: GameState,
   x: number,
   y: number,
-  excludeId?: string
+  excludeId?: string,
 ): MonsterInstance | undefined {
   return state.monsters.find(
-    (m) => m.x === x && m.y === y && m.id !== excludeId
+    (m) => m.x === x && m.y === y && m.id !== excludeId,
   );
 }
 
-function itemAt(state: GameState, x: number, y: number): ItemInstance | undefined {
+function itemAt(
+  state: GameState,
+  x: number,
+  y: number,
+): ItemInstance | undefined {
   return state.items.find((i) => i.x === x && i.y === y);
 }
 
@@ -84,7 +87,10 @@ function pickUp(state: GameState, events: GameEvent[]) {
     case "weapon": {
       if ((def.power ?? 0) > p.weaponPower) {
         equipWeapon(p, def.id);
-        msg(events, `You take up the ${def.name} and wield it (pow ${def.power}).`);
+        msg(
+          events,
+          `You take up the ${def.name} and wield it (pow ${def.power}).`,
+        );
       } else {
         addToBag(p, def.id);
         msg(events, `You stow the ${def.name}.`);
@@ -161,11 +167,11 @@ function dropLoot(
   def: MonsterDef,
   rng: Rng,
   events: GameEvent[],
-  guaranteed = false
+  guaranteed = false,
 ) {
   const loot = def.loot;
   const table = loot?.table ?? [{ itemId: "p_heal", weight: 1 }];
-  const chance = guaranteed ? 1 : loot?.chance ?? 0;
+  const chance = guaranteed ? 1 : (loot?.chance ?? 0);
   if (!rng.chance(chance)) return;
   if (itemAt(state, x, y)) return; // don't stack drops on a tile
   const total = table.reduce((s, e) => s + e.weight, 0);
@@ -180,7 +186,12 @@ function dropLoot(
     }
   }
   const idef = ITEMS[itemId];
-  const inst: ItemInstance = { id: `drop_${x}_${y}_${state.turnCount}`, defId: itemId, x, y };
+  const inst: ItemInstance = {
+    id: `drop_${x}_${y}_${state.turnCount}`,
+    defId: itemId,
+    x,
+    y,
+  };
   if (idef.category === "coin") {
     const rich = LEVELS[state.currentLevel].coinRichness;
     const base = rng.int(CONFIG.coinPile.min, CONFIG.coinPile.max);
@@ -191,14 +202,24 @@ function dropLoot(
 }
 
 /** A volatile elite bursts on death, searing anything on the adjacent tiles. */
-function explodeOnDeath(state: GameState, m: MonsterInstance, events: GameEvent[]) {
+function explodeOnDeath(
+  state: GameState,
+  m: MonsterInstance,
+  events: GameEvent[],
+) {
   const p = state.player;
   events.push({ kind: "blast", x: m.x, y: m.y, radius: 1 });
   if (chebyshev(p.x, p.y, m.x, m.y) <= 1) {
     const dmg = wardMitigate(p, CONFIG.eliteExplodeDamage);
     p.hp -= dmg;
     events.push({ kind: "hit", x: p.x, y: p.y });
-    events.push({ kind: "damage", x: p.x, y: p.y, amount: dmg, toPlayer: true });
+    events.push({
+      kind: "damage",
+      x: p.x,
+      y: p.y,
+      amount: dmg,
+      toPlayer: true,
+    });
     msg(events, "The volatile creature bursts apart — the blast catches you!");
   } else {
     msg(events, "A volatile creature bursts apart in the dark.");
@@ -212,7 +233,7 @@ function awardKill(
   m: MonsterInstance,
   def: MonsterDef,
   rng: Rng,
-  events: GameEvent[]
+  events: GameEvent[],
 ) {
   const em = eliteMod(m);
   const coin = em ? def.coinReward * 2 : def.coinReward;
@@ -230,7 +251,7 @@ function tryAfflict(
   spec: StatusApplication | undefined,
   rng: Rng,
   who: string,
-  events: GameEvent[]
+  events: GameEvent[],
 ) {
   if (!spec || !rng.chance(spec.chance)) return;
   const had = (effects[spec.effect] ?? 0) > 0;
@@ -245,7 +266,7 @@ function knockBack(
   target: MonsterInstance,
   def: MonsterDef,
   rng: Rng,
-  events: GameEvent[]
+  events: GameEvent[],
 ) {
   const dist = ITEMS[state.player.weaponId].knockback ?? 0;
   if (dist <= 0) return;
@@ -286,7 +307,7 @@ function bashCrackedWall(
   state: GameState,
   x: number,
   y: number,
-  events: GameEvent[]
+  events: GameEvent[],
 ): boolean {
   const i = idx(x, y, state.map.width);
   const hits = (state.crackedWallHits[i] ?? 0) + 1;
@@ -309,7 +330,7 @@ function resolvePlayerAttack(
   target: MonsterInstance,
   events: GameEvent[],
   rng: Rng,
-  ranged = false
+  ranged = false,
 ) {
   const def = monsterDef(target.defId);
   const em = eliteMod(target);
@@ -320,7 +341,8 @@ function resolvePlayerAttack(
   const canAlert = def.behavior !== "wander" && def.behavior !== "erratic";
   const sneak = canAlert && target.state === "idle";
   const cls = classDef(state.player.classId);
-  if (sneak) dmg = Math.round(dmg * (cls.sneakMultiplier ?? CONFIG.sneakMultiplier));
+  if (sneak)
+    dmg = Math.round(dmg * (cls.sneakMultiplier ?? CONFIG.sneakMultiplier));
   // class crit: a chance to double the blow (Rogue)
   const crit = (cls.critChance ?? 0) > 0 && rng.chance(cls.critChance!);
   if (crit) dmg *= 2;
@@ -333,7 +355,13 @@ function resolvePlayerAttack(
       glyph: "»",
     });
   events.push({ kind: "hit", x: target.x, y: target.y });
-  events.push({ kind: "damage", x: target.x, y: target.y, amount: dmg, toPlayer: false });
+  events.push({
+    kind: "damage",
+    x: target.x,
+    y: target.y,
+    amount: dmg,
+    toPlayer: false,
+  });
   if (target.hp <= 0) {
     msg(
       events,
@@ -341,7 +369,7 @@ function resolvePlayerAttack(
         ? `A silent kill — the ${def.name} never woke.`
         : crit
           ? `A critical blow fells the ${def.name}!`
-          : `You slay the ${def.name}.`
+          : `You slay the ${def.name}.`,
     );
     awardKill(state, target, def, rng, events);
     state.monsters = state.monsters.filter((m) => m.id !== target.id);
@@ -351,11 +379,17 @@ function resolvePlayerAttack(
       events,
       sneak
         ? `Sneak attack! You hit the ${def.name} for ${dmg} (${target.hp} left).`
-        : `${crit ? "Critical! " : ""}You strike the ${def.name} for ${dmg} (${target.hp} left).`
+        : `${crit ? "Critical! " : ""}You strike the ${def.name} for ${dmg} (${target.hp} left).`,
     );
     // the wielded weapon may sear/chill/poison what it strikes (player → monster)
     if (!target.effects) target.effects = {};
-    tryAfflict(target.effects, ITEMS[state.player.weaponId].onHit, rng, def.name, events);
+    tryAfflict(
+      target.effects,
+      ITEMS[state.player.weaponId].onHit,
+      rng,
+      def.name,
+      events,
+    );
     if (!ranged) knockBack(state, target, def, rng, events); // arrows don't shove
   }
 }
@@ -374,18 +408,25 @@ function improvisedJab(
   state: GameState,
   target: MonsterInstance,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ) {
   const def = monsterDef(target.defId);
   target.hp -= 1;
   events.push({ kind: "hit", x: target.x, y: target.y });
-  events.push({ kind: "damage", x: target.x, y: target.y, amount: 1, toPlayer: false });
+  events.push({
+    kind: "damage",
+    x: target.x,
+    y: target.y,
+    amount: 1,
+    toPlayer: false,
+  });
   if (target.hp <= 0) {
     msg(events, `You batter down the ${def.name} with your bow.`);
     awardKill(state, target, def, rng, events);
     state.monsters = state.monsters.filter((m) => m.id !== target.id);
   } else {
-    if (def.behavior !== "wander" && def.behavior !== "erratic") target.state = "chase";
+    if (def.behavior !== "wander" && def.behavior !== "erratic")
+      target.state = "chase";
     msg(events, `Out of arrows — you jab the ${def.name} for 1.`);
   }
 }
@@ -397,7 +438,7 @@ function resolvePlayerShot(
   tx: number,
   ty: number,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ): boolean {
   const p = state.player;
   const wpn = ITEMS[p.weaponId];
@@ -430,12 +471,22 @@ function resolveMonsterAttack(
   m: MonsterInstance,
   def: MonsterDef,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ) {
-  const dmg = monsterAttackDamage(def, state.player, eliteMod(m)?.dmgBonus ?? 0);
+  const dmg = monsterAttackDamage(
+    def,
+    state.player,
+    eliteMod(m)?.dmgBonus ?? 0,
+  );
   state.player.hp -= dmg;
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
-  events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
+  events.push({
+    kind: "damage",
+    x: state.player.x,
+    y: state.player.y,
+    amount: dmg,
+    toPlayer: true,
+  });
   msg(events, `The ${def.name} hits you for ${dmg}.`);
   if (state.player.hp > 0)
     tryAfflict(state.player.effects, def.inflicts, rng, "You", events);
@@ -447,7 +498,7 @@ function movePlayer(
   dx: number,
   dy: number,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ): boolean {
   const p = state.player;
   const nx = p.x + dx;
@@ -470,14 +521,20 @@ function movePlayer(
   if (!isWalkable(state.map, nx, ny)) {
     // levitation lets you glide out over water / the chasm (nothing to trip or
     // grab out there — just drift across)
-    if (tileAt(state.map, nx, ny) === "water" && (p.effects.levitate ?? 0) > 0) {
+    if (
+      tileAt(state.map, nx, ny) === "water" &&
+      (p.effects.levitate ?? 0) > 0
+    ) {
       p.x = nx;
       p.y = ny;
       events.push({ kind: "step" });
       return true;
     }
     // frostwalk freezes the water you step onto into a permanent ice bridge
-    if (tileAt(state.map, nx, ny) === "water" && (p.effects.frostwalk ?? 0) > 0) {
+    if (
+      tileAt(state.map, nx, ny) === "water" &&
+      (p.effects.frostwalk ?? 0) > 0
+    ) {
       state.map.tiles[idx(nx, ny, state.map.width)] = "ice";
       p.x = nx;
       p.y = ny;
@@ -530,12 +587,18 @@ function springTrap(state: GameState, events: GameEvent[]) {
   state.map.tiles[i] = "trapSprung";
   const dmg = wardMitigate(
     state.player,
-    Math.max(1, CONFIG.trapDamage - state.player.armorReduction)
+    Math.max(1, CONFIG.trapDamage - state.player.armorReduction),
   );
   state.player.hp -= dmg;
   events.push({ kind: "trap" }); // SFX cue (a sharp snap, in place of the generic hurt)
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
-  events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
+  events.push({
+    kind: "damage",
+    x: state.player.x,
+    y: state.player.y,
+    amount: dmg,
+    toPlayer: true,
+  });
   msg(events, `A hidden spike trap! You take ${dmg} damage.`);
 }
 
@@ -555,7 +618,7 @@ function useItem(
   state: GameState,
   defId: string,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ): boolean {
   const p = state.player;
   const entry = p.bag.find((b) => b.defId === defId);
@@ -591,7 +654,10 @@ function useItem(
       return true;
     case "might":
       p.effects.might = def.duration ?? 10;
-      msg(events, `Strength surges through your arm. (${p.effects.might} turns)`);
+      msg(
+        events,
+        `Strength surges through your arm. (${p.effects.might} turns)`,
+      );
       consume();
       return true;
     case "cleanse": {
@@ -601,7 +667,7 @@ function useItem(
         events,
         cleared.length
           ? "The draught scours the venom and fire from your veins."
-          : "The draught tastes of nothing in particular."
+          : "The draught tastes of nothing in particular.",
       );
       consume();
       return true;
@@ -613,22 +679,34 @@ function useItem(
       return true;
     case "levitate":
       p.effects.levitate = def.duration ?? 12;
-      msg(events, `You drift up off the ground — water and traps hold no threat. (${p.effects.levitate} turns)`);
+      msg(
+        events,
+        `You drift up off the ground — water and traps hold no threat. (${p.effects.levitate} turns)`,
+      );
       consume();
       return true;
     case "emberstep":
       p.effects.emberstep = def.duration ?? 12;
-      msg(events, `Your skin turns ember-proof; fire can't touch you. (${p.effects.emberstep} turns)`);
+      msg(
+        events,
+        `Your skin turns ember-proof; fire can't touch you. (${p.effects.emberstep} turns)`,
+      );
       consume();
       return true;
     case "frostwalk":
       p.effects.frostwalk = def.duration ?? 12;
-      msg(events, `Frost sheathes your steps — water freezes as you cross. (${p.effects.frostwalk} turns)`);
+      msg(
+        events,
+        `Frost sheathes your steps — water freezes as you cross. (${p.effects.frostwalk} turns)`,
+      );
       consume();
       return true;
     case "shadow":
       p.effects.shadow = def.duration ?? 12;
-      msg(events, `You melt into shadow — nothing spots you unless it's close. (${p.effects.shadow} turns)`);
+      msg(
+        events,
+        `You melt into shadow — nothing spots you unless it's close. (${p.effects.shadow} turns)`,
+      );
       consume();
       return true;
     case "blink":
@@ -700,7 +778,8 @@ function tickEffects(state: GameState, events: GameEvent[]) {
       delete e[k];
       if (k === "ward") msg(events, "Your warding fades.");
       else if (k === "might") msg(events, "Your strength fades.");
-      else if (k === "emberstep") msg(events, "Your skin cools — the ember-ward is spent.");
+      else if (k === "emberstep")
+        msg(events, "Your skin cools — the ember-ward is spent.");
       else if (k === "levitate") {
         msg(events, "Your levitation fades.");
         landFromLevitation(state, events); // don't leave you stranded over water
@@ -748,8 +827,10 @@ function landFromLevitation(state: GameState, events: GameEvent[]) {
  * carry flame; walls/water won't take. Returns whether it ignited. */
 function igniteTile(state: GameState, i: number, life: number): boolean {
   const t = state.map.tiles[i];
-  if (t === "oil") state.map.tiles[i] = "floor"; // the slick is consumed
-  else if (t !== "floor" && t !== "trapSprung" && t !== "doorOpen") return false;
+  if (t === "oil")
+    state.map.tiles[i] = "floor"; // the slick is consumed
+  else if (t !== "floor" && t !== "trapSprung" && t !== "doorOpen")
+    return false;
   const ex = state.fireTiles.find((f) => f.i === i);
   if (ex) ex.life = Math.max(ex.life, life);
   else state.fireTiles.push({ i, life });
@@ -797,7 +878,8 @@ function tickFires(state: GameState, events: GameEvent[]) {
     }
   }
   let lit = false;
-  for (const ni of spread) if (igniteTile(state, ni, CONFIG.fire.duration)) lit = true;
+  for (const ni of spread)
+    if (igniteTile(state, ni, CONFIG.fire.duration)) lit = true;
   if (lit) msg(events, "Fire races across the oil!");
 }
 
@@ -842,7 +924,11 @@ function tickFlood(state: GameState, events: GameEvent[]) {
         const ny = cy + dy;
         if (!inBounds(map, nx, ny)) continue;
         const ni = idx(nx, ny, w);
-        if (floodable.has(ni) && map.tiles[ni] === "floor" && !occupied.has(ni)) {
+        if (
+          floodable.has(ni) &&
+          map.tiles[ni] === "floor" &&
+          !occupied.has(ni)
+        ) {
           front.push(ni);
         }
       }
@@ -866,7 +952,8 @@ function tickMonsterStatus(state: GameState, rng: Rng, events: GameEvent[]) {
     const e = m.effects;
     if (!e) continue;
     let dot = 0;
-    for (const k of Object.keys(e)) if (isStatusKind(k)) dot += STATUS[k].dmgPerTurn;
+    for (const k of Object.keys(e))
+      if (isStatusKind(k)) dot += STATUS[k].dmgPerTurn;
     if (dot > 0) {
       m.hp -= dot;
       if (visible.has(idx(m.x, m.y, w))) {
@@ -933,7 +1020,7 @@ function detonateAt(
   ty: number,
   events: GameEvent[],
   rng: Rng,
-  spawnFire: boolean
+  spawnFire: boolean,
 ): boolean {
   const p = state.player;
   events.push({
@@ -944,14 +1031,21 @@ function detonateAt(
   });
   events.push({ kind: "blast", x: tx, y: ty, radius: 1 });
 
-  const dmg = (def.magnitude ?? 0) + (classDef(state.player.classId).bombPower ?? 0);
+  const dmg =
+    (def.magnitude ?? 0) + (classDef(state.player.classId).bombPower ?? 0);
   for (const m of state.monsters) {
     const d = chebyshev(m.x, m.y, tx, ty);
     if (d > 1) continue;
     const dealt = d === 0 ? dmg : Math.ceil(dmg / 2);
     m.hp -= dealt;
     events.push({ kind: "hit", x: m.x, y: m.y });
-    events.push({ kind: "damage", x: m.x, y: m.y, amount: dealt, toPlayer: false });
+    events.push({
+      kind: "damage",
+      x: m.x,
+      y: m.y,
+      amount: dealt,
+      toPlayer: false,
+    });
     // the flames cling to anything that survives the burst (player → monster)
     if (m.hp > 0) {
       if (!m.effects) m.effects = {};
@@ -975,7 +1069,10 @@ function detonateAt(
   }
   if (opened > 0) {
     events.push({ kind: "crumble" });
-    msg(events, `The blast blows open ${opened > 1 ? "cracked walls" : "a cracked wall"}!`);
+    msg(
+      events,
+      `The blast blows open ${opened > 1 ? "cracked walls" : "a cracked wall"}!`,
+    );
   }
 
   if (spawnFire) spawnFires(state, tx, ty, rng);
@@ -992,7 +1089,10 @@ function detonateAt(
   }
   state.monsters = survivors;
 
-  msg(events, `The ${def.name} bursts into flame!${slain ? ` ${slain} slain.` : ""}`);
+  msg(
+    events,
+    `The ${def.name} bursts into flame!${slain ? ` ${slain} slain.` : ""}`,
+  );
   entry.count -= 1;
   if (entry.count <= 0) p.bag = p.bag.filter((b) => b !== entry);
   return true;
@@ -1004,7 +1104,7 @@ function throwFirebomb(
   entry: { defId: string; count: number },
   def: (typeof ITEMS)[string],
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ): boolean {
   const p = state.player;
   const w = state.map.width;
@@ -1033,7 +1133,7 @@ function throwFirebombAt(
   tx: number,
   ty: number,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ): boolean {
   const entry = state.player.bag.find((b) => b.defId === defId);
   if (!entry) return false;
@@ -1047,7 +1147,7 @@ function throwFirebombAt(
 function equipFromBag(
   state: GameState,
   defId: string,
-  events: GameEvent[]
+  events: GameEvent[],
 ): boolean {
   const def = ITEMS[defId];
   if (def.category === "weapon") {
@@ -1069,7 +1169,7 @@ function useAbility(
   dx: number,
   dy: number,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ): boolean {
   const p = state.player;
   const ab = classDef(p.classId).ability;
@@ -1098,12 +1198,21 @@ function useAbility(
 }
 
 /** Warrior — Cleave: one sweep hits every adjacent monster (a full weapon blow). */
-function abilityCleave(state: GameState, events: GameEvent[], rng: Rng): boolean {
+function abilityCleave(
+  state: GameState,
+  events: GameEvent[],
+  rng: Rng,
+): boolean {
   const p = state.player;
   const around = [
-    [-1, -1], [0, -1], [1, -1],
-    [-1, 0], [1, 0],
-    [-1, 1], [0, 1], [1, 1],
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1],
   ];
   const targets = around
     .map(([dx, dy]) => monsterAt(state, p.x + dx, p.y + dy))
@@ -1123,7 +1232,12 @@ function abilityCleave(state: GameState, events: GameEvent[], rng: Rng): boolean
 
 /** Rogue — Dash: leap up to `range` tiles in a direction, stopping before any
  * blocker. Reposition/escape only (no strike). */
-function abilityDash(state: GameState, dx: number, dy: number, events: GameEvent[]): boolean {
+function abilityDash(
+  state: GameState,
+  dx: number,
+  dy: number,
+  events: GameEvent[],
+): boolean {
   if (dx === 0 && dy === 0) return false;
   const p = state.player;
   const range = classDef(p.classId).ability?.range ?? 3;
@@ -1142,7 +1256,12 @@ function abilityDash(state: GameState, dx: number, dy: number, events: GameEvent
     msg(events, "The way is blocked — you can't dash there.");
     return false; // no movement → no turn spent
   }
-  events.push({ kind: "projectile", from: { x: p.x, y: p.y }, to: { x: nx, y: ny }, glyph: "·" });
+  events.push({
+    kind: "projectile",
+    from: { x: p.x, y: p.y },
+    to: { x: nx, y: ny },
+    glyph: "·",
+  });
   p.x = nx;
   p.y = ny;
   events.push({ kind: "step" });
@@ -1155,7 +1274,12 @@ function abilityDash(state: GameState, dx: number, dy: number, events: GameEvent
 
 /** Pyromancer — Scorch: a widening cone of fire that sets the ground ablaze —
  * the lingering fire then sears whatever stands in it (via `tickFires`). */
-function abilityScorch(state: GameState, dx: number, dy: number, events: GameEvent[]): boolean {
+function abilityScorch(
+  state: GameState,
+  dx: number,
+  dy: number,
+  events: GameEvent[],
+): boolean {
   if (dx === 0 && dy === 0) return false;
   const p = state.player;
   const w = state.map.width;
@@ -1172,7 +1296,12 @@ function abilityScorch(state: GameState, dx: number, dy: number, events: GameEve
     }
   }
   events.push({ kind: "blast", x: p.x + dx * 2, y: p.y + dy * 2, radius: 2 });
-  msg(events, lit ? "You breathe a roaring cone of fire!" : "Your flames gutter against cold stone.");
+  msg(
+    events,
+    lit
+      ? "You breathe a roaring cone of fire!"
+      : "Your flames gutter against cold stone.",
+  );
   return true; // the burst always spends the turn + cooldown
 }
 
@@ -1180,7 +1309,7 @@ function applyPlayerAction(
   state: GameState,
   action: PlayerAction,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ): boolean {
   switch (action.type) {
     case "ability":
@@ -1194,13 +1323,26 @@ function applyPlayerAction(
     case "useItem":
       return useItem(state, action.defId, events, rng);
     case "throwAt":
-      return throwFirebombAt(state, action.defId, action.x, action.y, events, rng);
+      return throwFirebombAt(
+        state,
+        action.defId,
+        action.x,
+        action.y,
+        events,
+        rng,
+      );
     case "shootAt":
       return resolvePlayerShot(state, action.x, action.y, events, rng);
     case "closeDoor":
       return closePlayerDoor(state, events);
     case "blinkTo":
-      return resolvePlayerBlink(state, action.defId, action.x, action.y, events);
+      return resolvePlayerBlink(
+        state,
+        action.defId,
+        action.x,
+        action.y,
+        events,
+      );
   }
 }
 
@@ -1212,7 +1354,7 @@ function resolvePlayerBlink(
   defId: string,
   x: number,
   y: number,
-  events: GameEvent[]
+  events: GameEvent[],
 ): boolean {
   const p = state.player;
   const entry = p.bag.find((b) => b.defId === defId);
@@ -1245,7 +1387,7 @@ function blinkFallback(
   state: GameState,
   entry: { defId: string },
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ): boolean {
   const p = state.player;
   const r = CONFIG.blinkRange;
@@ -1255,7 +1397,8 @@ function blinkFallback(
       if (dx === 0 && dy === 0) continue;
       const x = p.x + dx;
       const y = p.y + dy;
-      if (isWalkable(state.map, x, y) && !monsterAt(state, x, y)) cands.push({ x, y });
+      if (isWalkable(state.map, x, y) && !monsterAt(state, x, y))
+        cands.push({ x, y });
     }
   }
   if (cands.length === 0) {
@@ -1299,7 +1442,7 @@ function monsterMoveTo(
   nx: number,
   ny: number,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ) {
   if (nx === state.player.x && ny === state.player.y) {
     resolveMonsterAttack(state, m, def, events, rng);
@@ -1316,7 +1459,7 @@ function moveRandom(
   m: MonsterInstance,
   def: MonsterDef,
   rng: Rng,
-  events: GameEvent[]
+  events: GameEvent[],
 ) {
   const dirs = DIRS.slice();
   for (let i = dirs.length - 1; i > 0; i--) {
@@ -1344,9 +1487,14 @@ function chaseStep(
   def: MonsterDef,
   events: GameEvent[],
   rng: Rng,
-  target: Pos
+  target: Pos,
 ) {
-  const step = stepToward(state.map, { x: m.x, y: m.y }, target, def.opensDoors);
+  const step = stepToward(
+    state.map,
+    { x: m.x, y: m.y },
+    target,
+    def.opensDoors,
+  );
   if (!step) return;
   // a door-forcer (guard/boss) shoves a shut door open — spends the turn on it,
   // then walks through next turn; dumb monsters can't (their path routed around)
@@ -1365,12 +1513,15 @@ function rangedAttack(
   m: MonsterInstance,
   def: MonsterDef,
   events: GameEvent[],
-  rng: Rng
+  rng: Rng,
 ) {
   const bonus = eliteMod(m)?.dmgBonus ?? 0;
   const dmg = mitigate(
     state.player,
-    Math.max(1, (def.rangedDmg ?? def.dmg) + bonus - state.player.armorReduction)
+    Math.max(
+      1,
+      (def.rangedDmg ?? def.dmg) + bonus - state.player.armorReduction,
+    ),
   );
   state.player.hp -= dmg;
   events.push({
@@ -1380,7 +1531,13 @@ function rangedAttack(
     glyph: "•",
   });
   events.push({ kind: "hit", x: state.player.x, y: state.player.y });
-  events.push({ kind: "damage", x: state.player.x, y: state.player.y, amount: dmg, toPlayer: true });
+  events.push({
+    kind: "damage",
+    x: state.player.x,
+    y: state.player.y,
+    amount: dmg,
+    toPlayer: true,
+  });
   msg(events, `The ${def.name} hurls a bolt for ${dmg}.`);
   if (state.player.hp > 0)
     tryAfflict(state.player.effects, def.inflicts, rng, "You", events);
@@ -1405,7 +1562,7 @@ function emptyTilesNear(
   cx: number,
   cy: number,
   rMin: number,
-  rMax: number
+  rMax: number,
 ): number[] {
   const w = state.map.width;
   const out: number[] = [];
@@ -1415,7 +1572,8 @@ function emptyTilesNear(
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; // ring only
         const x = cx + dx;
         const y = cy + dy;
-        if (!inBounds(state.map, x, y) || !isWalkable(state.map, x, y)) continue;
+        if (!inBounds(state.map, x, y) || !isWalkable(state.map, x, y))
+          continue;
         if (x === state.player.x && y === state.player.y) continue;
         if (monsterAt(state, x, y)) continue;
         out.push(idx(x, y, w));
@@ -1432,7 +1590,7 @@ function lichBarrage(
   state: GameState,
   phase: number,
   rng: Rng,
-  events: GameEvent[]
+  events: GameEvent[],
 ) {
   const p = state.player;
   const w = state.map.width;
@@ -1443,7 +1601,10 @@ function lichBarrage(
     tiles.push(cand.splice(rng.int(0, cand.length - 1), 1)[0]);
   }
   state.barrage = tiles;
-  msg(events, "Malachar thrusts his staff skyward — dark fire gathers overhead!");
+  msg(
+    events,
+    "Malachar thrusts his staff skyward — dark fire gathers overhead!",
+  );
 }
 
 /** Detonate any telegraphed barrage tiles: a spark on each, damage the player
@@ -1460,9 +1621,18 @@ function resolveBarrage(state: GameState, events: GameEvent[]) {
   }
   state.barrage = [];
   if (struck) {
-    const dmg = wardMitigate(p, Math.max(2, CONFIG.lich.barrageDamage - p.armorReduction));
+    const dmg = wardMitigate(
+      p,
+      Math.max(2, CONFIG.lich.barrageDamage - p.armorReduction),
+    );
     p.hp -= dmg;
-    events.push({ kind: "damage", x: p.x, y: p.y, amount: dmg, toPlayer: true });
+    events.push({
+      kind: "damage",
+      x: p.x,
+      y: p.y,
+      amount: dmg,
+      toPlayer: true,
+    });
     msg(events, `Dark fire crashes down on you for ${dmg}!`);
   } else {
     msg(events, "Dark fire crashes down where you stood.");
@@ -1475,7 +1645,7 @@ function lichSummon(
   m: MonsterInstance,
   phase: number,
   rng: Rng,
-  events: GameEvent[]
+  events: GameEvent[],
 ) {
   const w = state.map.width;
   const count = CONFIG.lich.summonCount[phase];
@@ -1497,7 +1667,10 @@ function lichSummon(
   }
   if (n > 0) {
     events.push({ kind: "blast", x: m.x, y: m.y, radius: 1 });
-    msg(events, "Malachar rips the dead from the stone — they rise around him!");
+    msg(
+      events,
+      "Malachar rips the dead from the stone — they rise around him!",
+    );
   }
 }
 
@@ -1508,7 +1681,7 @@ function lichTeleport(
   m: MonsterInstance,
   def: MonsterDef,
   rng: Rng,
-  events: GameEvent[]
+  events: GameEvent[],
 ): boolean {
   const w = state.map.width;
   const p = state.player;
@@ -1538,7 +1711,7 @@ function actMonster(
   m: MonsterInstance,
   visible: Set<number>,
   rng: Rng,
-  events: GameEvent[]
+  events: GameEvent[],
 ) {
   const def = monsterDef(m.defId);
   const p = state.player;
@@ -1556,7 +1729,7 @@ function actMonster(
   const detectRange = Math.min(
     def.sightRadius,
     p.lightRadius,
-    (p.effects.shadow ?? 0) > 0 ? CONFIG.shadowSightRadius : Infinity
+    (p.effects.shadow ?? 0) > 0 ? CONFIG.shadowSightRadius : Infinity,
   );
   const canDetect = isChaser && seen && dist <= detectRange;
   if (canDetect) {
@@ -1618,7 +1791,7 @@ function actMonster(
           events,
           phase === 1
             ? "Malachar's form splits into wreathing shadow — the hall turns against you!"
-            : "Malachar screams, and the dark fire comes without pause!"
+            : "Malachar screams, and the dark fire comes without pause!",
         );
       }
       if (m.abilityCd == null) m.abilityCd = CONFIG.lich.abilityCd[phase];
@@ -1637,9 +1810,12 @@ function actMonster(
 
       // ability ready: summon (if adds are thin) or a telegraphed barrage
       const adds = state.monsters.filter(
-        (x) => !monsterDef(x.defId).isBoss
+        (x) => !monsterDef(x.defId).isBoss,
       ).length;
-      if (adds < CONFIG.lich.summonCap && rng.chance(CONFIG.lich.summonChance[phase]))
+      if (
+        adds < CONFIG.lich.summonCap &&
+        rng.chance(CONFIG.lich.summonChance[phase])
+      )
         lichSummon(state, m, phase, rng, events);
       else lichBarrage(state, phase, rng, events);
       m.abilityCd = CONFIG.lich.abilityCd[phase];
@@ -1661,7 +1837,12 @@ function actMonster(
  * the player — close enough to close in within a few turns, never on top of you
  * or another monster. Respects a concurrent `cap`. Returns how many spawned.
  * Shared by the survive siege and by overtime pressure. */
-function spawnWave(state: GameState, rng: Rng, count: number, cap: number): number {
+function spawnWave(
+  state: GameState,
+  rng: Rng,
+  count: number,
+  cap: number,
+): number {
   if (state.monsters.length >= cap) return 0;
   const config = LEVELS[state.currentLevel];
   const siege = CONFIG.siege;
@@ -1671,7 +1852,12 @@ function spawnWave(state: GameState, rng: Rng, count: number, cap: number): numb
   for (let i = 0; i < map.tiles.length; i++) {
     const t = map.tiles[i];
     if (t !== "floor" && t !== "trapSprung" && t !== "oil") continue;
-    const d = chebyshev(i % map.width, Math.floor(i / map.width), player.x, player.y);
+    const d = chebyshev(
+      i % map.width,
+      Math.floor(i / map.width),
+      player.x,
+      player.y,
+    );
     if (d >= siege.ringMin && d <= siege.ringMax) ring.push(i);
     else if (d > siege.ringMax) fallback.push(i);
   }
@@ -1680,7 +1866,11 @@ function spawnWave(state: GameState, rng: Rng, count: number, cap: number): numb
 
   const total = config.spawnTable.reduce((s, e) => s + e.weight, 0);
   let spawned = 0;
-  for (let n = 0; n < count && state.monsters.length < cap && pool.length; n++) {
+  for (
+    let n = 0;
+    n < count && state.monsters.length < cap && pool.length;
+    n++
+  ) {
     const spot = pool.splice(rng.int(0, pool.length - 1), 1)[0]; // no two on a tile
     const x = spot % map.width;
     const y = Math.floor(spot / map.width);
@@ -1726,7 +1916,11 @@ function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
 /** Once a (non-survive) level's turn budget runs out, the clock stops being a
  * hard death and becomes rising danger: reinforcements close in, faster and in
  * bigger waves the longer you overstay. You die to monsters, not a timer. */
-function applyOvertimePressure(state: GameState, rng: Rng, events: GameEvent[]) {
+function applyOvertimePressure(
+  state: GameState,
+  rng: Rng,
+  events: GameEvent[],
+) {
   const config = LEVELS[state.currentLevel];
   if (config.goal.type === "survive") return; // its own siege already drives this
   if (state.turnsLeft > 0) return; // still within the turn budget
@@ -1734,14 +1928,21 @@ function applyOvertimePressure(state: GameState, rng: Rng, events: GameEvent[]) 
   const over = -state.turnsLeft; // 0 the moment the budget empties, then grows
 
   if (over === 0)
-    msg(events, "Your time runs short — the dark stirs and begins to close in.");
+    msg(
+      events,
+      "Your time runs short — the dark stirs and begins to close in.",
+    );
 
-  const every = Math.max(ot.minEvery, ot.startEvery - Math.floor(over / ot.rampEvery));
+  const every = Math.max(
+    ot.minEvery,
+    ot.startEvery - Math.floor(over / ot.rampEvery),
+  );
   if (state.turnCount % every !== 0) return;
   const waveSize = 1 + Math.floor(over / ot.rampWave);
   const spawned = spawnWave(state, rng, waveSize, ot.cap);
   if (spawned > 1) msg(events, "The dark disgorges more hunters.");
-  else if (spawned === 1) msg(events, "Something slips out of the dark after you.");
+  else if (spawned === 1)
+    msg(events, "Something slips out of the dark after you.");
 }
 
 function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
@@ -1768,7 +1969,8 @@ function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
 
 // ── log ──────────────────────────────────────────────────────────────────
 function pushLog(state: GameState, events: GameEvent[]) {
-  for (const e of events) if (e.kind === "message") state.messageLog.push(e.text);
+  for (const e of events)
+    if (e.kind === "message") state.messageLog.push(e.text);
   if (state.messageLog.length > CONFIG.messageLogMax) {
     state.messageLog = state.messageLog.slice(-CONFIG.messageLogMax);
   }
@@ -1778,7 +1980,7 @@ function pushLog(state: GameState, events: GameEvent[]) {
 export function resolveTurn(
   state: GameState,
   action: PlayerAction,
-  rng: Rng
+  rng: Rng,
 ): TurnResult {
   const events: GameEvent[] = [];
   const tookTurn = applyPlayerAction(state, action, events, rng);

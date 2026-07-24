@@ -1,8 +1,8 @@
-import type { NextConfig } from 'next';
+import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Fully client-side game: export as a static site (no backend).
-  output: 'export',
+  output: "export",
   images: { unoptimized: true },
   devIndicators: false,
 };

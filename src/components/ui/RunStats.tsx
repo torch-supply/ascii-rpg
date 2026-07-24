@@ -13,16 +13,26 @@ function fmtTime(ms: number): string {
 /** Eased 0→1 progress over `duration`, run once when `active`. Jumps straight
  * to 1 when inactive or under prefers-reduced-motion. */
 function useCountProgress(active: boolean, duration = 1000): number {
-  const [t, setT] = useState(active ? 0 : 1);
+  // Read the motion preference once (client-only app; guarded for safety).
+  const [reduce] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  const done = !active || reduce; // no animation → sit at 1
+  const [t, setT] = useState(done ? 1 : 0);
+
+  // Reset the progress when `active` flips, by adjusting state DURING render
+  // (React's recommended pattern) so the effect only ever calls setT from
+  // inside the rAF callback.
+  const [wasActive, setWasActive] = useState(active);
+  if (active !== wasActive) {
+    setWasActive(active);
+    setT(active && !reduce ? 0 : 1);
+  }
+
   useEffect(() => {
-    if (!active) {
-      setT(1);
-      return;
-    }
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setT(1);
-      return;
-    }
+    if (done) return;
     let raf = 0;
     let start = 0;
     const step = (ts: number) => {
@@ -33,7 +43,7 @@ function useCountProgress(active: boolean, duration = 1000): number {
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [active, duration]);
+  }, [done, duration]);
   return t;
 }
 
@@ -44,7 +54,9 @@ export function RunStats({ animate = false }: { animate?: boolean }) {
 
   const ids = r.mutators ?? [];
   const mult = mutatorScoreMult(ids); // 1.0 with no trials
-  const score = Math.round((r.gold + r.kills * 10 + (r.victory ? 500 : 0)) * mult);
+  const score = Math.round(
+    (r.gold + r.kills * 10 + (r.victory ? 500 : 0)) * mult,
+  );
   const cu = (n: number) => Math.round(n * t); // count-up toward the final value
   const rows: [string, string, boolean?][] = [
     ["Score", String(cu(score)), true],
@@ -53,7 +65,9 @@ export function RunStats({ animate = false }: { animate?: boolean }) {
     ["Turns taken", String(cu(r.turns))],
     ["Time", fmtTime(r.timeMs * t)],
   ];
-  const trials = ids.map((id) => mutatorById(id)?.name).filter(Boolean) as string[];
+  const trials = ids
+    .map((id) => mutatorById(id)?.name)
+    .filter(Boolean) as string[];
 
   return (
     <div className="flex w-64 max-w-[85vw] flex-col gap-1 border border-edge bg-panel/60 px-6 py-3 text-sm">

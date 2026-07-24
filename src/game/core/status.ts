@@ -79,7 +79,7 @@ export const DAMAGING_STATUS: StatusKind[] = ["poison", "bleed", "burn"];
 export function applyStatus(
   effects: Record<string, number>,
   kind: StatusKind,
-  duration: number
+  duration: number,
 ) {
   effects[kind] = Math.max(effects[kind] ?? 0, duration);
 }

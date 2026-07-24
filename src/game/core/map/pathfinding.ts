@@ -12,7 +12,7 @@ export function stepToward(
   map: GameMap,
   from: Pos,
   to: Pos,
-  opensDoors = false
+  opensDoors = false,
 ): Pos | null {
   const passable = (x: number, y: number) =>
     isWalkable(map, x, y) ||

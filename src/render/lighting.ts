@@ -87,7 +87,7 @@ export function computeLightMap(
 
   const fov = new ROT.FOV.PreciseShadowcasting(
     (x, y) => isTransparent(map, x, y),
-    { topology: 8 }
+    { topology: 8 },
   );
   const reflectivity = (x: number, y: number) =>
     x >= 0 && y >= 0 && x < map.width && y < map.height ? REFLECTIVITY : 0;
@@ -120,7 +120,9 @@ export function computeLightMap(
 
   // ── lingering fire — each tile flickers on its own phase ─────────────────────
   for (const f of state.fireTiles) {
-    const ff = reduceMotion ? 1 : 0.68 + 0.32 * Math.abs(Math.sin(now * 0.02 + f.i));
+    const ff = reduceMotion
+      ? 1
+      : 0.68 + 0.32 * Math.abs(Math.sin(now * 0.02 + f.i));
     lighting.setLight(f.i % w, Math.floor(f.i / w), scale(FIRE_LIGHT, ff));
   }
 
@@ -143,9 +145,15 @@ export function computeLightMap(
 
   // ── lich dark-fire barrage — pulsing red underlight on the telegraphed tiles ─
   if (state.barrage.length) {
-    const pulse = reduceMotion ? 0.8 : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.012));
+    const pulse = reduceMotion
+      ? 0.8
+      : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.012));
     for (const bi of state.barrage) {
-      lighting.setLight(bi % w, Math.floor(bi / w), scale(BARRAGE_LIGHT, pulse));
+      lighting.setLight(
+        bi % w,
+        Math.floor(bi / w),
+        scale(BARRAGE_LIGHT, pulse),
+      );
     }
   }
 

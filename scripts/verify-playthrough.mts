@@ -21,7 +21,12 @@ import { giveItem } from "@/game/core/inventory";
 import { CONFIG } from "@/content/config";
 import { MONSTERS } from "@/content/monsters";
 import { ITEMS } from "@/content/items";
-import type { GameState, Pos, PlayerAction, MonsterInstance } from "@/game/core/types";
+import type {
+  GameState,
+  Pos,
+  PlayerAction,
+  MonsterInstance,
+} from "@/game/core/types";
 
 let failures = 0;
 function check(name: string, cond: boolean, extra = "") {
@@ -106,7 +111,11 @@ function objectiveTiles(g: GameState): Pos[] {
     case "findItem": {
       const tag = goal.type === "collectX" ? goal.questTag : goal.questTag;
       const items = g.items.filter((it) => it.questTag === tag);
-      return items.length ? items.map((it) => ({ x: it.x, y: it.y })) : g.map.exit ? [g.map.exit] : [];
+      return items.length
+        ? items.map((it) => ({ x: it.x, y: it.y }))
+        : g.map.exit
+          ? [g.map.exit]
+          : [];
     }
     case "killTarget": {
       const boss = g.monsters.find((m) => m.isGoalTarget);
@@ -122,7 +131,8 @@ function objectiveTiles(g: GameState): Pos[] {
 const chebyshev = (ax: number, ay: number, bx: number, by: number) =>
   Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 
-const isThreat = (m: MonsterInstance) => !!MONSTERS[m.defId]?.isBoss || !!m.elite;
+const isThreat = (m: MonsterInstance) =>
+  !!MONSTERS[m.defId]?.isBoss || !!m.elite;
 
 // Pick an orthogonally-adjacent tile that's safe to stand on (walkable, no
 // monster/fire/barrage/trap), maximizing distance from `from` (a menace to
@@ -138,7 +148,12 @@ function safeStepAwayFrom(g: GameState, from: Pos | null): PlayerAction | null {
     if (!isWalkable(g.map, nx, ny)) continue;
     const ni = idx(nx, ny, w);
     if (g.monsters.some((m) => m.x === nx && m.y === ny)) continue;
-    if (g.barrage.includes(ni) || g.fireTiles.some((f) => f.i === ni) || g.map.tiles[ni] === "trap") continue;
+    if (
+      g.barrage.includes(ni) ||
+      g.fireTiles.some((f) => f.i === ni) ||
+      g.map.tiles[ni] === "trap"
+    )
+      continue;
     const d = from ? chebyshev(nx, ny, from.x, from.y) : 1;
     if (d > bestD) {
       bestD = d;
@@ -149,7 +164,9 @@ function safeStepAwayFrom(g: GameState, from: Pos | null): PlayerAction | null {
 }
 
 const minMonDist = (g: GameState, x: number, y: number) =>
-  g.monsters.length ? Math.min(...g.monsters.map((m) => chebyshev(m.x, m.y, x, y))) : 99;
+  g.monsters.length
+    ? Math.min(...g.monsters.map((m) => chebyshev(m.x, m.y, x, y)))
+    : 99;
 
 // Kite: bounded flood (≤10 steps) over safe open tiles, then head one step
 // toward the reachable tile that puts the MOST breathing room between us and the
@@ -179,7 +196,12 @@ function fleeStep(g: GameState): PlayerAction | null {
       const ni = ny * w + nx;
       if (seen[ni] || !isWalkable(g.map, nx, ny)) continue;
       if (g.monsters.some((m) => m.x === nx && m.y === ny)) continue;
-      if (g.barrage.includes(ni) || g.fireTiles.some((f) => f.i === ni) || g.map.tiles[ni] === "trap") continue;
+      if (
+        g.barrage.includes(ni) ||
+        g.fireTiles.some((f) => f.i === ni) ||
+        g.map.tiles[ni] === "trap"
+      )
+        continue;
       seen[ni] = 1;
       prev[ni] = cur;
       dist[ni] = dist[cur] + 1;
@@ -192,7 +214,10 @@ function fleeStep(g: GameState): PlayerAction | null {
   for (const ti of visited) {
     const s = minMonDist(g, ti % w, Math.floor(ti / w));
     // prefer more breathing room; among equals, the closest (commit, don't dither)
-    if (s > bestScore || (s === bestScore && best >= 0 && dist[ti] < dist[best])) {
+    if (
+      s > bestScore ||
+      (s === bestScore && best >= 0 && dist[ti] < dist[best])
+    ) {
       bestScore = s;
       best = ti;
     }
@@ -230,26 +255,37 @@ function decide(g: GameState): PlayerAction {
     for (const c of g.monsters) {
       const d = chebyshev(c.x, c.y, p.x, p.y);
       if (d < 2 || d > CONFIG.throwRange) continue; // too close (self-fire) / out of range
-      const caught = g.monsters.filter((m) => chebyshev(m.x, m.y, c.x, c.y) <= 1);
+      const caught = g.monsters.filter(
+        (m) => chebyshev(m.x, m.y, c.x, c.y) <= 1,
+      );
       const score = caught.length + (caught.some(isThreat) ? 5 : 0);
       if (score > bestScore) {
         bestScore = score;
         best = c;
       }
     }
-    if (best && bestScore >= 2) return { type: "throwAt", defId: "p_bomb", x: best.x, y: best.y };
+    if (best && bestScore >= 2)
+      return { type: "throwAt", defId: "p_bomb", x: best.x, y: best.y };
   }
 
   // 4. ranged: fire an equipped bow at the nearest visible target in range
   const wpn = p.weaponId ? ITEMS[p.weaponId] : undefined;
   if (wpn?.ranged && p.bag.some((b) => b.defId === wpn.ranged!.ammoId)) {
     const shot = g.monsters
-      .filter((m) => chebyshev(m.x, m.y, p.x, p.y) <= wpn.ranged!.range && g.visible.includes(idx(m.x, m.y, w)))
-      .sort((a, b) => chebyshev(a.x, a.y, p.x, p.y) - chebyshev(b.x, b.y, p.x, p.y))[0];
+      .filter(
+        (m) =>
+          chebyshev(m.x, m.y, p.x, p.y) <= wpn.ranged!.range &&
+          g.visible.includes(idx(m.x, m.y, w)),
+      )
+      .sort(
+        (a, b) => chebyshev(a.x, a.y, p.x, p.y) - chebyshev(b.x, b.y, p.x, p.y),
+      )[0];
     if (shot) return { type: "shootAt", x: shot.x, y: shot.y };
   }
 
-  const adjMonsters = g.monsters.filter((m) => chebyshev(m.x, m.y, p.x, p.y) === 1);
+  const adjMonsters = g.monsters.filter(
+    (m) => chebyshev(m.x, m.y, p.x, p.y) === 1,
+  );
 
   // 5. survive levels: staying alive IS the objective — stay mobile so the siege
   //    can't pin you (bombs above already thin clusters). Flee to open ground;
@@ -259,7 +295,11 @@ function decide(g: GameState): PlayerAction {
     if (flee) return flee;
     const weakest = [...adjMonsters].sort((a, b) => a.hp - b.hp)[0];
     if (weakest && (weakest.x === p.x || weakest.y === p.y)) {
-      return { type: "move", dx: Math.sign(weakest.x - p.x), dy: Math.sign(weakest.y - p.y) };
+      return {
+        type: "move",
+        dx: Math.sign(weakest.x - p.x),
+        dy: Math.sign(weakest.y - p.y),
+      };
     }
     return { type: "wait" };
   }
@@ -273,7 +313,9 @@ function decide(g: GameState): PlayerAction {
   // 7. kite: with bombs left, don't trade blows with a boss/elite on top of us
   //    while hurting — back off to reopen bombing distance
   if (bombs && hpFrac < 0.6) {
-    const menace = g.monsters.find((m) => chebyshev(m.x, m.y, p.x, p.y) === 1 && isThreat(m));
+    const menace = g.monsters.find(
+      (m) => chebyshev(m.x, m.y, p.x, p.y) === 1 && isThreat(m),
+    );
     if (menace) {
       const away = safeStepAwayFrom(g, menace);
       if (away) return away;
@@ -284,7 +326,12 @@ function decide(g: GameState): PlayerAction {
   const adj = adjMonsters
     .filter((m) => m.x === p.x || m.y === p.y)
     .sort((a, b) => a.hp - b.hp)[0];
-  if (adj) return { type: "move", dx: Math.sign(adj.x - p.x), dy: Math.sign(adj.y - p.y) };
+  if (adj)
+    return {
+      type: "move",
+      dx: Math.sign(adj.x - p.x),
+      dy: Math.sign(adj.y - p.y),
+    };
 
   // 9. otherwise path toward the objective (avoid traps, then allow if trapped)
   const goals = objectiveTiles(g);
@@ -303,7 +350,11 @@ interface RunResult {
 }
 
 // Play one level to a conclusion with a fresh bot-statted player.
-function playLevel(levelIndex: number, seed: string, botSeed: number): RunResult {
+function playLevel(
+  levelIndex: number,
+  seed: string,
+  botSeed: number,
+): RunResult {
   const player = createPlayer("warrior"); // a fair, survivable baseline kit
   // stock the consumables a real player buys at the shop: heals + firebombs, so
   // the bot can actually engage bosses with the intended toolkit (not just melee)
@@ -326,14 +377,43 @@ function playLevel(levelIndex: number, seed: string, botSeed: number): RunResult
     note(g.player.hp > g.player.maxHp, "hp exceeded maxHp");
     note(Number.isNaN(g.player.hp), "hp went NaN");
     note(g.turnCount < prevTurn, "turnCount went backwards");
-    note(g.player.x < 0 || g.player.y < 0 || g.player.x >= g.map.width || g.player.y >= g.map.height, "player left the map");
-    note(g.monsters.length > CONFIG.siege.cap + CONFIG.overtime.cap + 40, "monster count blew past caps");
+    note(
+      g.player.x < 0 ||
+        g.player.y < 0 ||
+        g.player.x >= g.map.width ||
+        g.player.y >= g.map.height,
+      "player left the map",
+    );
+    note(
+      g.monsters.length > CONFIG.siege.cap + CONFIG.overtime.cap + 40,
+      "monster count blew past caps",
+    );
     prevTurn = g.turnCount;
 
-    if (res.goalComplete) return { outcome: "win", turns: g.turnCount, endHp: g.player.hp, coins: g.player.coins, invariant };
-    if (res.playerDied) return { outcome: "death", turns: g.turnCount, endHp: 0, coins: g.player.coins, invariant };
+    if (res.goalComplete)
+      return {
+        outcome: "win",
+        turns: g.turnCount,
+        endHp: g.player.hp,
+        coins: g.player.coins,
+        invariant,
+      };
+    if (res.playerDied)
+      return {
+        outcome: "death",
+        turns: g.turnCount,
+        endHp: 0,
+        coins: g.player.coins,
+        invariant,
+      };
   }
-  return { outcome: "stuck", turns: g.turnCount, endHp: g.player.hp, coins: g.player.coins, invariant };
+  return {
+    outcome: "stuck",
+    turns: g.turnCount,
+    endHp: g.player.hp,
+    coins: g.player.coins,
+    invariant,
+  };
 }
 
 const median = (xs: number[]) => {
@@ -343,13 +423,20 @@ const median = (xs: number[]) => {
 };
 
 // ─── Run the fleet ──────────────────────────────────────────────────────────
-console.log("\n[P1] Autonomous playthroughs — every level, greedy bot, many seeds");
+console.log(
+  "\n[P1] Autonomous playthroughs — every level, greedy bot, many seeds",
+);
 const SEEDS = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"];
 // Goal types the greedy bot is expected to actually clear (navigation +
 // attrition). Boss fights (killTarget) and the siege (survive) need tactical
 // play beyond a greedy melee floor, so those are held only to an "enterable,
 // not an instant wipe" bar — real beatability is a human/table judgement.
-const BOT_MUST_WIN = new Set(["reachLocation", "collectX", "findItem", "killCount"]);
+const BOT_MUST_WIN = new Set([
+  "reachLocation",
+  "collectX",
+  "findItem",
+  "killCount",
+]);
 const ENTERABLE_FLOOR = 6; // a boss/siege level must let you last ≥ this many turns
 
 let anyInvariant: string | null = null;
@@ -365,7 +452,8 @@ for (let li = 0; li < LEVELS.length; li++) {
   for (let s = 0; s < SEEDS.length; s++) {
     const r = playLevel(li, SEEDS[s], 1000 + s);
     results.push(r);
-    if (r.invariant && !anyInvariant) anyInvariant = `${cfg.id}/${SEEDS[s]}: ${r.invariant}`;
+    if (r.invariant && !anyInvariant)
+      anyInvariant = `${cfg.id}/${SEEDS[s]}: ${r.invariant}`;
   }
   const wins = results.filter((r) => r.outcome === "win");
   totalWins += wins.length;
@@ -375,8 +463,11 @@ for (let li = 0; li < LEVELS.length; li++) {
     if (wins.length === 0) unbeatable.push(cfg.id);
   } else {
     // longest a run lasted before winning or dying — did the encounter even open?
-    const survived = median(results.map((r) => (r.outcome === "win" ? r.turns : r.turns)));
-    if (survived < ENTERABLE_FLOOR) instantWipe.push(`${cfg.id} (median ${survived}t)`);
+    const survived = median(
+      results.map((r) => (r.outcome === "win" ? r.turns : r.turns)),
+    );
+    if (survived < ENTERABLE_FLOOR)
+      instantWipe.push(`${cfg.id} (median ${survived}t)`);
   }
 
   const rate = ((wins.length / results.length) * 100).toFixed(0);
@@ -384,33 +475,39 @@ for (let li = 0; li < LEVELS.length; li++) {
   const medHp = median(wins.map((r) => r.endHp));
   const deaths = results.filter((r) => r.outcome === "death").length;
   const stuck = results.filter((r) => r.outcome === "stuck").length;
-  const medDeathTurn = median(results.filter((r) => r.outcome === "death").map((r) => r.turns));
+  const medDeathTurn = median(
+    results.filter((r) => r.outcome === "death").map((r) => r.turns),
+  );
   const medGold = median(results.map((r) => r.coins)); // gold earned this level
   rows.push(
     `  · ${cfg.id.padEnd(16)} ${cfg.goal.type.padEnd(13)} win ${rate.padStart(3)}%  ` +
       `(${wins.length}W/${deaths}D/${stuck}S)  medTurns ${String(medTurns).padStart(4)}  ` +
-      `medEndHP ${String(medHp).padStart(2)}  medGold ${String(medGold).padStart(3)}  medDeath@ ${medDeathTurn}t`
+      `medEndHP ${String(medHp).padStart(2)}  medGold ${String(medGold).padStart(3)}  medDeath@ ${medDeathTurn}t`,
   );
 }
 
 console.log(rows.join("\n"));
 
 // ─── Assertions ───────────────────────────────────────────────────────────
-check("no invariant was violated during real play", anyInvariant === null, anyInvariant ? `(${anyInvariant})` : "");
+check(
+  "no invariant was violated during real play",
+  anyInvariant === null,
+  anyInvariant ? `(${anyInvariant})` : "",
+);
 check(
   `navigation/attrition levels are beatable by the greedy bot (won ≥1 of ${SEEDS.length} seeds)`,
   unbeatable.length === 0,
-  unbeatable.length ? `(never won: ${unbeatable.join(", ")})` : ""
+  unbeatable.length ? `(never won: ${unbeatable.join(", ")})` : "",
 );
 check(
   `boss/siege levels are enterable, not an instant wipe (survive ≥${ENTERABLE_FLOOR} turns)`,
   instantWipe.length === 0,
-  instantWipe.length ? `(${instantWipe.join(", ")})` : ""
+  instantWipe.length ? `(${instantWipe.join(", ")})` : "",
 );
 check(
   `overall greedy-bot win-rate is a sane floor across ${totalRuns} runs`,
   totalWins / totalRuns >= 0.3,
-  `(${((totalWins / totalRuns) * 100).toFixed(0)}% — a floor; the bot is greedy/non-optimal)`
+  `(${((totalWins / totalRuns) * 100).toFixed(0)}% — a floor; the bot is greedy/non-optimal)`,
 );
 
 // ─── Determinism: same seed + same bot RNG → identical outcome ──────────────
@@ -420,14 +517,16 @@ console.log("\n[P2] Playthrough determinism");
   const b = playLevel(0, "repeat-me", 42);
   check(
     "same (level, seed, bot RNG) → identical outcome",
-    a.outcome === b.outcome && a.turns === b.turns && a.endHp === b.endHp
+    a.outcome === b.outcome && a.turns === b.turns && a.endHp === b.endHp,
   );
 }
 
 console.log(
   "\n  (win-rate is a conservative lower bound — a greedy bot floor, not a human ceiling.\n" +
-    "   Use the table above to spot meat-grinders (low win% / low medEndHP) or cakewalks.)"
+    "   Use the table above to spot meat-grinders (low win% / low medEndHP) or cakewalks.)",
 );
 
-console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
+console.log(
+  `\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`,
+);
 process.exit(failures === 0 ? 0 : 1);

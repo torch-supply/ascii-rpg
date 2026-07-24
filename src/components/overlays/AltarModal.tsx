@@ -27,7 +27,9 @@ export default function AltarModal() {
         <h2 className="text-balance text-lg uppercase tracking-[0.25em] text-magic">
           {offer.title}
         </h2>
-        <p className="text-balance text-sm leading-relaxed text-dim">{offer.prompt}</p>
+        <p className="text-balance text-sm leading-relaxed text-dim">
+          {offer.prompt}
+        </p>
         {!afford.ok && <p className="text-xs text-hp">{afford.reason}</p>}
 
         <div className="flex flex-wrap justify-center gap-3 pt-1">

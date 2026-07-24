@@ -7,7 +7,7 @@
 // server and when muted.
 // ─────────────────────────────────────────────────────────────────────────
 
-const SOUND_KEY = 'emberofdawn:sound';
+const SOUND_KEY = "emberofdawn:sound";
 
 // Master gain applied to every cue — bump this to make everything louder/softer.
 // A limiter sits after it (see `audio`), so you can push this well past 1
@@ -29,9 +29,9 @@ let stepFlip = false; // alternates footstep pitch (left/right)
 
 /** Read the saved preference (client-only). Call once on startup. */
 export function initSound(): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
-    enabled = window.localStorage.getItem(SOUND_KEY) !== 'off';
+    enabled = window.localStorage.getItem(SOUND_KEY) !== "off";
   } catch {
     enabled = true;
   }
@@ -43,9 +43,9 @@ export function isSoundOn(): boolean {
 
 export function setSoundOn(on: boolean): void {
   enabled = on;
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(SOUND_KEY, on ? 'on' : 'off');
+      window.localStorage.setItem(SOUND_KEY, on ? "on" : "off");
     } catch {
       /* ignore quota/private-mode failures */
     }
@@ -53,7 +53,7 @@ export function setSoundOn(on: boolean): void {
 }
 
 function audio(): AudioContext | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   if (!ctx) {
     const AC =
       window.AudioContext ||
@@ -95,7 +95,7 @@ function audio(): AudioContext | null {
   if (musicGain) musicGain.gain.value = MUSIC_VOLUME;
   // browsers start the context suspended until a user gesture; gameplay keys
   // and the toggle click both count, so a resume here lands in time
-  if (ctx.state === 'suspended') void ctx.resume();
+  if (ctx.state === "suspended") void ctx.resume();
   return ctx;
 }
 
@@ -115,7 +115,11 @@ export function musicOutput(): { ctx: AudioContext; out: GainNode } | null {
 }
 
 /** Retune the music echo (per-biome reverb character). No-op before audio init. */
-export function setMusicEcho(time: number, feedback: number, wet: number): void {
+export function setMusicEcho(
+  time: number,
+  feedback: number,
+  wet: number,
+): void {
   if (!musicDelay || !musicFeedback || !musicWet) return;
   musicDelay.delayTime.value = time;
   musicFeedback.gain.value = feedback;
@@ -160,7 +164,7 @@ function noise(
   const src = c.createBufferSource();
   src.buffer = buf;
   const filter = c.createBiquadFilter();
-  filter.type = 'lowpass';
+  filter.type = "lowpass";
   filter.frequency.value = lp;
   const gain = c.createGain();
   gain.gain.setValueAtTime(peak, at);
@@ -174,24 +178,24 @@ function noise(
 }
 
 export type Sfx =
-  | 'hit' // you land a blow
-  | 'hurt' // you take damage
-  | 'pickup' // grabbed an item
-  | 'coin' // grabbed gold
-  | 'quaff' // drank a potion
-  | 'blast' // an explosion (firebomb / ruin / volatile burst)
-  | 'shoot' // loosed an arrow
-  | 'thud' // an arrow struck stone (miss)
-  | 'crumble' // a cracked wall broke apart
-  | 'door' // a door opened / shut
-  | 'trap' // a spike trap sprang
-  | 'altar' // accepted a shrine's boon
-  | 'step' // walked a tile
-  | 'uiSelect' // menu confirm
-  | 'uiBack' // menu cancel
-  | 'boss' // a boss came into view
-  | 'levelClear' // objective complete
-  | 'death'; // you fall
+  | "hit" // you land a blow
+  | "hurt" // you take damage
+  | "pickup" // grabbed an item
+  | "coin" // grabbed gold
+  | "quaff" // drank a potion
+  | "blast" // an explosion (firebomb / ruin / volatile burst)
+  | "shoot" // loosed an arrow
+  | "thud" // an arrow struck stone (miss)
+  | "crumble" // a cracked wall broke apart
+  | "door" // a door opened / shut
+  | "trap" // a spike trap sprang
+  | "altar" // accepted a shrine's boon
+  | "step" // walked a tile
+  | "uiSelect" // menu confirm
+  | "uiBack" // menu cancel
+  | "boss" // a boss came into view
+  | "levelClear" // objective complete
+  | "death"; // you fall
 
 export function playSfx(kind: Sfx): void {
   if (!enabled) return;
@@ -199,95 +203,95 @@ export function playSfx(kind: Sfx): void {
   if (!c) return;
   const t = c.currentTime;
   switch (kind) {
-    case 'hit':
+    case "hit":
       // you strike: a crisp, high, quick blip + a light thock
-      note(c, t, 240, 0.07, 'square', 0.06, 120);
+      note(c, t, 240, 0.07, "square", 0.06, 120);
       noise(c, t, 0.04, 0.04);
       break;
-    case 'hurt':
+    case "hurt":
       // you're struck: lower, rougher (sawtooth) + a heavier thud
-      note(c, t, 150, 0.15, 'sawtooth', 0.09, 68);
+      note(c, t, 150, 0.15, "sawtooth", 0.09, 68);
       noise(c, t, 0.09, 0.06, 900);
       break;
-    case 'pickup':
+    case "pickup":
       // a bright two-note rising chirp
-      note(c, t, 660, 0.07, 'triangle', 0.09);
-      note(c, t + 0.06, 990, 0.09, 'triangle', 0.09);
+      note(c, t, 660, 0.07, "triangle", 0.09);
+      note(c, t + 0.06, 990, 0.09, "triangle", 0.09);
       break;
-    case 'coin':
+    case "coin":
       // a bright metallic ching (higher + shinier than a pickup)
-      note(c, t, 1319, 0.06, 'triangle', 0.07);
-      note(c, t + 0.05, 1760, 0.11, 'triangle', 0.07);
+      note(c, t, 1319, 0.06, "triangle", 0.07);
+      note(c, t + 0.05, 1760, 0.11, "triangle", 0.07);
       break;
-    case 'quaff':
+    case "quaff":
       // a warm rising "glug" — softer and rounder than a pickup
-      note(c, t, 320, 0.22, 'triangle', 0.08, 560);
+      note(c, t, 320, 0.22, "triangle", 0.08, 560);
       break;
-    case 'shoot':
+    case "shoot":
       // a taut bow twang: a quick downward pluck
-      note(c, t, 700, 0.1, 'sawtooth', 0.06, 260);
+      note(c, t, 700, 0.1, "sawtooth", 0.06, 260);
       break;
-    case 'thud':
+    case "thud":
       // an arrow biting stone: a dull low knock
-      note(c, t, 150, 0.06, 'square', 0.05, 80);
+      note(c, t, 150, 0.06, "square", 0.05, 80);
       noise(c, t, 0.05, 0.05, 600);
       break;
-    case 'crumble':
+    case "crumble":
       // masonry giving way: a gravelly crash + low rubble thumps
       noise(c, t, 0.3, 0.12, 900);
-      note(c, t, 92, 0.28, 'square', 0.07, 50);
-      note(c, t + 0.08, 70, 0.2, 'square', 0.05, 42);
+      note(c, t, 92, 0.28, "square", 0.07, 50);
+      note(c, t + 0.08, 70, 0.2, "square", 0.05, 42);
       break;
-    case 'door':
+    case "door":
       // a wooden creak + a soft latch knock (opening or shutting)
-      note(c, t, 180, 0.16, 'sawtooth', 0.05, 320);
+      note(c, t, 180, 0.16, "sawtooth", 0.05, 320);
       noise(c, t + 0.1, 0.05, 0.04, 1200);
       break;
-    case 'trap':
+    case "trap":
       // a sharp metallic snap
-      note(c, t, 1400, 0.04, 'square', 0.07, 380);
+      note(c, t, 1400, 0.04, "square", 0.07, 380);
       noise(c, t, 0.03, 0.06, 3200);
       break;
-    case 'altar':
+    case "altar":
       // a shimmering ascending chime (G5–D6–G6)
       [784, 1175, 1568].forEach((f, i) =>
-        note(c, t + i * 0.09, f, 0.34, 'triangle', 0.07),
+        note(c, t + i * 0.09, f, 0.34, "triangle", 0.07),
       );
       break;
-    case 'step': {
+    case "step": {
       // a very subtle low tick, alternating pitch like footfalls
       const f = stepFlip ? 92 : 78;
       stepFlip = !stepFlip;
-      note(c, t, f, 0.03, 'triangle', 0.02);
+      note(c, t, f, 0.03, "triangle", 0.02);
       break;
     }
-    case 'uiSelect':
-      note(c, t, 620, 0.06, 'triangle', 0.05, 720);
+    case "uiSelect":
+      note(c, t, 620, 0.06, "triangle", 0.05, 720);
       break;
-    case 'uiBack':
-      note(c, t, 360, 0.07, 'triangle', 0.05, 280);
+    case "uiBack":
+      note(c, t, 360, 0.07, "triangle", 0.05, 280);
       break;
-    case 'boss':
+    case "boss":
       // an ominous low swell (detuned sawtooths + a sub)
-      note(c, t, 110, 0.6, 'sawtooth', 0.09, 100);
-      note(c, t + 0.04, 147, 0.55, 'sawtooth', 0.05);
-      note(c, t, 55, 0.7, 'sine', 0.08);
+      note(c, t, 110, 0.6, "sawtooth", 0.09, 100);
+      note(c, t + 0.04, 147, 0.55, "sawtooth", 0.05);
+      note(c, t, 55, 0.7, "sine", 0.08);
       break;
-    case 'blast':
+    case "blast":
       // a low boom: a dropping low-passed noise burst + a sub thump
       noise(c, t, 0.34, 0.15, 480);
-      note(c, t, 96, 0.3, 'sine', 0.13, 46);
+      note(c, t, 96, 0.3, "sine", 0.13, 46);
       break;
-    case 'levelClear':
+    case "levelClear":
       // a small ascending fanfare (C–E–G–C)
       [523, 659, 784, 1047].forEach((f, i) =>
-        note(c, t + i * 0.1, f, 0.16, 'triangle', 0.1),
+        note(c, t + i * 0.1, f, 0.16, "triangle", 0.1),
       );
       break;
-    case 'death':
+    case "death":
       // a somber descending fall
-      note(c, t, 300, 0.5, 'triangle', 0.1, 90);
-      note(c, t + 0.14, 210, 0.55, 'sine', 0.08, 60);
+      note(c, t, 300, 0.5, "triangle", 0.1, 90);
+      note(c, t + 0.14, 210, 0.55, "sine", 0.08, 60);
       break;
   }
 }

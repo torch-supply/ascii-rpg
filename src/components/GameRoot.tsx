@@ -11,7 +11,13 @@ import { playMusic, stopMusic, setMusicIntensity } from "@/lib/music";
 import { resumeAudio } from "@/lib/sound";
 
 import GameCanvas from "@/components/GameCanvas";
-import { HudBar, HudFooter, BossBar, EliteBars, LevelIntro } from "@/components/hud/Hud";
+import {
+  HudBar,
+  HudFooter,
+  BossBar,
+  EliteBars,
+  LevelIntro,
+} from "@/components/hud/Hud";
 import Splash from "@/components/screens/Splash";
 import ClassSelect from "@/components/screens/ClassSelect";
 import MutatorSelect from "@/components/screens/MutatorSelect";
@@ -43,11 +49,18 @@ function dangerIntensity(s: GameStore): number {
   const hpFrac = p.maxHp > 0 ? p.hp / p.maxHp : 1;
   if (hpFrac < 0.34) x = Math.max(x, 0.45 + (0.34 - hpFrac) * 1.6); // dread as HP bleeds out
   const w = g.map.width;
-  if (g.monsters.some((m) => MONSTERS[m.defId].isBoss && g.visible.includes(idx(m.x, m.y, w))))
+  if (
+    g.monsters.some(
+      (m) => MONSTERS[m.defId].isBoss && g.visible.includes(idx(m.x, m.y, w)),
+    )
+  )
     x = Math.max(x, 0.85); // a boss is watching
   const goal = LEVELS[g.currentLevel].goal;
   if (goal.type === "survive")
-    x = Math.max(x, 0.35 + 0.5 * Math.min(1, g.turnCount / (goal as { turns: number }).turns));
+    x = Math.max(
+      x,
+      0.35 + 0.5 * Math.min(1, g.turnCount / (goal as { turns: number }).turns),
+    );
   else if (g.turnsLeft <= 0) x = Math.max(x, 0.6); // overtime — the dark closes in
   return Math.min(1, x);
 }
@@ -56,7 +69,9 @@ export default function GameRoot() {
   const mode = useGameStore((s) => s.mode);
   const targetingKind = useGameStore((s) => s.targeting?.kind ?? null);
   const abilityName = useGameStore(
-    (s) => (s.game ? classDef(s.game.player.classId).ability?.name : null) ?? "Ability",
+    (s) =>
+      (s.game ? classDef(s.game.player.classId).ability?.name : null) ??
+      "Ability",
   );
 
   useEffect(() => {
@@ -64,7 +79,7 @@ export default function GameRoot() {
     gameStore.getState().init();
 
     const input = new KeyboardInput((cmd) =>
-      gameStore.getState().handleCommand(cmd)
+      gameStore.getState().handleCommand(cmd),
     );
     input.attach();
 
@@ -84,7 +99,11 @@ export default function GameRoot() {
       if (s.mode === "shop") return void playMusic("shop");
       if (s.mode === "gameover") return void playMusic("death");
       if (s.mode === "victory") return void playMusic("victory");
-      if (s.mode === "splash" || s.mode === "classSelect" || s.mode === "mutators")
+      if (
+        s.mode === "splash" ||
+        s.mode === "classSelect" ||
+        s.mode === "mutators"
+      )
         return void playMusic("title");
       const biome = s.game ? LEVELS[s.game.currentLevel].biome : null;
       if (biome) playMusic(`level:${biome}`, biome);

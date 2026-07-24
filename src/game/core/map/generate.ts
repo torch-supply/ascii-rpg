@@ -78,7 +78,11 @@ function carveSubBiome(map: GameMap, config: LevelConfig) {
 }
 
 /** Organic noise-blob region (cosmetic — never touches `tiles`). */
-function carveSubBiomeBlob(map: GameMap, config: LevelConfig, spec: SubBiomeSpec) {
+function carveSubBiomeBlob(
+  map: GameMap,
+  config: LevelConfig,
+  spec: SubBiomeSpec,
+) {
   const w = map.width;
   const h = map.height;
   const scale = spec.scale ?? 0.13;
@@ -127,7 +131,11 @@ function carveSubBiomeBlob(map: GameMap, config: LevelConfig, spec: SubBiomeSpec
 
 /** A rectangular wing whose layout is a secondary generator (e.g. a maze),
  * stamped into the map and bridged to the main area by a central corridor. */
-function carveSubBiomeWing(map: GameMap, config: LevelConfig, spec: SubBiomeSpec) {
+function carveSubBiomeWing(
+  map: GameMap,
+  config: LevelConfig,
+  spec: SubBiomeSpec,
+) {
   const w = map.width;
   const h = map.height;
   const frac = spec.size ?? 0.42;
@@ -157,19 +165,23 @@ function carveSubBiomeWing(map: GameMap, config: LevelConfig, spec: SubBiomeSpec
   // LEFT into the main map, plus a vertical passage — together a crossroads that
   // breaks the labyrinth into quadrants you can retreat through.
   const by = Math.min(h - 2, Math.max(1, ry + Math.floor(rh / 2)));
-  for (let x = rx; x < rx + rw && x < w - 1; x++) map.tiles[by * w + x] = "floor";
+  for (let x = rx; x < rx + rw && x < w - 1; x++)
+    map.tiles[by * w + x] = "floor";
   for (let x = rx - 1; x >= 1; x--) {
     if (map.tiles[by * w + x] === "floor") break; // reached the main map
     map.tiles[by * w + x] = "floor";
   }
   const bx = Math.min(w - 2, Math.max(1, rx + Math.floor(rw / 2)));
-  for (let y = ry; y < ry + rh && y < h - 1; y++) map.tiles[y * w + bx] = "floor";
+  for (let y = ry; y < ry + rh && y < h - 1; y++)
+    map.tiles[y * w + bx] = "floor";
 }
 
 // Default hazard kit per sub-biome, used when a `subBiome` omits `hazards`.
 // Each region's terrain expresses its theme (and rewards a matching counter):
 // marsh water → Levitation/Rimewalk; scorched oil → Emberstep; frost ice → …
-const BIOME_HAZARDS: Partial<Record<string, { type: TileType; density?: number }[]>> = {
+const BIOME_HAZARDS: Partial<
+  Record<string, { type: TileType; density?: number }[]>
+> = {
   marsh: [{ type: "water", density: 0.16 }],
   throne: [{ type: "oil", density: 0.3 }], // scorched hollow
   mountain: [{ type: "ice", density: 0.25 }], // frozen patch
@@ -218,7 +230,12 @@ function scatterRegionHazards(map: GameMap, spec: SubBiomeSpec) {
         let moved = false;
         for (const [dx, dy] of dirs) {
           const ni = (cy + dy) * w + (cx + dx);
-          if (ni >= 0 && ni < region.length && region[ni] === 1 && map.tiles[ni] === "floor") {
+          if (
+            ni >= 0 &&
+            ni < region.length &&
+            region[ni] === 1 &&
+            map.tiles[ni] === "floor"
+          ) {
             cur = ni;
             moved = true;
             break;
@@ -244,16 +261,17 @@ function placeSecretVault(
   floors: number[],
   occupied: Set<number>,
   items: ItemInstance[],
-  levelIndex: number
+  levelIndex: number,
 ) {
   const spec = config.secretVault;
   if (!spec || floors.length === 0) return;
   const w = map.width;
   const h = map.height;
   const tiles = map.tiles;
-  const inB = (x: number, y: number) => x > 0 && y > 0 && x < w - 1 && y < h - 1;
+  const inB = (x: number, y: number) =>
+    x > 0 && y > 0 && x < w - 1 && y < h - 1;
 
-  const shuffle = <T,>(arr: T[]) => {
+  const shuffle = <T>(arr: T[]) => {
     for (let k = arr.length - 1; k > 0; k--) {
       const j = mapInt(0, k);
       [arr[k], arr[j]] = [arr[j], arr[k]];
@@ -275,7 +293,8 @@ function placeSecretVault(
       const py = dx;
       const crackX = ax + dx;
       const crackY = ay + dy;
-      if (!inB(crackX, crackY) || tiles[crackY * w + crackX] !== "wall") continue;
+      if (!inB(crackX, crackY) || tiles[crackY * w + crackX] !== "wall")
+        continue;
       const crackI = crackY * w + crackX;
 
       // a 3-deep × 3-wide room just past the crack; every tile must be wall
@@ -326,7 +345,13 @@ function placeSecretVault(
       ]) {
         const nx = crackX + ndx;
         const ny = crackY + ndy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h || tiles[ny * w + nx] !== "wall") {
+        if (
+          nx < 0 ||
+          ny < 0 ||
+          nx >= w ||
+          ny >= h ||
+          tiles[ny * w + nx] !== "wall"
+        ) {
           ok = false;
           break;
         }
@@ -338,7 +363,8 @@ function placeSecretVault(
       for (const ri of room) tiles[ri] = "floor";
       let n = 0;
       for (const entry of spec.loot) {
-        const cell = room[Math.min(room.length - 1, Math.floor(room.length / 2) + n)];
+        const cell =
+          room[Math.min(room.length - 1, Math.floor(room.length / 2) + n)];
         occupied.add(cell);
         const def = ITEMS[entry.itemId];
         const inst: ItemInstance = {
@@ -369,7 +395,7 @@ function placeSecretVault(
 function computeFloodPlan(
   map: GameMap,
   from: Pos,
-  objectives: Pos[]
+  objectives: Pos[],
 ): { floodable: number[]; seeds: number[] } {
   const w = map.width;
   const protectedSet = new Set<number>();
@@ -395,7 +421,7 @@ function computeFloodPlan(
     .sort(
       (a, b) =>
         manhattan(b % w, Math.floor(b / w), from.x, from.y) -
-        manhattan(a % w, Math.floor(a / w), from.x, from.y)
+        manhattan(a % w, Math.floor(a / w), from.x, from.y),
     )
     .slice(0, 3);
   return { floodable, seeds };
@@ -461,12 +487,10 @@ function pickCell(
   floors: number[],
   occupied: Set<number>,
   w: number,
-  filter?: (x: number, y: number) => boolean
+  filter?: (x: number, y: number) => boolean,
 ): number | null {
   const cands = filter
-    ? floors.filter(
-        (i) => !occupied.has(i) && filter(i % w, Math.floor(i / w))
-      )
+    ? floors.filter((i) => !occupied.has(i) && filter(i % w, Math.floor(i / w)))
     : floors.filter((i) => !occupied.has(i));
   if (cands.length === 0) {
     const relaxed = floors.filter((i) => !occupied.has(i));
@@ -480,7 +504,7 @@ function farthestCell(
   floors: number[],
   occupied: Set<number>,
   w: number,
-  from: Pos
+  from: Pos,
 ): number | null {
   let best = -1;
   let bestD = -1;
@@ -543,7 +567,7 @@ function farthestSafeCell(
   occupied: Set<number>,
   w: number,
   from: Pos,
-  map: GameMap
+  map: GameMap,
 ): number | null {
   const cands = floors
     .filter((i) => !occupied.has(i))
@@ -561,13 +585,19 @@ function farthestSafeCell(
 
 /** Convert floor cells into water blobs (impassable). Done BEFORE computing the
  * connected component, so any pockets water seals off are simply never used. */
-function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number) {
+function placeWater(
+  config: LevelConfig,
+  tiles: TileType[],
+  w: number,
+  h: number,
+) {
   let remaining = config.waterCount ?? 0;
   let guard = 0;
   while (remaining > 0 && guard < 200) {
     guard++;
     const floors: number[] = [];
-    for (let i = 0; i < tiles.length; i++) if (tiles[i] === "floor") floors.push(i);
+    for (let i = 0; i < tiles.length; i++)
+      if (tiles[i] === "floor") floors.push(i);
     if (floors.length === 0) break;
     let cur = floors[mapInt(0, floors.length - 1)];
     const blob = mapInt(3, 7);
@@ -592,7 +622,13 @@ function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number
       for (const [dx, dy] of dirs) {
         const nx = cx + dx;
         const ny = cy + dy;
-        if (nx > 0 && ny > 0 && nx < w - 1 && ny < h - 1 && tiles[ny * w + nx] === "floor") {
+        if (
+          nx > 0 &&
+          ny > 0 &&
+          nx < w - 1 &&
+          ny < h - 1 &&
+          tiles[ny * w + nx] === "floor"
+        ) {
           cur = ny * w + nx;
           moved = true;
           break;
@@ -603,7 +639,14 @@ function placeWater(config: LevelConfig, tiles: TileType[], w: number, h: number
   }
 }
 
-const TRAP_OPEN: TileType[] = ["floor", "doorOpen", "exit", "oil", "forage", "ice"];
+const TRAP_OPEN: TileType[] = [
+  "floor",
+  "doorOpen",
+  "exit",
+  "oil",
+  "forage",
+  "ice",
+];
 /** Count a cell's open orthogonal neighbors — a trap wants ≥3 so there's a way
  * around it (never dropped in a 1-wide corridor / chokepoint you're forced through). */
 function openOrthoCount(tiles: TileType[], w: number, i: number): number {
@@ -627,7 +670,7 @@ function placeTraps(
   floors: number[],
   occupied: Set<number>,
   w: number,
-  playerStart: Pos
+  playerStart: Pos,
 ) {
   let placed = 0;
   let attempts = 0;
@@ -653,7 +696,7 @@ function placeOil(
   tiles: TileType[],
   occupied: Set<number>,
   w: number,
-  h: number
+  h: number,
 ) {
   let remaining = config.oilCount ?? 0;
   let guard = 0;
@@ -688,7 +731,14 @@ function placeOil(
         const nx = cx + dx;
         const ny = cy + dy;
         const ni = ny * w + nx;
-        if (nx > 0 && ny > 0 && nx < w - 1 && ny < h - 1 && tiles[ni] === "floor" && !occupied.has(ni)) {
+        if (
+          nx > 0 &&
+          ny > 0 &&
+          nx < w - 1 &&
+          ny < h - 1 &&
+          tiles[ni] === "floor" &&
+          !occupied.has(ni)
+        ) {
           cur = ni;
           moved = true;
           break;
@@ -705,7 +755,7 @@ function placeCrackedWalls(
   config: LevelConfig,
   tiles: TileType[],
   w: number,
-  h: number
+  h: number,
 ) {
   const count = config.crackedWallCount ?? 0;
   if (count <= 0) return;
@@ -731,7 +781,8 @@ function placeCrackedWalls(
     const j = mapInt(0, k);
     [cands[k], cands[j]] = [cands[j], cands[k]];
   }
-  for (let n = 0; n < count && n < cands.length; n++) tiles[cands[n]] = "crackedWall";
+  for (let n = 0; n < count && n < cands.length; n++)
+    tiles[cands[n]] = "crackedWall";
 }
 
 /** Place interactive doors on 1-wide chokepoints (a floor cell open on one axis,
@@ -743,11 +794,12 @@ function placeDoors(
   occupied: Set<number>,
   w: number,
   h: number,
-  playerStart: Pos
+  playerStart: Pos,
 ) {
   const count = config.doorCount ?? 0;
   if (count <= 0) return;
-  const solid = (i: number) => tiles[i] === "wall" || tiles[i] === "crackedWall";
+  const solid = (i: number) =>
+    tiles[i] === "wall" || tiles[i] === "crackedWall";
   const open = (i: number) =>
     tiles[i] === "floor" ||
     tiles[i] === "oil" ||
@@ -785,7 +837,7 @@ function placeForage(
   occupied: Set<number>,
   w: number,
   h: number,
-  playerStart: Pos
+  playerStart: Pos,
 ) {
   const count = config.forageCount ?? 0;
   if (count <= 0) return;
@@ -821,7 +873,7 @@ function placeAltars(
   floors: number[],
   occupied: Set<number>,
   w: number,
-  levelIndex: number
+  levelIndex: number,
 ): AltarInstance[] {
   const count = config.altarCount ?? 0;
   const altars: AltarInstance[] = [];
@@ -1018,7 +1070,10 @@ function ensureTrapsAvoidable(map: GameMap, from: Pos) {
     }
     if (target < 0) return; // the whole walkable area is trap-free reachable — done
     let demoted = false;
-    for (const i of walkablePath(map, from, { x: target % w, y: Math.floor(target / w) })) {
+    for (const i of walkablePath(map, from, {
+      x: target % w,
+      y: Math.floor(target / w),
+    })) {
       if (map.tiles[i] === "trap") {
         map.tiles[i] = "floor";
         demoted = true;
@@ -1036,7 +1091,7 @@ function ensureTrapsAvoidable(map: GameMap, from: Pos) {
 export function generateLevel(
   config: LevelConfig,
   levelIndex: number,
-  masterSeed: string
+  masterSeed: string,
 ): LevelData {
   seedMapGen(levelSeed(masterSeed, levelIndex));
 
@@ -1210,8 +1265,10 @@ export function generateLevel(
   if (config.flood) {
     const objectives: Pos[] = [];
     if (map.exit) objectives.push(map.exit);
-    for (const m of monsters) if (m.isGoalTarget) objectives.push({ x: m.x, y: m.y });
-    for (const it of items) if (it.questTag) objectives.push({ x: it.x, y: it.y });
+    for (const m of monsters)
+      if (m.isGoalTarget) objectives.push({ x: m.x, y: m.y });
+    for (const it of items)
+      if (it.questTag) objectives.push({ x: it.x, y: it.y });
     const plan = computeFloodPlan(map, playerStart, objectives);
     floodable = plan.floodable;
     floodSeeds = plan.seeds;

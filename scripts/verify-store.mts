@@ -28,12 +28,13 @@ class MemStorage {
     this.m.clear();
   }
 }
-(globalThis as unknown as { localStorage: MemStorage }).localStorage = new MemStorage();
+(globalThis as unknown as { localStorage: MemStorage }).localStorage =
+  new MemStorage();
 
 // pure helpers / content have no browser deps — safe to import statically
 import { LEVELS } from "@/content/levels";
 import { SHOP_TIERS, ITEMS, sellPrice } from "@/content/items";
-import { idx, isWalkable } from "@/game/core/grid";
+import { idx } from "@/game/core/grid";
 import type { GameState, Pos } from "@/game/core/types";
 
 // the store reads bare `localStorage` inside its functions, so import it only
@@ -63,8 +64,20 @@ async function bootToPlay(seed: string, classId = "warrior") {
   st().continueNarration(); // beginPlay → playing
 }
 
-const PASSABLE = new Set(["floor", "exit", "doorOpen", "door", "trapSprung", "oil", "forage", "ice"]);
-function stepToward(g: GameState, goal: Pos): { dx: number; dy: number } | null {
+const PASSABLE = new Set([
+  "floor",
+  "exit",
+  "doorOpen",
+  "door",
+  "trapSprung",
+  "oil",
+  "forage",
+  "ice",
+]);
+function stepToward(
+  g: GameState,
+  goal: Pos,
+): { dx: number; dy: number } | null {
   const w = g.map.width;
   const h = g.map.height;
   const start = idx(g.player.x, g.player.y, w);
@@ -132,9 +145,18 @@ console.log("\n[S1] Boot: splash → new game → opening narration");
   check("no save → Resume is unavailable", st().hasSave === false);
 
   st().newGame("warrior", "store-seed");
-  check("New Game opens the opening narration (not straight into play)", st().mode === "narration");
-  check("the opening card continues into play", st().narration?.onContinue === "beginPlay");
-  check("a game + rng now exist, parked on level 0", !!st().game && !!st().rng && st().game!.currentLevel === 0);
+  check(
+    "New Game opens the opening narration (not straight into play)",
+    st().mode === "narration",
+  );
+  check(
+    "the opening card continues into play",
+    st().narration?.onContinue === "beginPlay",
+  );
+  check(
+    "a game + rng now exist, parked on level 0",
+    !!st().game && !!st().rng && st().game!.currentLevel === 0,
+  );
 }
 
 // ─── S2. Input-settle guard: the class keypress can't skip the opening ──────
@@ -143,27 +165,51 @@ console.log("\n[S2] Anti-skip: input settle blocks an immediate advance");
   st().init();
   st().newGame("warrior", "store-seed");
   st().continueNarration(); // fired within the settle window → must be ignored
-  check("an advance inside the settle window is swallowed", st().mode === "narration");
+  check(
+    "an advance inside the settle window is swallowed",
+    st().mode === "narration",
+  );
   await settle();
   st().continueNarration();
-  check("after the settle window the advance goes through", st().mode === "playing");
+  check(
+    "after the settle window the advance goes through",
+    st().mode === "playing",
+  );
 }
 
 // ─── S3. Level clear → narration → shop (ordering + no early advance) ───────
 console.log("\n[S3] Level-clear flow: clear → narration → shop");
 {
   await bootToPlay("store-seed");
-  check("(setup) in live play on level 0", st().mode === "playing" && st().game!.currentLevel === 0);
+  check(
+    "(setup) in live play on level 0",
+    st().mode === "playing" && st().game!.currentLevel === 0,
+  );
 
   clearReachLevelInvincible();
-  check("clearing the level opens the cleared-narration card", st().mode === "narration");
-  check("the card is a next-level transition", st().narration?.onContinue === "nextLevel");
-  check("the level does NOT advance until you continue", st().game!.currentLevel === 0);
+  check(
+    "clearing the level opens the cleared-narration card",
+    st().mode === "narration",
+  );
+  check(
+    "the card is a next-level transition",
+    st().narration?.onContinue === "nextLevel",
+  );
+  check(
+    "the level does NOT advance until you continue",
+    st().game!.currentLevel === 0,
+  );
 
   await settle();
   st().continueNarration();
-  check("level 0 has a shop tier → continue lands in the shop", st().mode === "shop");
-  check("the shop hasn't advanced the level yet", st().game!.currentLevel === 0);
+  check(
+    "level 0 has a shop tier → continue lands in the shop",
+    st().mode === "shop",
+  );
+  check(
+    "the shop hasn't advanced the level yet",
+    st().game!.currentLevel === 0,
+  );
 }
 
 // ─── S4. Shop economy: buy (coins/qty caps) + sell ──────────────────────────
@@ -171,35 +217,47 @@ console.log("\n[S4] Shop economy: buy respects coins + maxQty, sell pays out");
 {
   // continues from S3 — we're in the shop on level 0 (tier 1)
   const tier = LEVELS[0].shopTier!;
-  const entry = SHOP_TIERS[tier].find((e) => e.maxQty != null && e.maxQty >= 1)!;
+  const entry = SHOP_TIERS[tier].find(
+    (e) => e.maxQty != null && e.maxQty >= 1,
+  )!;
   const g = st().game!;
   g.player.coins = entry.price * (entry.maxQty ?? 1) + 5; // afford the full stack
   const coins0 = g.player.coins;
   const held0 = g.player.bag.find((b) => b.defId === entry.itemId)?.count ?? 0;
 
   st().buyShopEntry(entry);
-  check("buying deducts the price", st().game!.player.coins === coins0 - entry.price);
+  check(
+    "buying deducts the price",
+    st().game!.player.coins === coins0 - entry.price,
+  );
   check(
     "buying adds the item to the bag",
-    (st().game!.player.bag.find((b) => b.defId === entry.itemId)?.count ?? 0) === held0 + 1
+    (st().game!.player.bag.find((b) => b.defId === entry.itemId)?.count ??
+      0) ===
+      held0 + 1,
   );
 
   // buy up to the per-visit cap, then one more must be refused
   for (let i = 1; i < (entry.maxQty ?? 1); i++) st().buyShopEntry(entry);
   const cappedCoins = st().game!.player.coins;
-  const cappedHeld = st().game!.player.bag.find((b) => b.defId === entry.itemId)?.count ?? 0;
+  const cappedHeld =
+    st().game!.player.bag.find((b) => b.defId === entry.itemId)?.count ?? 0;
   st().buyShopEntry(entry); // over the cap
   check(
     "buying past maxQty is refused (no coins spent, no item added)",
     st().game!.player.coins === cappedCoins &&
-      (st().game!.player.bag.find((b) => b.defId === entry.itemId)?.count ?? 0) === cappedHeld
+      (st().game!.player.bag.find((b) => b.defId === entry.itemId)?.count ??
+        0) === cappedHeld,
   );
 
   // broke: a purchase you can't afford is a no-op
   st().game!.player.coins = 0;
   const brokeHeld = st().game!.player.bag.length;
   st().buyShopEntry(entry);
-  check("a purchase you can't afford changes nothing", st().game!.player.bag.length === brokeHeld);
+  check(
+    "a purchase you can't afford changes nothing",
+    st().game!.player.bag.length === brokeHeld,
+  );
 
   // sell: put a sellable item in the bag and sell it back
   const sellable = Object.values(ITEMS).find((it) => sellPrice(it) > 0)!;
@@ -207,10 +265,13 @@ console.log("\n[S4] Shop economy: buy respects coins + maxQty, sell pays out");
   gp.bag.push({ defId: sellable.id, count: 1 });
   const beforeSellCoins = gp.coins;
   st().sellBagItem(sellable.id);
-  check("selling pays out the sell price", st().game!.player.coins === beforeSellCoins + sellPrice(sellable));
+  check(
+    "selling pays out the sell price",
+    st().game!.player.coins === beforeSellCoins + sellPrice(sellable),
+  );
   check(
     "selling removes the item from the bag",
-    !st().game!.player.bag.some((b) => b.defId === sellable.id)
+    !st().game!.player.bag.some((b) => b.defId === sellable.id),
   );
 }
 
@@ -235,14 +296,26 @@ console.log("\n[S6] Death (lives left) → restart the level");
   g.player.effects.bleed = 5; // a lethal end-of-turn tick
   g.monsters = []; // isolate: die to our own DoT, not a lucky monster
   st().submitAction({ type: "wait" });
-  check("a lethal turn with lives left shows the You Fall card", st().mode === "narration");
-  check("the card restarts the level", st().narration?.onContinue === "restartLevel");
+  check(
+    "a lethal turn with lives left shows the You Fall card",
+    st().mode === "narration",
+  );
+  check(
+    "the card restarts the level",
+    st().narration?.onContinue === "restartLevel",
+  );
 
   await settle();
   st().continueNarration();
-  check("rising drops you back into play on the SAME level", st().mode === "playing" && st().game!.currentLevel === levelAtDeath);
+  check(
+    "rising drops you back into play on the SAME level",
+    st().mode === "playing" && st().game!.currentLevel === levelAtDeath,
+  );
   check("a life was spent", st().game!.player.lives === 1);
-  check("HP is restored on restart", st().game!.player.hp === st().game!.player.maxHp);
+  check(
+    "HP is restored on restart",
+    st().game!.player.hp === st().game!.player.maxHp,
+  );
 }
 
 // ─── S7. Death on the last life → game over ─────────────────────────────────
@@ -256,9 +329,18 @@ console.log("\n[S7] Death (last life) → game over");
   g.player.effects.bleed = 5;
   g.monsters = [];
   st().submitAction({ type: "wait" });
-  check("losing the last life ends the run at game over", st().mode === "gameover");
-  check("the run result is recorded as a loss", st().runResult?.victory === false);
-  check("game over clears the save (no resuming a dead run)", st().hasSave === false);
+  check(
+    "losing the last life ends the run at game over",
+    st().mode === "gameover",
+  );
+  check(
+    "the run result is recorded as a loss",
+    st().runResult?.victory === false,
+  );
+  check(
+    "game over clears the save (no resuming a dead run)",
+    st().hasSave === false,
+  );
 }
 
 // ─── S8. Completing the final level → victory ───────────────────────────────
@@ -266,14 +348,23 @@ console.log("\n[S8] Final level cleared → victory");
 {
   await bootToPlay("victory-seed");
   st().debugJumpTo(LEVELS.length - 1); // jump straight to the throne
-  check("(setup) parked on the final level, in play", st().mode === "playing" && st().game!.currentLevel === LEVELS.length - 1);
+  check(
+    "(setup) parked on the final level, in play",
+    st().mode === "playing" && st().game!.currentLevel === LEVELS.length - 1,
+  );
   // satisfy the kill-boss goal cheaply: remove the goal target, then take a turn
   st().game!.monsters = st().game!.monsters.filter((m) => !m.isGoalTarget);
   st().game!.player.hp = 1e9;
   st().game!.player.maxHp = 1e9;
   st().submitAction({ type: "wait" });
-  check("clearing the last level rolls straight to victory", st().mode === "victory");
-  check("the run result is recorded as a win", st().runResult?.victory === true);
+  check(
+    "clearing the last level rolls straight to victory",
+    st().mode === "victory",
+  );
+  check(
+    "the run result is recorded as a win",
+    st().runResult?.victory === true,
+  );
   check("victory clears the save", st().hasSave === false);
 }
 
@@ -305,9 +396,11 @@ console.log("\n[S9] Save/resume roundtrip");
     "the resumed run matches what was saved (level/turn/hp)",
     st().game!.currentLevel === snap.level &&
       st().game!.turnCount === snap.turn &&
-      st().game!.player.hp === snap.hp
+      st().game!.player.hp === snap.hp,
   );
 }
 
-console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
+console.log(
+  `\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`,
+);
 process.exit(failures === 0 ? 0 : 1);

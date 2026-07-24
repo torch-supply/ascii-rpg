@@ -7,10 +7,13 @@ import { classDef } from "@/content/classes";
 
 export function playerAttackDamage(
   player: PlayerState,
-  target: MonsterDef
+  target: MonsterDef,
 ): number {
   const might = (player.effects.might ?? 0) > 0 ? CONFIG.mightBonus : 0;
-  return Math.max(1, player.weaponPower + player.weaponBonus + might - target.armor);
+  return Math.max(
+    1,
+    player.weaponPower + player.weaponBonus + might - target.armor,
+  );
 }
 
 /** Reduce incoming damage while the Ward effect is active (halve, min 1). */
@@ -29,12 +32,12 @@ export function mitigate(player: PlayerState, dmg: number): number {
 export function monsterAttackDamage(
   attacker: MonsterDef,
   player: PlayerState,
-  dmgBonus = 0
+  dmgBonus = 0,
 ): number {
   // Some attackers (wraith) pierce part of the player's armor.
   const effectiveArmor = Math.max(
     0,
-    player.armorReduction - (attacker.armorPierce ?? 0)
+    player.armorReduction - (attacker.armorPierce ?? 0),
   );
   const base = Math.max(1, attacker.dmg + dmgBonus - effectiveArmor);
   return mitigate(player, base);

@@ -62,55 +62,161 @@ const DEFAULT_PROGRESSION = [0, 2, 4, 1]; // i → III → v → ii (a gentle wa
 // ambient texture bed give each its own sense of place.
 const LEVEL_MOODS: Record<Biome, Track> = {
   dungeon: {
-    root: 110.0, scale: MINOR_PENT, stepMs: 520, density: 0.46, wave: "triangle", peak: 0.07, droneEvery: 8, droneWave: "sine", sparkle: 0.08,
-    cutoff: 1400, echo: { time: 0.3, feedback: 0.34, wet: 0.3 },
-    texture: { bed: { filter: "lowpass", freq: 220, q: 0.7, peak: 0.04, every: 6 }, tick: { chance: 0.05, freq: 1500, q: 9, dur: 0.12, peak: 0.035 } }, // room tone + drips
+    root: 110.0,
+    scale: MINOR_PENT,
+    stepMs: 520,
+    density: 0.46,
+    wave: "triangle",
+    peak: 0.07,
+    droneEvery: 8,
+    droneWave: "sine",
+    sparkle: 0.08,
+    cutoff: 1400,
+    echo: { time: 0.3, feedback: 0.34, wet: 0.3 },
+    texture: {
+      bed: { filter: "lowpass", freq: 220, q: 0.7, peak: 0.04, every: 6 },
+      tick: { chance: 0.05, freq: 1500, q: 9, dur: 0.12, peak: 0.035 },
+    }, // room tone + drips
   },
   forest: {
-    root: 146.83, scale: DORIAN, stepMs: 480, density: 0.46, wave: "triangle", peak: 0.06, droneEvery: 8, droneWave: "sine", sparkle: 0.1,
-    cutoff: 1600, echo: { time: 0.2, feedback: 0.22, wet: 0.22 }, // short, dry (open woods)
-    texture: { bed: { filter: "bandpass", freq: 520, q: 0.8, peak: 0.03, every: 6 }, tick: { chance: 0.08, freq: 3000, q: 0.7, dur: 0.04, peak: 0.02 } }, // breeze + leaf rustle
+    root: 146.83,
+    scale: DORIAN,
+    stepMs: 480,
+    density: 0.46,
+    wave: "triangle",
+    peak: 0.06,
+    droneEvery: 8,
+    droneWave: "sine",
+    sparkle: 0.1,
+    cutoff: 1600,
+    echo: { time: 0.2, feedback: 0.22, wet: 0.22 }, // short, dry (open woods)
+    texture: {
+      bed: { filter: "bandpass", freq: 520, q: 0.8, peak: 0.03, every: 6 },
+      tick: { chance: 0.08, freq: 3000, q: 0.7, dur: 0.04, peak: 0.02 },
+    }, // breeze + leaf rustle
   },
   marsh: {
-    root: 98.0, scale: MINOR_PENT, stepMs: 600, density: 0.38, wave: "sine", peak: 0.07, droneEvery: 6, droneWave: "sine", sparkle: 0.12,
-    cutoff: 1000, echo: { time: 0.3, feedback: 0.35, wet: 0.3 },
-    texture: { bed: { filter: "lowpass", freq: 190, q: 0.9, peak: 0.05, every: 5 }, tick: { chance: 0.09, freq: 200, q: 7, dur: 0.16, peak: 0.04 } }, // damp air + bubbles
+    root: 98.0,
+    scale: MINOR_PENT,
+    stepMs: 600,
+    density: 0.38,
+    wave: "sine",
+    peak: 0.07,
+    droneEvery: 6,
+    droneWave: "sine",
+    sparkle: 0.12,
+    cutoff: 1000,
+    echo: { time: 0.3, feedback: 0.35, wet: 0.3 },
+    texture: {
+      bed: { filter: "lowpass", freq: 190, q: 0.9, peak: 0.05, every: 5 },
+      tick: { chance: 0.09, freq: 200, q: 7, dur: 0.16, peak: 0.04 },
+    }, // damp air + bubbles
   },
   mountain: {
-    root: 164.81, scale: NAT_MINOR, stepMs: 500, density: 0.42, wave: "triangle", peak: 0.06, droneEvery: 8, droneWave: "sine", sparkle: 0.14,
+    root: 164.81,
+    scale: NAT_MINOR,
+    stepMs: 500,
+    density: 0.42,
+    wave: "triangle",
+    peak: 0.06,
+    droneEvery: 8,
+    droneWave: "sine",
+    sparkle: 0.14,
     echo: { time: 0.36, feedback: 0.32, wet: 0.32 }, // open, airy
-    texture: { bed: { filter: "bandpass", freq: 950, q: 0.9, peak: 0.035, every: 5 }, tick: { chance: 0.05, freq: 1600, q: 0.6, dur: 0.3, peak: 0.03 } }, // thin wind + gusts
+    texture: {
+      bed: { filter: "bandpass", freq: 950, q: 0.9, peak: 0.035, every: 5 },
+      tick: { chance: 0.05, freq: 1600, q: 0.6, dur: 0.3, peak: 0.03 },
+    }, // thin wind + gusts
   },
   castle: {
-    root: 130.81, scale: NAT_MINOR, stepMs: 500, density: 0.46, wave: "triangle", peak: 0.06, droneEvery: 8, droneWave: "sine", sparkle: 0.07,
-    cutoff: 1300, echo: { time: 0.34, feedback: 0.4, wet: 0.36 }, // big stone hall
-    texture: { bed: { filter: "lowpass", freq: 260, q: 0.7, peak: 0.035, every: 7 }, tick: { chance: 0.04, freq: 900, q: 5, dur: 0.18, peak: 0.03 } }, // hall air + distant creak
+    root: 130.81,
+    scale: NAT_MINOR,
+    stepMs: 500,
+    density: 0.46,
+    wave: "triangle",
+    peak: 0.06,
+    droneEvery: 8,
+    droneWave: "sine",
+    sparkle: 0.07,
+    cutoff: 1300,
+    echo: { time: 0.34, feedback: 0.4, wet: 0.36 }, // big stone hall
+    texture: {
+      bed: { filter: "lowpass", freq: 260, q: 0.7, peak: 0.035, every: 7 },
+      tick: { chance: 0.04, freq: 900, q: 5, dur: 0.18, peak: 0.03 },
+    }, // hall air + distant creak
   },
   crypt: {
-    root: 110.0, scale: MINOR_PENT, stepMs: 640, density: 0.32, wave: "sine", peak: 0.06, droneEvery: 6, droneWave: "sine", sparkle: 0.16,
-    cutoff: 1100, echo: { time: 0.42, feedback: 0.46, wet: 0.4 }, // long, cavernous
-    texture: { bed: { filter: "lowpass", freq: 160, q: 0.8, peak: 0.04, every: 7 }, tick: { chance: 0.1, freq: 1300, q: 10, dur: 0.14, peak: 0.04 } }, // cold hollow + echoing drips
+    root: 110.0,
+    scale: MINOR_PENT,
+    stepMs: 640,
+    density: 0.32,
+    wave: "sine",
+    peak: 0.06,
+    droneEvery: 6,
+    droneWave: "sine",
+    sparkle: 0.16,
+    cutoff: 1100,
+    echo: { time: 0.42, feedback: 0.46, wet: 0.4 }, // long, cavernous
+    texture: {
+      bed: { filter: "lowpass", freq: 160, q: 0.8, peak: 0.04, every: 7 },
+      tick: { chance: 0.1, freq: 1300, q: 10, dur: 0.14, peak: 0.04 },
+    }, // cold hollow + echoing drips
   },
   throne: {
-    root: 130.81, scale: NAT_MINOR, stepMs: 440, density: 0.52, wave: "sawtooth", peak: 0.05, droneEvery: 8, droneWave: "sine", sparkle: 0.06,
-    cutoff: 900, echo: { time: 0.26, feedback: 0.32, wet: 0.3 }, // tight, tense (cutoff tames the saw into dread)
-    texture: { bed: { filter: "lowpass", freq: 110, q: 0.9, peak: 0.05, every: 6 }, tick: { chance: 0.12, freq: 2600, q: 1, dur: 0.03, peak: 0.03 } }, // low rumble + ember crackle
+    root: 130.81,
+    scale: NAT_MINOR,
+    stepMs: 440,
+    density: 0.52,
+    wave: "sawtooth",
+    peak: 0.05,
+    droneEvery: 8,
+    droneWave: "sine",
+    sparkle: 0.06,
+    cutoff: 900,
+    echo: { time: 0.26, feedback: 0.32, wet: 0.3 }, // tight, tense (cutoff tames the saw into dread)
+    texture: {
+      bed: { filter: "lowpass", freq: 110, q: 0.9, peak: 0.05, every: 6 },
+      tick: { chance: 0.12, freq: 2600, q: 1, dur: 0.03, peak: 0.03 },
+    }, // low rumble + ember crackle
   },
 };
 
 // A warmer, cozier major theme for the shop — small room, faint hearth.
 const SHOP_TRACK: Track = {
-  root: 196.0, scale: MAJOR_PENT, stepMs: 420, density: 0.58, wave: "triangle", peak: 0.06, droneEvery: 8, droneWave: "sine", sparkle: 0.12,
+  root: 196.0,
+  scale: MAJOR_PENT,
+  stepMs: 420,
+  density: 0.58,
+  wave: "triangle",
+  peak: 0.06,
+  droneEvery: 8,
+  droneWave: "sine",
+  sparkle: 0.12,
   echo: { time: 0.22, feedback: 0.28, wet: 0.24 },
-  texture: { bed: { filter: "lowpass", freq: 320, q: 0.6, peak: 0.025, every: 8 }, tick: { chance: 0.05, freq: 2200, q: 1, dur: 0.03, peak: 0.02 } },
+  texture: {
+    bed: { filter: "lowpass", freq: 320, q: 0.6, peak: 0.025, every: 8 },
+    tick: { chance: 0.05, freq: 2200, q: 1, dur: 0.03, peak: 0.02 },
+  },
 };
 
 // The title/menu theme — slow and grand, hopeful-but-shadowed (Dorian), with
 // bright sparkle bells that echo the splash's shimmer + drifting embers.
 const TITLE_TRACK: Track = {
-  root: 130.81, scale: DORIAN, stepMs: 560, density: 0.4, wave: "triangle", peak: 0.07, droneEvery: 6, droneWave: "sine", sparkle: 0.18,
-  cutoff: 1500, echo: { time: 0.34, feedback: 0.4, wet: 0.36 }, // grand, hall-like
-  texture: { bed: { filter: "lowpass", freq: 240, q: 0.7, peak: 0.045, every: 6 }, tick: { chance: 0.06, freq: 2400, q: 1, dur: 0.05, peak: 0.03 } }, // warm air + faint ember crackle
+  root: 130.81,
+  scale: DORIAN,
+  stepMs: 560,
+  density: 0.4,
+  wave: "triangle",
+  peak: 0.07,
+  droneEvery: 6,
+  droneWave: "sine",
+  sparkle: 0.18,
+  cutoff: 1500,
+  echo: { time: 0.34, feedback: 0.4, wet: 0.36 }, // grand, hall-like
+  texture: {
+    bed: { filter: "lowpass", freq: 240, q: 0.7, peak: 0.045, every: 6 },
+    tick: { chance: 0.06, freq: 2400, q: 1, dur: 0.05, peak: 0.03 },
+  }, // warm air + faint ember crackle
 };
 
 const LOOKAHEAD_S = 0.3; // schedule this far ahead of the clock
@@ -154,7 +260,7 @@ function tone(
   wave: OscillatorType,
   peak: number,
   detune = 0,
-  cutoff = 0
+  cutoff = 0,
 ) {
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
@@ -188,7 +294,7 @@ function noiseGrain(
   peak: number,
   filter: BiquadFilterType,
   freq: number,
-  q: number
+  q: number,
 ) {
   const n = Math.max(1, Math.floor(ctx.sampleRate * dur));
   const buf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -211,19 +317,49 @@ function noiseGrain(
 
 /** Lay down the biome's ambient bed: overlapping filtered-noise swells for a
  * continuous wind/rumble, plus sparse punctuation (drips, crackle). */
-function scheduleTexture(ctx: AudioContext, out: GainNode, tr: Track, at: number, s: number) {
+function scheduleTexture(
+  ctx: AudioContext,
+  out: GainNode,
+  tr: Track,
+  at: number,
+  s: number,
+) {
   const tx = tr.texture;
   if (!tx) return;
   if (s % tx.bed.every === 0) {
     const dur = ((tx.bed.every * tr.stepMs) / 1000) * 1.7; // overlap → continuous
-    noiseGrain(ctx, out, at, dur, tx.bed.peak, tx.bed.filter, tx.bed.freq, tx.bed.q);
+    noiseGrain(
+      ctx,
+      out,
+      at,
+      dur,
+      tx.bed.peak,
+      tx.bed.filter,
+      tx.bed.freq,
+      tx.bed.q,
+    );
   }
   if (tx.tick && Math.random() < tx.tick.chance) {
-    noiseGrain(ctx, out, at, tx.tick.dur, tx.tick.peak, "bandpass", tx.tick.freq, tx.tick.q);
+    noiseGrain(
+      ctx,
+      out,
+      at,
+      tx.tick.dur,
+      tx.tick.peak,
+      "bandpass",
+      tx.tick.freq,
+      tx.tick.q,
+    );
   }
 }
 
-function scheduleStep(ctx: AudioContext, out: GainNode, tr: Track, at: number, s: number) {
+function scheduleStep(
+  ctx: AudioContext,
+  out: GainNode,
+  tr: Track,
+  at: number,
+  s: number,
+) {
   // danger opens the filter (edgier) and swells note gains
   const cut = tr.cutoff ? tr.cutoff * (1 + intensity * 0.5) : 0;
   const swell = 1 + intensity * 0.5;
@@ -237,12 +373,23 @@ function scheduleStep(ctx: AudioContext, out: GainNode, tr: Track, at: number, s
   }
   // adaptive danger pulse: a low heartbeat on the beat (follows the chord root)
   if (intensity > 0.12 && s % 4 === 0) {
-    tone(ctx, out, chordRoot(tr, s), at, (tr.stepMs / 1000) * 1.1, "sine", tr.peak * 0.9 * intensity, 0, cut);
+    tone(
+      ctx,
+      out,
+      chordRoot(tr, s),
+      at,
+      (tr.stepMs / 1000) * 1.1,
+      "sine",
+      tr.peak * 0.9 * intensity,
+      0,
+      cut,
+    );
   }
   // sparse melody: a wandering step within the scale (denser under pressure)
   if (Math.random() < Math.min(1, tr.density + intensity * 0.2)) {
     deg = clampDeg(deg + (Math.floor(Math.random() * 3) - 1), tr.scale.length);
-    const semi = tr.scale[deg % tr.scale.length] + 12 * Math.floor(deg / tr.scale.length);
+    const semi =
+      tr.scale[deg % tr.scale.length] + 12 * Math.floor(deg / tr.scale.length);
     const freq = tr.root * Math.pow(2, semi / 12);
     const dur = (tr.stepMs / 1000) * 1.6;
     tone(ctx, out, freq, at, dur, tr.wave, tr.peak * 0.55 * swell, -6, cut);
@@ -252,7 +399,15 @@ function scheduleStep(ctx: AudioContext, out: GainNode, tr: Track, at: number, s
   // (left unfiltered so it stays crisp)
   if (Math.random() < tr.sparkle) {
     const semi = tr.scale[Math.floor(Math.random() * tr.scale.length)] + 24;
-    tone(ctx, out, tr.root * Math.pow(2, semi / 12), at, 1.4, "sine", tr.peak * 0.5);
+    tone(
+      ctx,
+      out,
+      tr.root * Math.pow(2, semi / 12),
+      at,
+      1.4,
+      "sine",
+      tr.peak * 0.5,
+    );
   }
   // the ambient environmental bed (wind/rumble + drips/crackle)
   scheduleTexture(ctx, out, tr, at, s);
@@ -313,9 +468,13 @@ function playVictory(ctx: AudioContext, out: GainNode): void {
   // held major chord, glowing
   for (const f of [523, 659, 784, 1047]) dyad(1.9, f, 3.4, 0.04);
   // sparkle bells drifting over the resolve
-  ([[2.5, 1319], [3.1, 1568], [3.7, 2093]] as const).forEach(([o, f]) =>
-    tone(ctx, out, f, t + o, 1.5, "sine", 0.05)
-  );
+  (
+    [
+      [2.5, 1319],
+      [3.1, 1568],
+      [3.7, 2093],
+    ] as const
+  ).forEach(([o, f]) => tone(ctx, out, f, t + o, 1.5, "sine", 0.05));
 }
 
 /** Start (or keep) a track. `id` keeps continuity — calling with the id that's

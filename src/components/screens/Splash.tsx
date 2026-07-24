@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { AccentDivider } from '@/components/ui/AccentDivider';
-import { AsciiField } from '@/components/ui/AsciiField';
-import { BoxFrame } from '@/components/ui/BoxFrame';
-import { MenuButton } from '@/components/ui/MenuButton';
-import { SoundToggle } from '@/components/ui/SoundToggle';
-import { G_DAWN_TITLE, G_EMBER, SUBTITLE } from '@/content/ascii';
-import { LEVELS } from '@/content/levels';
-import { DEV, gameStore, useGameStore } from '@/store/gameStore';
+import { AccentDivider } from "@/components/ui/AccentDivider";
+import { AsciiField } from "@/components/ui/AsciiField";
+import { BoxFrame } from "@/components/ui/BoxFrame";
+import { MenuButton } from "@/components/ui/MenuButton";
+import { SoundToggle } from "@/components/ui/SoundToggle";
+import { G_DAWN_TITLE, G_EMBER, SUBTITLE } from "@/content/ascii";
+import { LEVELS } from "@/content/levels";
+import { DEV, gameStore, useGameStore } from "@/store/gameStore";
 
 export default function Splash() {
   const hasSave = useGameStore((s) => s.hasSave);
@@ -15,11 +15,11 @@ export default function Splash() {
   const startNew = () => {
     if (
       hasSave &&
-      !window.confirm('Start a new game? This erases your saved run.')
+      !window.confirm("Start a new game? This erases your saved run.")
     ) {
       return;
     }
-    gameStore.getState().setMode('classSelect');
+    gameStore.getState().setMode("classSelect");
   };
 
   return (
@@ -32,7 +32,7 @@ export default function Splash() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)',
+            "radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)",
         }}
       />
       <div
@@ -40,7 +40,7 @@ export default function Splash() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)',
+            "radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)",
         }}
       />
 
@@ -50,19 +50,19 @@ export default function Splash() {
         accent="#ffb347"
         chip="#0c0c0e"
         className="narr-rise z-10 flex flex-col items-center gap-6 text-center"
-        style={{ background: 'rgba(9,9,12,0.5)', padding: '48px 62px' }}
+        style={{ background: "rgba(9,9,12,0.5)", padding: "48px 62px" }}
       >
         {/* 2a — gradient-caps wordmark, consistent with every other screen title */}
         <div className="ember-flicker flex flex-col items-center gap-0">
           <h1
             className="m-0 text-5xl font-semibold uppercase leading-none tracking-[0.12em] sm:text-6xl"
             style={{
-              textIndent: '0.12em',
+              textIndent: "0.12em",
               backgroundImage: G_EMBER,
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              color: 'transparent',
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              color: "transparent",
             }}
           >
             Ember
@@ -71,12 +71,12 @@ export default function Splash() {
           <h1
             className="m-0 text-5xl font-semibold uppercase leading-none tracking-[0.12em] sm:text-6xl"
             style={{
-              textIndent: '0.12em',
+              textIndent: "0.12em",
               backgroundImage: G_DAWN_TITLE,
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              color: 'transparent',
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              color: "transparent",
             }}
           >
             Dawn
@@ -102,7 +102,7 @@ export default function Splash() {
             >
               ▸ Resume
               <span className="ml-1 text-xs opacity-80">
-                — Level {saveInfo.level + 1}: {saveInfo.title} · turn{' '}
+                — Level {saveInfo.level + 1}: {saveInfo.title} · turn{" "}
                 {saveInfo.turn}
               </span>
             </MenuButton>

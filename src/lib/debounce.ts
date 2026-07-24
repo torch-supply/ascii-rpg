@@ -1,7 +1,7 @@
 // Minimal trailing debounce.
 export function debounce<A extends unknown[]>(
   fn: (...args: A) => void,
-  ms: number
+  ms: number,
 ): (...args: A) => void {
   let t: ReturnType<typeof setTimeout> | null = null;
   return (...args: A) => {

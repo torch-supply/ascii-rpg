@@ -1,18 +1,18 @@
-import { ITEMS } from '@/content/items';
-import { LEVELS } from '@/content/levels';
-import { ELITE, MONSTERS } from '@/content/monsters';
-import type { GameEvent } from '@/game/core/events';
-import { idx } from '@/game/core/grid';
-import { STATUS } from '@/game/core/status';
+import { ITEMS } from "@/content/items";
+import { LEVELS } from "@/content/levels";
+import { ELITE, MONSTERS } from "@/content/monsters";
+import type { GameEvent } from "@/game/core/events";
+import { idx } from "@/game/core/grid";
+import { STATUS } from "@/game/core/status";
 import type {
   Biome,
   DecalKind,
   GameMap,
   GameState,
   StatusKind,
-} from '@/game/core/types';
-import * as ROT from 'rot-js';
-import { createDisplay } from './Display';
+} from "@/game/core/types";
+import * as ROT from "rot-js";
+import { createDisplay } from "./Display";
 import {
   AMBIENT_ENTITY,
   ambientForBiome,
@@ -20,7 +20,7 @@ import {
   computeLightMap,
   type ExtraLight,
   type LightMap,
-} from './lighting';
+} from "./lighting";
 import {
   BIOME_ATMOSPHERE,
   CRACKED_WALL_CRACK_DIM,
@@ -30,7 +30,7 @@ import {
   PLAYER_GLYPH,
   terrainColor,
   terrainGlyph,
-} from './tiles';
+} from "./tiles";
 
 // Aim to show roughly this many tiles vertically; cell size derives from it.
 const TARGET_ROWS = 26;
@@ -45,7 +45,7 @@ const RING_MS = 300; // firebomb / Ruin expanding blast ring
 const AMBIENT_MS = 132; // ~8fps flicker redraw
 
 // Which debuff colors an afflicted entity's glyph (first match wins).
-const TINT_ORDER: StatusKind[] = ['burn', 'poison', 'bleed', 'chill'];
+const TINT_ORDER: StatusKind[] = ["burn", "poison", "bleed", "chill"];
 function statusTint(effects?: Record<string, number>): string | null {
   if (!effects) return null;
   for (const k of TINT_ORDER) if ((effects[k] ?? 0) > 0) return STATUS[k].tint;
@@ -61,7 +61,7 @@ function frac(n: number): number {
 
 /** "#rrggbb" + alpha → an `rgba(...)` string (for gradient stops). */
 function rgba(hex: string, a: number): string {
-  const h = hex.replace('#', '');
+  const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
@@ -81,9 +81,9 @@ function drawDecal(
   ch: number,
 ) {
   const conf =
-    kind === 'blood'
-      ? { color: '#8f1e1e', alpha: 0.32, reach: 0.42, drops: 2 }
-      : { color: '#120d08', alpha: 0.5, reach: 0.5, drops: 0 };
+    kind === "blood"
+      ? { color: "#8f1e1e", alpha: 0.32, reach: 0.42, drops: 2 }
+      : { color: "#120d08", alpha: 0.5, reach: 0.5, drops: 0 };
   const cx = ox + cw * 0.5 + (frac(seed + 1) - 0.5) * cw * 0.16;
   const cy = oy + ch * 0.5 + (frac(seed + 2) - 0.5) * ch * 0.16;
   const r = cw * conf.reach * (0.85 + 0.3 * frac(seed + 5));
@@ -172,7 +172,7 @@ const clamp = (v: number, lo: number, hi: number) =>
 
 type Fx =
   | {
-      kind: 'projectile';
+      kind: "projectile";
       fromX: number;
       fromY: number;
       toX: number;
@@ -181,9 +181,9 @@ type Fx =
       t0: number;
       dur: number;
     }
-  | { kind: 'hit'; x: number; y: number; t0: number; dur: number }
+  | { kind: "hit"; x: number; y: number; t0: number; dur: number }
   | {
-      kind: 'ring';
+      kind: "ring";
       x: number;
       y: number;
       radius: number;
@@ -239,21 +239,21 @@ export class CanvasRenderer {
     this.display = createDisplay(1, 1);
     const container = this.display.getContainer();
     if (container) {
-      container.style.display = 'block';
+      container.style.display = "block";
       host.appendChild(container);
     }
     // A transparent overlay canvas sitting exactly atop the rot.js canvas.
     // Cracked walls are "knocked out" here — fissures painted in the background
     // color that cut through the wall glyph so it reads as broken, not X'd.
-    const crack = document.createElement('canvas');
-    crack.style.position = 'absolute';
-    crack.style.pointerEvents = 'none';
-    crack.style.display = 'block';
+    const crack = document.createElement("canvas");
+    crack.style.position = "absolute";
+    crack.style.pointerEvents = "none";
+    crack.style.display = "block";
     host.appendChild(crack);
     this.crack = crack;
     this.reduceMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
     // gentle torchlight flicker: re-render the base on a throttled ambient loop
     if (!this.reduceMotion) {
       this.ambientId = requestAnimationFrame(this.ambientTick);
@@ -300,7 +300,10 @@ export class CanvasRenderer {
     }
   }
 
-  draw(state: GameState, targeting?: { x: number; y: number; kind?: string } | null) {
+  draw(
+    state: GameState,
+    targeting?: { x: number; y: number; kind?: string } | null,
+  ) {
     if (this.cols === 0) this.fit();
     this.lastState = state;
     this.targeting = targeting ?? null;
@@ -332,13 +335,13 @@ export class CanvasRenderer {
     // crack overlay rides along so its fissures stay aligned to their walls
     const layers = [canvas, this.crack].filter(Boolean) as HTMLElement[];
     for (const el of layers) {
-      el.style.transition = 'none';
+      el.style.transition = "none";
       el.style.transform = `translate(${dcx * cw}px, ${dcy * ch}px)`;
     }
     requestAnimationFrame(() => {
       for (const el of layers) {
-        el.style.transition = 'transform 110ms ease-out';
-        el.style.transform = 'translate(0px, 0px)';
+        el.style.transition = "transform 110ms ease-out";
+        el.style.transform = "translate(0px, 0px)";
       }
     });
   }
@@ -347,15 +350,15 @@ export class CanvasRenderer {
    * cardinal tiles around the player ("press a way to go"). Otherwise (firebomb
    * / ranged / blink): a reticle at the target tile + its 3x3 blast ring. */
   private drawTargeting(tx: number, ty: number) {
-    if (this.targeting?.kind === 'ability') {
+    if (this.targeting?.kind === "ability") {
       const arrows: [number, number, string][] = [
-        [0, -1, '↑'],
-        [0, 1, '↓'],
-        [-1, 0, '←'],
-        [1, 0, '→'],
+        [0, -1, "↑"],
+        [0, 1, "↓"],
+        [-1, 0, "←"],
+        [1, 0, "→"],
       ];
       for (const [dx, dy, glyph] of arrows) {
-        this.drawCell(tx + dx, ty + dy, glyph, '#ffdd55');
+        this.drawCell(tx + dx, ty + dy, glyph, "#ffdd55");
       }
       return;
     }
@@ -365,8 +368,8 @@ export class CanvasRenderer {
         this.drawCell(
           tx + dx,
           ty + dy,
-          center ? 'X' : '+',
-          center ? '#ffdd55' : '#ff7a3c',
+          center ? "X" : "+",
+          center ? "#ffdd55" : "#ff7a3c",
         );
       }
     }
@@ -377,9 +380,9 @@ export class CanvasRenderer {
     if (!this.lastState) return;
     const now = performance.now();
     for (const e of events) {
-      if (e.kind === 'projectile') {
+      if (e.kind === "projectile") {
         this.fx.push({
-          kind: 'projectile',
+          kind: "projectile",
           fromX: e.from.x,
           fromY: e.from.y,
           toX: e.to.x,
@@ -388,27 +391,27 @@ export class CanvasRenderer {
           t0: now,
           dur: PROJECTILE_MS,
         });
-      } else if (e.kind === 'hit') {
+      } else if (e.kind === "hit") {
         this.fx.push({
-          kind: 'hit',
+          kind: "hit",
           x: e.x,
           y: e.y,
           t0: now + HIT_DELAY_MS,
           dur: HIT_MS,
         });
-      } else if (e.kind === 'blast') {
+      } else if (e.kind === "blast") {
         this.fx.push({
-          kind: 'ring',
+          kind: "ring",
           x: e.x,
           y: e.y,
           radius: e.radius,
           t0: now,
           dur: RING_MS,
         });
-      } else if (e.kind === 'damage') {
+      } else if (e.kind === "damage") {
         this.spawnDamageNumber(e.x, e.y, e.amount, e.toPlayer, e.color);
-      } else if (e.kind === 'heal') {
-        this.spawnDamageNumber(e.x, e.y, e.amount, false, '#7fdf6a'); // green +heal
+      } else if (e.kind === "heal") {
+        this.spawnDamageNumber(e.x, e.y, e.amount, false, "#7fdf6a"); // green +heal
       }
     }
     if (this.fx.length && this.rafId == null) {
@@ -432,14 +435,14 @@ export class CanvasRenderer {
     if (sx < 0 || sy < 0 || sx >= this.cols || sy >= this.rows) return;
     const cw = canvas.clientWidth / this.cols;
     const ch = canvas.clientHeight / this.rows;
-    const el = document.createElement('div');
-    el.className = 'dmg-num';
+    const el = document.createElement("div");
+    el.className = "dmg-num";
     el.textContent = String(amount);
     el.style.left = `${canvas.offsetLeft + sx * cw + cw / 2}px`;
     el.style.top = `${canvas.offsetTop + sy * ch}px`;
-    el.style.color = color ?? (toPlayer ? '#ff6a6a' : '#ffe14d');
+    el.style.color = color ?? (toPlayer ? "#ff6a6a" : "#ffe14d");
     el.style.fontSize = `${Math.max(11, Math.round(cw * 0.7))}px`;
-    el.addEventListener('animationend', () => el.remove());
+    el.addEventListener("animationend", () => el.remove());
     this.host.appendChild(el);
   }
 
@@ -454,28 +457,28 @@ export class CanvasRenderer {
     for (const f of this.fx) {
       if (now < f.t0) continue; // not started yet (delayed flash)
       const p = clamp((now - f.t0) / f.dur, 0, 1);
-      if (f.kind === 'projectile') {
+      if (f.kind === "projectile") {
         // head + a short fading trail behind it
         for (let k = 0; k < 3; k++) {
           const pk = p - k * 0.16;
           if (pk < 0) continue;
           const wx = Math.round(f.fromX + (f.toX - f.fromX) * pk);
           const wy = Math.round(f.fromY + (f.toY - f.fromY) * pk);
-          this.drawCell(wx, wy, f.glyph, dim('#ff9d3c', 1 - k * 0.34));
+          this.drawCell(wx, wy, f.glyph, dim("#ff9d3c", 1 - k * 0.34));
         }
-      } else if (f.kind === 'ring') {
+      } else if (f.kind === "ring") {
         // an expanding ring of sparks over the blast radius
         const front = p * (f.radius + 1);
         for (let dy = -f.radius; dy <= f.radius; dy++) {
           for (let dx = -f.radius; dx <= f.radius; dx++) {
             const d = Math.max(Math.abs(dx), Math.abs(dy));
             if (d > f.radius || Math.abs(front - d) > 0.9) continue;
-            this.drawCell(f.x + dx, f.y + dy, '*', dim('#ffb347', 1 - p * 0.6));
+            this.drawCell(f.x + dx, f.y + dy, "*", dim("#ffb347", 1 - p * 0.6));
           }
         }
       } else {
         // hit flash: a bright spark on the struck tile, white → ember
-        this.drawCell(f.x, f.y, '*', p < 0.45 ? '#ffffff' : '#ff6a3c');
+        this.drawCell(f.x, f.y, "*", p < 0.45 ? "#ffffff" : "#ff6a3c");
       }
     }
 
@@ -502,19 +505,21 @@ export class CanvasRenderer {
     for (const f of this.fx) {
       if (now < f.t0) continue;
       const p = clamp((now - f.t0) / f.dur, 0, 1);
-      if (f.kind === 'projectile') {
+      if (f.kind === "projectile") {
         // a warm light rides along with the bolt head
         const hx = Math.round(f.fromX + (f.toX - f.fromX) * p);
         const hy = Math.round(f.fromY + (f.toY - f.fromY) * p);
         out.push({ x: hx, y: hy, color: [255, 150, 70] });
-      } else if (f.kind === 'ring') {
+      } else if (f.kind === "ring") {
         // explosion: a bright flash that pops, then fades over the first ~60%
         const k = Math.max(0, 1 - p * 1.6);
-        if (k > 0.03) out.push({ x: f.x, y: f.y, color: [255 * k, 175 * k, 90 * k] });
+        if (k > 0.03)
+          out.push({ x: f.x, y: f.y, color: [255 * k, 175 * k, 90 * k] });
       } else {
         // hit spark: a small, brief white flash
         const k = p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.5);
-        if (k > 0.03) out.push({ x: f.x, y: f.y, color: [150 * k, 150 * k, 160 * k] });
+        if (k > 0.03)
+          out.push({ x: f.x, y: f.y, color: [150 * k, 150 * k, 160 * k] });
       }
     }
     return out;
@@ -548,8 +553,9 @@ export class CanvasRenderer {
       const t = Math.min(1, d / Math.max(1, effR));
       const af = 1 - t * t * (3 - 2 * t); // 1 at player → 0 at the vision edge
       // per-region ambient tint (sub-biome patches glow in their own color)
-      const ra = this.ambByRegion[this.regionArr ? this.regionArr[i] : 0]
-        ?? this.ambByRegion[0];
+      const ra =
+        this.ambByRegion[this.regionArr ? this.regionArr[i] : 0] ??
+        this.ambByRegion[0];
       const c = ra.center;
       const e = ra.edge;
       amb = [
@@ -612,23 +618,36 @@ export class CanvasRenderer {
     if (level.biome === "throne") {
       const boss = state.monsters.find((m) => MONSTERS[m.defId].isBoss);
       if (boss && boss.hp / MONSTERS[boss.defId].maxHp <= 1 / 3) {
-        const p = this.reduceMotion ? 0.8 : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.006));
-        const warm = (c: [number, number, number]): [number, number, number] => [
+        const p = this.reduceMotion
+          ? 0.8
+          : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.006));
+        const warm = (
+          c: [number, number, number],
+        ): [number, number, number] => [
           Math.min(255, c[0] + 100 * p),
           Math.min(255, c[1] + 42 * p),
           Math.max(0, c[2] - 12 * p),
         ];
-        this.ambByRegion = this.ambByRegion.map((a) => ({ center: warm(a.center), edge: warm(a.edge) }));
+        this.ambByRegion = this.ambByRegion.map((a) => ({
+          center: warm(a.center),
+          edge: warm(a.edge),
+        }));
       }
     } else if (level.flood && state.floodStep) {
-      const t = Math.min(1, state.floodStep / Math.max(1, level.flood.maxSteps));
+      const t = Math.min(
+        1,
+        state.floodStep / Math.max(1, level.flood.maxSteps),
+      );
       const k = 1 - 0.45 * t; // dim toward 55% at full flood
       const drown = (c: [number, number, number]): [number, number, number] => [
         c[0] * k,
         c[1] * k,
         Math.min(255, c[2] * k * 1.2), // hold the blue → reads colder as it darkens
       ];
-      this.ambByRegion = this.ambByRegion.map((a) => ({ center: drown(a.center), edge: drown(a.edge) }));
+      this.ambByRegion = this.ambByRegion.map((a) => ({
+        center: drown(a.center),
+        edge: drown(a.edge),
+      }));
     }
 
     this.lightMap = computeLightMap(
@@ -662,16 +681,16 @@ export class CanvasRenderer {
         let glyph = terrainGlyph(t, rBiome);
         let color = terrainColor(t, rPalette, rBiome);
         // a sensed/detected (but still armed) trap shows as a faint warning ^
-        if (t === 'trap' && knownTraps.has(i)) {
-          glyph = '^';
-          color = '#e0904a';
+        if (t === "trap" && knownTraps.has(i)) {
+          glyph = "^";
+          color = "#e0904a";
         }
         color = isVis ? this.litVis(color, i, effR) : dim(color, FOG_DIM);
         // living terrain: water shimmers, marsh reeds sway (per-tile phase)
         if (isVis && !this.reduceMotion) {
-          if (t === 'water')
+          if (t === "water")
             color = dim(color, 0.82 + 0.18 * Math.sin(now * 0.004 + i * 0.9));
-          else if (rBiome === 'marsh' && t === 'wall')
+          else if (rBiome === "marsh" && t === "wall")
             color = dim(color, 0.9 + 0.1 * Math.sin(now * 0.0035 + i * 0.6));
         }
         this.display.draw(sx, sy, glyph, color, null);
@@ -690,8 +709,8 @@ export class CanvasRenderer {
         ? 0.85
         : 0.6 + 0.4 * Math.abs(Math.sin(now * 0.02 + f.i));
       const glyph =
-        !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? '*' : '▴';
-      const base = f.life <= 1 ? '#ff5a3c' : '#ff9d3c';
+        !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? "*" : "▴";
+      const base = f.life <= 1 ? "#ff5a3c" : "#ff9d3c";
       this.display.draw(sx, sy, glyph, dim(base, flick), null);
     }
 
@@ -707,8 +726,8 @@ export class CanvasRenderer {
       const pulse = this.reduceMotion
         ? 0.7
         : 0.45 + 0.4 * Math.abs(Math.sin(now * 0.012));
-      const bg = dim('#7a1512', pulse);
-      this.display.draw(sx, sy, '✷', dim('#ff6a4a', 0.6 + 0.4 * pulse), bg);
+      const bg = dim("#7a1512", pulse);
+      this.display.draw(sx, sy, "✷", dim("#ff6a4a", 0.6 + 0.4 * pulse), bg);
     }
 
     // altars/shrines (drawn from memory too, so you can navigate back to one)
@@ -719,11 +738,11 @@ export class CanvasRenderer {
       const sx = a.x - camX;
       const sy = a.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
-      const base = a.used ? '#6a6a6a' : '#d6a4ff';
+      const base = a.used ? "#6a6a6a" : "#d6a4ff";
       const color = isVis
         ? this.litVis(base, i, effR, true)
         : dim(base, FOG_DIM);
-      this.display.draw(sx, sy, '‡', color, null);
+      this.display.draw(sx, sy, "‡", color, null);
     }
 
     // items (only where currently visible)
@@ -733,7 +752,12 @@ export class CanvasRenderer {
       const sy = it.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const def = ITEMS[it.defId];
-      const color = this.litVis(def.color, idx(it.x, it.y, map.width), effR, true);
+      const color = this.litVis(
+        def.color,
+        idx(it.x, it.y, map.width),
+        effR,
+        true,
+      );
       this.display.draw(sx, sy, def.glyph, color, null);
     }
 
@@ -748,7 +772,12 @@ export class CanvasRenderer {
       // champion color; else the monster's own color
       const baseColor =
         statusTint(m.effects) ?? (m.elite ? ELITE[m.elite].color : def.color);
-      const color = this.litVis(baseColor, idx(m.x, m.y, map.width), effR, true);
+      const color = this.litVis(
+        baseColor,
+        idx(m.x, m.y, map.width),
+        effR,
+        true,
+      );
       this.display.draw(sx, sy, def.glyph, color, null);
     }
 
@@ -791,7 +820,7 @@ export class CanvasRenderer {
       overlay.width = cvs.width;
       overlay.height = cvs.height;
     }
-    const ctx = overlay.getContext('2d');
+    const ctx = overlay.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, overlay.width, overlay.height);
 
@@ -827,27 +856,29 @@ export class CanvasRenderer {
     // 2) cracked-wall knockout fissures (only on levels that have them)
     if (state.map !== this.crackMap) {
       this.crackMap = state.map;
-      this.crackAny = state.map.tiles.includes('crackedWall');
+      this.crackAny = state.map.tiles.includes("crackedWall");
     }
     if (this.crackAny) {
       const { map } = state;
       const levelPalette = LEVELS[state.currentLevel].palette;
       const levelBiome = LEVELS[state.currentLevel].biome;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       for (let sy = 0; sy < this.rows; sy++) {
         for (let sx = 0; sx < this.cols; sx++) {
           const wx = sx + camX;
           const wy = sy + camY;
           if (wx < 0 || wy < 0 || wx >= map.width || wy >= map.height) continue;
           const i = wy * map.width + wx;
-          if (map.tiles[i] !== 'crackedWall') continue;
+          if (map.tiles[i] !== "crackedWall") continue;
           const isVis = visible.has(i);
           if (!isVis && !explored.has(i)) continue;
           const rid = map.region ? map.region[i] : 0;
           const rBiome = map.regionBiome ? map.regionBiome[rid] : levelBiome;
-          const rPalette = map.regionPalette ? map.regionPalette[rid] : levelPalette;
-          const wallBase = terrainColor('crackedWall', rPalette, rBiome);
+          const rPalette = map.regionPalette
+            ? map.regionPalette[rid]
+            : levelPalette;
+          const wallBase = terrainColor("crackedWall", rPalette, rBiome);
           // the crack is the wall's own color, darker — a shadowed fracture
           // that stays legible under the torch glow (vs. a flat knockout)
           const shown = isVis
@@ -859,7 +890,6 @@ export class CanvasRenderer {
       }
     }
   }
-
 
   /** Subtle additive bloom on the brightest sources — fire, the Sunblade, and
    * in-flight bolts — as a soft radial-gradient glow (wide, smooth falloff, no
@@ -877,10 +907,16 @@ export class CanvasRenderer {
     const now = this.reduceMotion ? 0 : performance.now();
     const w = state.map.width;
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = "lighter";
 
     // a soft light bloom: bright-ish center easing smoothly to transparent
-    const glow = (sx: number, sy: number, hex: string, radius: number, peak: number) => {
+    const glow = (
+      sx: number,
+      sy: number,
+      hex: string,
+      radius: number,
+      peak: number,
+    ) => {
       const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
       g.addColorStop(0, rgba(hex, peak));
       g.addColorStop(0.35, rgba(hex, peak * 0.4));
@@ -898,30 +934,32 @@ export class CanvasRenderer {
       const flick = this.reduceMotion
         ? 0.85
         : 0.62 + 0.38 * Math.abs(Math.sin(now * 0.02 + f.i));
-      glow(fx, fy, '#ff8a30', cw * 2.6, 0.15 * flick);
+      glow(fx, fy, "#ff8a30", cw * 2.6, 0.15 * flick);
     }
 
     // the Sunblade on the ground — a gently pulsing gold radiance
     for (const it of state.items) {
-      if (ITEMS[it.defId]?.questTag !== 'sunblade') continue;
+      if (ITEMS[it.defId]?.questTag !== "sunblade") continue;
       if (!visible.has(idx(it.x, it.y, w))) continue;
       const sx = (it.x - camX + 0.5) * cw;
       const sy = (it.y - camY + 0.5) * ch;
-      const pulse = this.reduceMotion ? 0.9 : 0.82 + 0.18 * Math.sin(now * 0.004);
-      glow(sx, sy, '#ffe14d', cw * 3.2, 0.2 * pulse);
+      const pulse = this.reduceMotion
+        ? 0.9
+        : 0.82 + 0.18 * Math.sin(now * 0.004);
+      glow(sx, sy, "#ffe14d", cw * 3.2, 0.2 * pulse);
     }
 
     // in-flight bolts — a warm bloom on the projectile head. Round to the same
     // cell the head glyph is drawn at (see the projectile FX in `tick`) so the
     // glow sits exactly under the bolt instead of sliding sub-cell ahead of it.
     for (const f of this.fx) {
-      if (f.kind !== 'projectile' || now < f.t0) continue;
+      if (f.kind !== "projectile" || now < f.t0) continue;
       const p = clamp((now - f.t0) / f.dur, 0, 1);
       const hx = Math.round(f.fromX + (f.toX - f.fromX) * p);
       const hy = Math.round(f.fromY + (f.toY - f.fromY) * p);
       const bx = (hx - camX + 0.5) * cw;
       const by = (hy - camY + 0.5) * ch;
-      glow(bx, by, '#ff9d3c', cw * 2.0, 0.18);
+      glow(bx, by, "#ff9d3c", cw * 2.0, 0.18);
     }
 
     ctx.restore();
@@ -948,7 +986,8 @@ export class CanvasRenderer {
     // biomes in play: the level's own + any distinct sub-biome
     const present: Biome[] = [levelBiome];
     if (map.regionBiome) {
-      for (const b of map.regionBiome) if (!present.includes(b)) present.push(b);
+      for (const b of map.regionBiome)
+        if (!present.includes(b)) present.push(b);
     }
     if (!present.some((b) => BIOME_ATMOSPHERE[b])) return;
 
@@ -957,7 +996,8 @@ export class CanvasRenderer {
     const biomeAtPx = (px: number, py: number): Biome => {
       const tx = camX + Math.floor(px / cw);
       const ty = camY + Math.floor(py / ch);
-      if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return levelBiome;
+      if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height)
+        return levelBiome;
       const rid = map.region ? map.region[ty * map.width + tx] : 0;
       return map.regionBiome ? map.regionBiome[rid] : levelBiome;
     };
@@ -971,10 +1011,13 @@ export class CanvasRenderer {
       // gated per-particle. A SUB-biome covers only a patch, so scatter its
       // particles across the region's own cells (concentrated there) — otherwise
       // whole-screen particles almost never land on a small patch.
-      const cells = biome === levelBiome ? null : this.regionCells(state, biome, camX, camY, cw, ch);
+      const cells =
+        biome === levelBiome
+          ? null
+          : this.regionCells(state, biome, camX, camY, cw, ch);
       if (cells && cells.length === 0) continue;
 
-      if (atm.kind === 'mist') {
+      if (atm.kind === "mist") {
         for (let i = 0; i < atm.count; i++) {
           let x: number, y: number;
           if (cells) {
@@ -983,7 +1026,8 @@ export class CanvasRenderer {
             x = c.x + Math.sin(now * 0.0004 + i * 1.7) * cw * 1.3;
             y = c.y + Math.cos(now * 0.0003 + i * 2.1) * ch * 0.9;
           } else {
-            const drift = Math.sin(now * 0.00006 * (1 + (i % 3)) + i * 1.7) * W * 0.25;
+            const drift =
+              Math.sin(now * 0.00006 * (1 + (i % 3)) + i * 1.7) * W * 0.25;
             x = (((frac(i) * W + drift) % W) + W) % W;
             y = frac(i + 41) * H + Math.sin(now * 0.0001 + i) * ch * 0.5;
             if (biomeAtPx(x, y) !== biome) continue;
@@ -997,8 +1041,8 @@ export class CanvasRenderer {
         }
       } else {
         const size = Math.max(1.5, cw * 0.14);
-        const rising = atm.kind === 'embers';
-        const fall = atm.kind === 'snow' ? 0.03 : rising ? 0.02 : 0.012;
+        const rising = atm.kind === "embers";
+        const fall = atm.kind === "snow" ? 0.03 : rising ? 0.02 : 0.012;
         // scale mote count to a sub-region's size so a small patch isn't a blizzard
         const n = cells
           ? Math.min(atm.count, Math.max(6, Math.round(cells.length * 0.4)))
@@ -1009,7 +1053,10 @@ export class CanvasRenderer {
           if (cells) {
             const c = cells[Math.floor(((i + 0.5) / n) * cells.length)];
             x = c.x + Math.sin(now * 0.001 + i * 2.3) * cw * 0.6;
-            y = c.y + (rising ? -1 : 1) * (((now * fall * (0.6 + frac(i + 7))) % ch) - ch * 0.5);
+            y =
+              c.y +
+              (rising ? -1 : 1) *
+                (((now * fall * (0.6 + frac(i + 7))) % ch) - ch * 0.5);
           } else {
             const sway = Math.sin(now * 0.001 + i * 2.3) * cw * 0.5;
             const drift = now * fall * (0.6 + frac(i + 7)) * (rising ? -1 : 1);
@@ -1087,8 +1134,8 @@ export class CanvasRenderer {
     mapH: number,
   ) {
     ctx.save();
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = '#fff';
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.fillStyle = "#fff";
     ctx.beginPath();
     for (let sy = 0; sy < this.rows; sy++) {
       for (let sx = 0; sx < this.cols; sx++) {

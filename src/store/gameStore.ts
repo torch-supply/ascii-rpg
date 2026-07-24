@@ -1,7 +1,13 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 
-import type { GameState, PlayerAction, AltarInstance, TurnResult, Biome } from "@/game/core/types";
+import type {
+  GameState,
+  PlayerAction,
+  AltarInstance,
+  TurnResult,
+  Biome,
+} from "@/game/core/types";
 import { Rng } from "@/game/core/rng";
 import { resolveTurn } from "@/game/core/actions";
 import { applyAltar } from "@/game/core/altar";
@@ -335,12 +341,18 @@ export const gameStore = createStore<GameStore>((set, get) => {
     toggleMutator: (id: string) => {
       const cur = get().selectedMutators;
       set({
-        selectedMutators: cur.includes(id) ? cur.filter((m) => m !== id) : [...cur, id],
+        selectedMutators: cur.includes(id)
+          ? cur.filter((m) => m !== id)
+          : [...cur, id],
       });
     },
 
     beginRun: () =>
-      get().newGame(get().pendingClassId || "warrior", undefined, get().selectedMutators),
+      get().newGame(
+        get().pendingClassId || "warrior",
+        undefined,
+        get().selectedMutators,
+      ),
 
     newGame: (classId: string, seed?: string, mutators: string[] = []) => {
       const masterSeed =
@@ -422,7 +434,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       // Stepping onto an unspent shrine offers its bargain — AFTER the move
       // resolves, so an altar never blocks a route (decline = walk on past it).
       const altar = game.altars.find(
-        (a) => !a.used && a.x === game.player.x && a.y === game.player.y
+        (a) => !a.used && a.x === game.player.x && a.y === game.player.y,
       );
       if (altar) set({ mode: "altar", activeAltar: altar });
     },
@@ -446,7 +458,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
             set({ mode: "shop", narration: null, shopPurchases: {} });
           } else {
             const player = clonePlayer(game!.player);
-            const ng = beginLevel(game!.masterSeed, completed + 1, player, game!.mutators);
+            const ng = beginLevel(
+              game!.masterSeed,
+              completed + 1,
+              player,
+              game!.mutators,
+            );
             set({ game: ng, mode: "playing", narration: null });
             persist();
           }
@@ -455,14 +472,24 @@ export const gameStore = createStore<GameStore>((set, get) => {
         case "restartLevel": {
           const player = clonePlayer(game!.entryPlayer);
           player.lives = game!.player.lives; // keep the decremented life count
-          const ng = beginLevel(game!.masterSeed, game!.currentLevel, player, game!.mutators);
+          const ng = beginLevel(
+            game!.masterSeed,
+            game!.currentLevel,
+            player,
+            game!.mutators,
+          );
           set({ game: ng, mode: "playing", narration: null });
           persist();
           break;
         }
         case "victory":
           clearSave();
-          set({ mode: "victory", narration: null, hasSave: false, saveInfo: null });
+          set({
+            mode: "victory",
+            narration: null,
+            hasSave: false,
+            saveInfo: null,
+          });
           break;
       }
     },
@@ -504,7 +531,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
       if (inputSettling()) return; // ignore a keypress carried in from the last screen
       const game = get().game!;
       const player = clonePlayer(game.player);
-      const ng = beginLevel(game.masterSeed, game.currentLevel + 1, player, game.mutators);
+      const ng = beginLevel(
+        game.masterSeed,
+        game.currentLevel + 1,
+        player,
+        game.mutators,
+      );
       set({ game: ng, mode: "playing", shopPurchases: {} });
       persist();
     },
@@ -515,9 +547,21 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const player = createPlayer();
       // give a loadout roughly matching where you'd be by this level
       const w =
-        levelIndex >= 7 ? "w_sun" : levelIndex >= 5 ? "w_ench" : levelIndex >= 3 ? "w_axe" : "w_short";
+        levelIndex >= 7
+          ? "w_sun"
+          : levelIndex >= 5
+            ? "w_ench"
+            : levelIndex >= 3
+              ? "w_axe"
+              : "w_short";
       const a =
-        levelIndex >= 7 ? "a_plate" : levelIndex >= 5 ? "a_scale" : levelIndex >= 3 ? "a_chain" : "a_leather";
+        levelIndex >= 7
+          ? "a_plate"
+          : levelIndex >= 5
+            ? "a_scale"
+            : levelIndex >= 3
+              ? "a_chain"
+              : "a_leather";
       player.weaponId = w;
       player.weaponPower = ITEMS[w].power ?? 0;
       player.armorId = a;
@@ -556,7 +600,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
         });
         return;
       }
-      const ng = beginLevel(game.masterSeed, next, clonePlayer(game.player), game.mutators);
+      const ng = beginLevel(
+        game.masterSeed,
+        next,
+        clonePlayer(game.player),
+        game.mutators,
+      );
       set({ game: ng, mode: "playing", narration: null });
     },
 
@@ -597,7 +646,13 @@ export const gameStore = createStore<GameStore>((set, get) => {
       }
       set({
         mode: "targeting",
-        targeting: { kind: "firebomb", defId, x: cx, y: cy, range: CONFIG.throwRange },
+        targeting: {
+          kind: "firebomb",
+          defId,
+          x: cx,
+          y: cy,
+          range: CONFIG.throwRange,
+        },
       });
     },
 
@@ -607,7 +662,13 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const p = game.player;
       set({
         mode: "targeting",
-        targeting: { kind: "blink", defId, x: p.x, y: p.y, range: CONFIG.blinkRange },
+        targeting: {
+          kind: "blink",
+          defId,
+          x: p.x,
+          y: p.y,
+          range: CONFIG.blinkRange,
+        },
       });
     },
 
@@ -658,7 +719,13 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const p = game.player;
       set({
         mode: "targeting",
-        targeting: { kind: "ability", defId: ab.id, x: p.x, y: p.y, range: ab.range ?? 3 },
+        targeting: {
+          kind: "ability",
+          defId: ab.id,
+          x: p.x,
+          y: p.y,
+          range: ab.range ?? 3,
+        },
       });
       playSfx("uiSelect");
     },
@@ -670,7 +737,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const ny = Math.max(0, Math.min(game.map.height - 1, targeting.y + dy));
       const d = Math.max(
         Math.abs(game.player.x - nx),
-        Math.abs(game.player.y - ny)
+        Math.abs(game.player.y - ny),
       );
       if (d > targeting.range) return; // stay within throwing distance
       set({ targeting: { ...targeting, x: nx, y: ny } });
@@ -688,7 +755,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
       }
       set({ mode: "playing", targeting: null });
       if (kind === "ranged") get().submitAction({ type: "shootAt", x, y });
-      else if (kind === "blink") get().submitAction({ type: "blinkTo", defId, x, y });
+      else if (kind === "blink")
+        get().submitAction({ type: "blinkTo", defId, x, y });
       else get().submitAction({ type: "throwAt", defId, x, y });
     },
 
@@ -725,7 +793,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
           if (t?.kind === "ability") {
             // aiming a directional ability — this move key IS the direction
             set({ mode: "playing", targeting: null });
-            get().submitAction({ type: "ability", dx: cmd.action.dx, dy: cmd.action.dy });
+            get().submitAction({
+              type: "ability",
+              dx: cmd.action.dx,
+              dy: cmd.action.dy,
+            });
           } else get().moveCursor(cmd.action.dx, cmd.action.dy);
         }
         return;
@@ -770,7 +842,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
           } else if (mode === "altar") {
             playSfx("uiBack");
             get().declineAltar();
-          } else if (mode === "paused" || mode === "inventory" || mode === "help") {
+          } else if (
+            mode === "paused" ||
+            mode === "inventory" ||
+            mode === "help"
+          ) {
             playSfx("uiBack");
             set({ mode: "playing" });
           }
@@ -824,7 +900,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
           } else if (mode === "gameover" || mode === "victory") {
             playSfx("uiSelect");
             get().quitToTitle();
-          } else if (mode === "paused" || mode === "inventory" || mode === "help") {
+          } else if (
+            mode === "paused" ||
+            mode === "inventory" ||
+            mode === "help"
+          ) {
             playSfx("uiBack");
             set({ mode: "playing" });
           }
@@ -836,7 +916,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
           } else if (mode === "altar") {
             playSfx("uiBack");
             get().declineAltar();
-          } else if (mode === "paused" || mode === "inventory" || mode === "help") {
+          } else if (
+            mode === "paused" ||
+            mode === "inventory" ||
+            mode === "help"
+          ) {
             playSfx("uiBack");
             set({ mode: "playing" });
           }

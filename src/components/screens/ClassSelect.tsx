@@ -41,12 +41,18 @@ export default function ClassSelect() {
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)" }}
+        style={{
+          background:
+            "radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)",
+        }}
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)" }}
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)",
+        }}
       />
 
       <BoxFrame
@@ -56,7 +62,10 @@ export default function ClassSelect() {
         style={{ background: "rgba(9,9,12,0.5)", padding: "44px 52px" }}
       >
         <div className="flex flex-col items-center gap-4">
-          <h2 className="m-0 text-2xl font-semibold uppercase tracking-[0.3em] text-gold" style={{ textIndent: "0.3em" }}>
+          <h2
+            className="m-0 text-2xl font-semibold uppercase tracking-[0.3em] text-gold"
+            style={{ textIndent: "0.3em" }}
+          >
             Choose Your Path
           </h2>
           <AccentDivider accent="#ffb347" />
@@ -74,7 +83,9 @@ export default function ClassSelect() {
                 <span className="text-lg" style={{ color: cls.color }}>
                   {cls.glyph} {cls.name}
                 </span>
-                <span className="text-[11px] text-[#6f7078]">— {traitLine(cls)}</span>
+                <span className="text-[11px] text-[#6f7078]">
+                  — {traitLine(cls)}
+                </span>
               </div>
               <div className="mt-1 text-sm text-fg">{cls.blurb}</div>
               <div className="mt-1 text-xs text-[#6f7078]">{kitLine(cls)}</div>
@@ -88,7 +99,8 @@ export default function ClassSelect() {
             <span className="ml-1 text-xs text-dim">(Esc)</span>
           </MenuButton>
           <p className="m-0 max-w-md text-balance text-[11px] text-[#5a5a64]">
-            press 1–3 or click to begin · each class changes your opening kit and tactics
+            press 1–3 or click to begin · each class changes your opening kit
+            and tactics
           </p>
         </div>
       </BoxFrame>

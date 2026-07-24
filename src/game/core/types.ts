@@ -66,13 +66,7 @@ export interface Pos {
 
 // ── Content definitions (immutable registries) ──────────────────────────────
 export type Biome =
-  | "dungeon"
-  | "forest"
-  | "marsh"
-  | "mountain"
-  | "castle"
-  | "crypt"
-  | "throne";
+  "dungeon" | "forest" | "marsh" | "mountain" | "castle" | "crypt" | "throne";
 export type GeneratorKind =
   | "digger"
   | "uniform"
@@ -157,13 +151,7 @@ export interface MonsterDef {
 }
 
 export type ItemCategory =
-  | "weapon"
-  | "armor"
-  | "coin"
-  | "potion"
-  | "quest"
-  | "torch"
-  | "ammo";
+  "weapon" | "armor" | "coin" | "potion" | "quest" | "torch" | "ammo";
 
 export type PotionEffect =
   | "heal"

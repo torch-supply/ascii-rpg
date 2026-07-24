@@ -16,14 +16,18 @@ export function AccentDivider({
     <div className={`flex w-72 max-w-[80vw] items-center gap-3 ${className}`}>
       <span
         className="h-px flex-1"
-        style={{ background: `linear-gradient(to right, transparent, ${accent})` }}
+        style={{
+          background: `linear-gradient(to right, transparent, ${accent})`,
+        }}
       />
       <span className="text-sm" style={{ color: accent }}>
         ◈
       </span>
       <span
         className="h-px flex-1"
-        style={{ background: `linear-gradient(to left, transparent, ${accent})` }}
+        style={{
+          background: `linear-gradient(to left, transparent, ${accent})`,
+        }}
       />
     </div>
   );

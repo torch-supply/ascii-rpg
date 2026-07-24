@@ -9,7 +9,21 @@
     "test:core": "npx --yes tsx scripts/verify-core.mts",
     "test:play": "npx --yes tsx scripts/verify-playthrough.mts",
     "test:store": "npx --yes tsx scripts/verify-store.mts",
-    "test:all": "npm run test:core && npm run test:play && npm run test:store"
+    "test:all": "npm run test:core && npm run test:play && npm run test:store",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,mts,js,mjs,cjs}": [
+      "prettier --write",
+      "eslint"
+    ],
+    "*.{json,css,md,mdx}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "next": "16.2.11",
@@ -23,6 +37,12 @@
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.11",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.2.0",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3"
   }

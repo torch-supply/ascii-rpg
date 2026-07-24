@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { SoundToggle } from '@/components/ui/SoundToggle';
-import { classDef } from '@/content/classes';
-import { mutatorById } from '@/content/mutators';
-import { ITEMS } from '@/content/items';
-import { LEVELS } from '@/content/levels';
-import { ELITE, MONSTERS } from '@/content/monsters';
-import { goalLabel } from '@/game/core/goals';
-import { idx } from '@/game/core/grid';
-import { STATUS, STATUS_KEYS } from '@/game/core/status';
-import { useGameStore } from '@/store/gameStore';
-import { useEffect, useState } from 'react';
+import { SoundToggle } from "@/components/ui/SoundToggle";
+import { classDef } from "@/content/classes";
+import { mutatorById } from "@/content/mutators";
+import { ITEMS } from "@/content/items";
+import { LEVELS } from "@/content/levels";
+import { ELITE, MONSTERS } from "@/content/monsters";
+import { goalLabel } from "@/game/core/goals";
+import { idx } from "@/game/core/grid";
+import { STATUS, STATUS_KEYS } from "@/game/core/status";
+import { useGameStore } from "@/store/gameStore";
+import { useEffect, useState } from "react";
 
 /**
  * Design 3a — "refined terminal": the existing 3-row header + footer, restyled
@@ -48,7 +48,7 @@ function SegGauge({
       </span>
       <div
         className="relative h-2.5 overflow-hidden rounded-[1px] border"
-        style={{ width, borderColor: '#3a3a46', background: '#0b0b0f' }}
+        style={{ width, borderColor: "#3a3a46", background: "#0b0b0f" }}
       >
         <div
           className="absolute inset-0"
@@ -58,7 +58,7 @@ function SegGauge({
           className="absolute inset-0"
           style={{
             background:
-              'repeating-linear-gradient(90deg,transparent 0 8px,rgba(9,9,12,.92) 8px 10px)',
+              "repeating-linear-gradient(90deg,transparent 0 8px,rgba(9,9,12,.92) 8px 10px)",
           }}
         />
       </div>
@@ -85,12 +85,12 @@ export function HudBar() {
     ? (p.bag.find((b) => b.defId === weapon.ranged!.ammoId)?.count ?? 0)
     : null;
   const hpPct = Math.max(0, Math.round((p.hp / p.maxHp) * 100));
-  const survive = level.goal.type === 'survive';
+  const survive = level.goal.type === "survive";
   const surviveLeft = survive
     ? Math.max(0, (level.goal as { turns: number }).turns - game.turnCount)
     : 0;
   const overtime = !survive && game.turnsLeft <= 0;
-  const turnLabel = overtime ? 'OVERTIME' : survive ? 'HOLD' : 'TURNS';
+  const turnLabel = overtime ? "OVERTIME" : survive ? "HOLD" : "TURNS";
   const turnsVal = survive ? surviveLeft : game.turnsLeft;
   const turnsMax = survive
     ? (level.goal as { turns: number }).turns
@@ -100,27 +100,27 @@ export function HudBar() {
 
   const hpFill =
     hpPct > 40
-      ? 'linear-gradient(90deg,#2f9e44,#4fd257)'
-      : 'linear-gradient(90deg,#7d2f2f,#ff5555)';
+      ? "linear-gradient(90deg,#2f9e44,#4fd257)"
+      : "linear-gradient(90deg,#7d2f2f,#ff5555)";
   const hpGlow =
-    hpPct > 40 ? '0 0 10px rgba(63,191,63,.55)' : '0 0 10px rgba(255,85,85,.5)';
+    hpPct > 40 ? "0 0 10px rgba(63,191,63,.55)" : "0 0 10px rgba(255,85,85,.5)";
   const turnFill = lowTurns
-    ? 'linear-gradient(90deg,#7d2f2f,#ff5555)'
+    ? "linear-gradient(90deg,#7d2f2f,#ff5555)"
     : survive
-      ? 'linear-gradient(90deg,#94823a,#ffd24d)'
-      : 'linear-gradient(90deg,#3a7d94,#7fdfff)';
+      ? "linear-gradient(90deg,#94823a,#ffd24d)"
+      : "linear-gradient(90deg,#3a7d94,#7fdfff)";
   const turnGlow = lowTurns
-    ? '0 0 10px rgba(255,85,85,.5)'
+    ? "0 0 10px rgba(255,85,85,.5)"
     : survive
-      ? '0 0 10px rgba(255,210,77,.45)'
-      : '0 0 10px rgba(127,223,255,.45)';
+      ? "0 0 10px rgba(255,210,77,.45)"
+      : "0 0 10px rgba(127,223,255,.45)";
 
   return (
     <div
       className="relative z-10 shrink-0 border-b border-edge px-[22px] py-[11px] text-[15px]"
       style={{
-        background: 'linear-gradient(180deg,#16161c,#101014)',
-        boxShadow: '0 1px 0 rgba(255,180,90,.06) inset',
+        background: "linear-gradient(180deg,#16161c,#101014)",
+        boxShadow: "0 1px 0 rgba(255,180,90,.06) inset",
       }}
     >
       {/* ember hairline along the very top edge */}
@@ -129,7 +129,7 @@ export function HudBar() {
         className="pointer-events-none absolute inset-x-0 top-0 h-px"
         style={{
           background:
-            'linear-gradient(90deg,transparent,rgba(255,180,90,.35),transparent)',
+            "linear-gradient(90deg,transparent,rgba(255,180,90,.35),transparent)",
         }}
       />
 
@@ -141,11 +141,11 @@ export function HudBar() {
           </span>
           <span
             className="inline-block h-[13px] w-px translate-y-0.5"
-            style={{ background: '#33333c' }}
+            style={{ background: "#33333c" }}
           />
           <span className="text-dim">
-            <span style={{ color: level.palette.accent }}>◈</span> Level{' '}
-            {game.currentLevel + 1}/{LEVELS.length} —{' '}
+            <span style={{ color: level.palette.accent }}>◈</span> Level{" "}
+            {game.currentLevel + 1}/{LEVELS.length} —{" "}
             <span className="font-semibold tracking-[0.02em] text-fg">
               {level.title}
             </span>
@@ -155,7 +155,7 @@ export function HudBar() {
               className="text-magic"
               title={`Trials: ${game.mutators
                 .map((id) => mutatorById(id)?.name ?? id)
-                .join(', ')}`}
+                .join(", ")}`}
             >
               ⚠ {game.mutators.length}
             </span>
@@ -163,15 +163,15 @@ export function HudBar() {
         </div>
         <div className="flex items-center gap-[18px]">
           <span className="tracking-[2px] text-hp" title="lives">
-            {'♥'.repeat(Math.max(0, p.lives))}
+            {"♥".repeat(Math.max(0, p.lives))}
             <span className="text-edge">
-              {'♥'.repeat(Math.max(0, 3 - p.lives))}
+              {"♥".repeat(Math.max(0, 3 - p.lives))}
             </span>
           </span>
           <span className="flex items-baseline gap-1.5 text-gold">
-            <span className="text-[12px]" style={{ color: '#9a7a12' }}>
+            <span className="text-[12px]" style={{ color: "#9a7a12" }}>
               GOLD
-            </span>{' '}
+            </span>{" "}
             {p.coins}
           </span>
         </div>
@@ -186,7 +186,7 @@ export function HudBar() {
           glow={hpGlow}
           width={190}
         >
-          <span className={hpPct > 40 ? 'text-good' : 'text-hp'}>
+          <span className={hpPct > 40 ? "text-good" : "text-hp"}>
             {p.hp}
             <span className="text-edge">/{p.maxHp}</span>
           </span>
@@ -200,10 +200,10 @@ export function HudBar() {
         >
           <span
             className={
-              lowTurns ? 'text-hp blink' : survive ? 'text-gold' : 'text-magic'
+              lowTurns ? "text-hp blink" : survive ? "text-gold" : "text-magic"
             }
           >
-            {overtime ? '⚠' : turnsVal}
+            {overtime ? "⚠" : turnsVal}
           </span>
         </SegGauge>
       </div>
@@ -215,8 +215,8 @@ export function HudBar() {
             <span className="text-fg">⚔ {weapon.name}</span>
             <span className="text-dim"> ({powerLabel})</span>
             {ammo !== null && (
-              <span className={ammo > 0 ? 'text-gold' : 'text-hp'}>
-                {' '}
+              <span className={ammo > 0 ? "text-gold" : "text-hp"}>
+                {" "}
                 · » {ammo}
               </span>
             )}
@@ -236,33 +236,33 @@ export function HudBar() {
             </span>
           )}
           {p.hasTorch && p.torchFuel > 0 && (
-            <span className={p.torchFuel <= 20 ? 'text-hp' : 'text-gold'}>
-              ( {p.torchId ? ITEMS[p.torchId].name : 'Torch'} {p.torchFuel}
+            <span className={p.torchFuel <= 20 ? "text-hp" : "text-gold"}>
+              ( {p.torchId ? ITEMS[p.torchId].name : "Torch"} {p.torchFuel}
             </span>
           )}
           {(p.effects.ward ?? 0) > 0 && (
             <span className="text-magic">⛨ ward {p.effects.ward}</span>
           )}
           {(p.effects.might ?? 0) > 0 && (
-            <span style={{ color: '#ff9d3c' }}>⚔ might {p.effects.might}</span>
+            <span style={{ color: "#ff9d3c" }}>⚔ might {p.effects.might}</span>
           )}
           {(p.effects.levitate ?? 0) > 0 && (
-            <span style={{ color: '#a9d8ff' }}>
+            <span style={{ color: "#a9d8ff" }}>
               ☁ float {p.effects.levitate}
             </span>
           )}
           {(p.effects.emberstep ?? 0) > 0 && (
-            <span style={{ color: '#ff7a3c' }}>
+            <span style={{ color: "#ff7a3c" }}>
               ✷ ember {p.effects.emberstep}
             </span>
           )}
           {(p.effects.frostwalk ?? 0) > 0 && (
-            <span style={{ color: '#bfe8ff' }}>
+            <span style={{ color: "#bfe8ff" }}>
               ❆ rime {p.effects.frostwalk}
             </span>
           )}
           {(p.effects.shadow ?? 0) > 0 && (
-            <span style={{ color: '#9a8cff' }}>
+            <span style={{ color: "#9a8cff" }}>
               ◐ shadow {p.effects.shadow}
             </span>
           )}
@@ -317,7 +317,7 @@ export function BossBar() {
             className="h-full transition-[width] duration-200 ease-out"
             style={{
               width: `${pct}%`,
-              background: pct > 40 ? '#c0392b' : '#ff5555',
+              background: pct > 40 ? "#c0392b" : "#ff5555",
             }}
           />
         </div>
@@ -375,7 +375,7 @@ export function EliteBars() {
                 className="h-full transition-[width] duration-200 ease-out"
                 style={{
                   width: `${pct}%`,
-                  background: pct > 40 ? '#c0392b' : '#ff5555',
+                  background: pct > 40 ? "#c0392b" : "#ff5555",
                 }}
               />
             </div>
@@ -391,16 +391,24 @@ export function EliteBars() {
 export function LevelIntro() {
   const game = useGameStore((s) => s.game);
   const level = game ? game.currentLevel : -1;
-  const [shownFor, setShownFor] = useState(-1);
+  const [visibleFor, setVisibleFor] = useState(-1);
+
+  // When the level changes, reveal the card by adjusting state DURING render
+  // (React's recommended pattern) rather than in an effect — the timer effect
+  // below then only mutates state from inside a callback, which is allowed.
+  const [prevLevel, setPrevLevel] = useState(level);
+  if (level !== prevLevel) {
+    setPrevLevel(level);
+    if (level >= 0) setVisibleFor(level);
+  }
 
   useEffect(() => {
-    if (level < 0) return;
-    setShownFor(level);
-    const t = setTimeout(() => setShownFor(-1), 2600);
+    if (visibleFor < 0) return;
+    const t = setTimeout(() => setVisibleFor(-1), 2600);
     return () => clearTimeout(t);
-  }, [level]);
+  }, [visibleFor]);
 
-  if (!game || level < 0 || shownFor !== level) return null;
+  if (!game || level < 0 || visibleFor !== level) return null;
   const cfg = LEVELS[level];
 
   return (
@@ -434,16 +442,16 @@ function classifyLog(line: string): {
   if (
     /(pick up|picks up|you find|found|you get|receive|you buy|you gain)/.test(s)
   )
-    return { color: '#ffd700', glyph: '+', glyphColor: '#ffd700' };
+    return { color: "#ffd700", glyph: "+", glyphColor: "#ffd700" };
   if (/(slay|slain|kill|defeat|destroy|dies|is dead|falls)/.test(s))
-    return { color: '#dcdce2', glyph: '×', glyphColor: '#ff7a3c' };
+    return { color: "#dcdce2", glyph: "×", glyphColor: "#ff7a3c" };
   if (
     /(hits? you|for \d+|damage|wounds|strikes you|bleed|burn|poison|takes \d+)/.test(
       s,
     )
   )
-    return { color: '#c78a8a', glyph: '›', glyphColor: '#c0392b' };
-  return { color: '#9ea0ad', glyph: '·', glyphColor: '#4a4a58' };
+    return { color: "#c78a8a", glyph: "›", glyphColor: "#c0392b" };
+  return { color: "#9ea0ad", glyph: "·", glyphColor: "#4a4a58" };
 }
 
 /** Bottom status bar — color-coded message log (left) + controls (right). */
@@ -453,14 +461,14 @@ export function HudFooter() {
   const LOG_LINES = 3;
   const recent = game.messageLog.slice(-LOG_LINES);
   const log = [
-    ...Array(Math.max(0, LOG_LINES - recent.length)).fill(''),
+    ...Array(Math.max(0, LOG_LINES - recent.length)).fill(""),
     ...recent,
   ];
 
   return (
     <div
       className="relative z-10 flex shrink-0 items-end justify-between gap-6 border-t border-edge px-[22px] py-[9px] text-[15px]"
-      style={{ background: 'linear-gradient(0deg,#131318,#0e0e12)' }}
+      style={{ background: "linear-gradient(0deg,#131318,#0e0e12)" }}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
         {log.map((line, i) => {
@@ -494,11 +502,11 @@ export function HudFooter() {
           move ↑↓←→ / wasd · bump = attack
         </span>
         <span className="whitespace-nowrap">
-          <span className="text-dim">[f]</span>ire ·{' '}
-          <span className="text-dim">[q]</span>power ·{' '}
-          <span className="text-dim">[c]</span>lose ·{' '}
-          <span className="text-dim">[i]</span>nv ·{' '}
-          <span className="text-dim">[p]</span>ause ·{' '}
+          <span className="text-dim">[f]</span>ire ·{" "}
+          <span className="text-dim">[q]</span>power ·{" "}
+          <span className="text-dim">[c]</span>lose ·{" "}
+          <span className="text-dim">[i]</span>nv ·{" "}
+          <span className="text-dim">[p]</span>ause ·{" "}
           <span className="text-dim">[?]</span>help
         </span>
       </div>

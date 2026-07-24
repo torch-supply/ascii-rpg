@@ -24,14 +24,20 @@ export const MUTATORS: Mutator[] = [
     name: "The Dark Deepens",
     blurb: "Your light reaches 2 tiles less — the gloom presses in.",
     scoreMult: 0.25,
-    applyLevel: (c) => ({ ...c, baseLightRadius: Math.max(2, c.baseLightRadius - 2) }),
+    applyLevel: (c) => ({
+      ...c,
+      baseLightRadius: Math.max(2, c.baseLightRadius - 2),
+    }),
   },
   {
     id: "swarm",
     name: "Restless Dead",
     blurb: "50% more monsters prowl each floor.",
     scoreMult: 0.3,
-    applyLevel: (c) => ({ ...c, monsterBudget: Math.round(c.monsterBudget * 1.5) }),
+    applyLevel: (c) => ({
+      ...c,
+      monsterBudget: Math.round(c.monsterBudget * 1.5),
+    }),
   },
   {
     id: "treacherous",
@@ -73,7 +79,10 @@ export function mutatorById(id: string): Mutator | undefined {
 }
 
 /** Fold every active mutator's level transform over a level config. */
-export function applyLevelMutators(config: LevelConfig, ids: string[]): LevelConfig {
+export function applyLevelMutators(
+  config: LevelConfig,
+  ids: string[],
+): LevelConfig {
   let c = config;
   for (const id of ids) {
     const m = mutatorById(id);

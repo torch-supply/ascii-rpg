@@ -70,12 +70,18 @@ export default function Shop() {
   if (!game) return null;
 
   const tier = LEVELS[game.currentLevel].shopTier;
-  const entries: ShopEntry[] = tier != null ? SHOP_TIERS[tier] ?? [] : [];
+  const entries: ShopEntry[] = tier != null ? (SHOP_TIERS[tier] ?? []) : [];
   const coins = game.player.coins;
   const nextTitle = LEVELS[game.currentLevel + 1]?.title ?? "the road ahead";
   const p = game.player;
 
-  const worn: { key: string; glyph: string; color: string; name: string; sub: string }[] = [
+  const worn: {
+    key: string;
+    glyph: string;
+    color: string;
+    name: string;
+    sub: string;
+  }[] = [
     {
       key: "weapon",
       glyph: ITEMS[p.weaponId].glyph,
@@ -105,7 +111,7 @@ export default function Shop() {
     p.bag.reduce<Record<string, number>>((acc, b) => {
       acc[b.defId] = (acc[b.defId] ?? 0) + b.count;
       return acc;
-    }, {})
+    }, {}),
   );
 
   return (
@@ -129,17 +135,23 @@ export default function Shop() {
         <div
           aria-hidden
           className="absolute inset-0"
-          style={{ background: "linear-gradient(180deg,rgba(10,10,13,.5),rgba(10,10,13,.72))" }}
+          style={{
+            background:
+              "linear-gradient(180deg,rgba(10,10,13,.5),rgba(10,10,13,.72))",
+          }}
         />
 
         <div className="relative flex flex-col gap-4 px-10 pb-[34px] pt-[30px] text-sm">
           <div className="flex flex-col items-center gap-2.5">
-            <h2 className="m-0 text-lg font-semibold uppercase tracking-[0.32em] text-gold" style={{ textIndent: "0.32em" }}>
+            <h2
+              className="m-0 text-lg font-semibold uppercase tracking-[0.32em] text-gold"
+              style={{ textIndent: "0.32em" }}
+            >
               The Wayfarer&apos;s Cache
             </h2>
             <p className="m-0 max-w-md text-balance text-center text-[13px] leading-[1.6] text-dim">
-              A hooded merchant spreads their wares before the road to {nextTitle}. Spend well — the
-              way only grows darker.
+              A hooded merchant spreads their wares before the road to{" "}
+              {nextTitle}. Spend well — the way only grows darker.
             </p>
             <span className="border border-[#3a3222] bg-[#0e0b05] px-4 py-[3px] tracking-[0.05em] text-gold">
               $ {coins} gold
@@ -160,7 +172,9 @@ export default function Shop() {
                   <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                     <span style={{ color: w.color }}>{w.glyph}</span>
                     <span className="whitespace-nowrap text-fg">{w.name}</span>
-                    <span className="whitespace-nowrap text-[#6f7078]">· {w.sub}</span>
+                    <span className="whitespace-nowrap text-[#6f7078]">
+                      · {w.sub}
+                    </span>
                   </span>
                   <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-[#5a5a64]">
                     worn
@@ -178,9 +192,17 @@ export default function Shop() {
                   >
                     <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                       <span style={{ color: d.color }}>{d.glyph}</span>
-                      <span className="whitespace-nowrap text-fg">{d.name}</span>
-                      {count > 1 && <span className="text-[#6f7078]">×{count}</span>}
-                      {sub && <span className="whitespace-nowrap text-[#6f7078]">· {sub}</span>}
+                      <span className="whitespace-nowrap text-fg">
+                        {d.name}
+                      </span>
+                      {count > 1 && (
+                        <span className="text-[#6f7078]">×{count}</span>
+                      )}
+                      {sub && (
+                        <span className="whitespace-nowrap text-[#6f7078]">
+                          · {sub}
+                        </span>
+                      )}
                     </span>
                     {sellable ? (
                       <button
@@ -218,10 +240,16 @@ export default function Shop() {
                     <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                       <span className="text-magic">[{i + 1}]</span>
                       <span style={{ color: d.color }}>{d.glyph}</span>
-                      <span className="whitespace-nowrap text-fg">{d.name}</span>
-                      <span className="whitespace-nowrap text-[#6f7078]">· {statLabel(entry.itemId)}</span>
+                      <span className="whitespace-nowrap text-fg">
+                        {d.name}
+                      </span>
+                      <span className="whitespace-nowrap text-[#6f7078]">
+                        · {statLabel(entry.itemId)}
+                      </span>
                       {entry.maxQty != null && (
-                        <span className="shrink-0 text-[#4a4a54]">({bought}/{entry.maxQty})</span>
+                        <span className="shrink-0 text-[#4a4a54]">
+                          ({bought}/{entry.maxQty})
+                        </span>
                       )}
                     </span>
                     <button
@@ -247,8 +275,8 @@ export default function Shop() {
               <span className="ml-1 text-xs opacity-70">(Enter)</span>
             </MenuButton>
             <p className="m-0 text-center text-[11px] text-[#5a5a64]">
-              press a number (or click) to buy · sell spare gear from your inventory · upgrades
-              equip automatically
+              press a number (or click) to buy · sell spare gear from your
+              inventory · upgrades equip automatically
             </p>
           </div>
         </div>

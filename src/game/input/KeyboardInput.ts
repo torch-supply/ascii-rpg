@@ -1,4 +1,8 @@
-import { keyToCommand, shouldPreventDefault, type InputCommand } from "./keymap";
+import {
+  keyToCommand,
+  shouldPreventDefault,
+  type InputCommand,
+} from "./keymap";
 
 // Keyboard adapter. Translates keydown events into InputCommands and hands them
 // to a dispatch callback (the store's handleCommand). Swapping this for a
@@ -18,7 +22,10 @@ export class KeyboardInput {
       // Let a focused button handle Enter/Space itself, so keyboard users can
       // activate the button they've tabbed to instead of the global command.
       const active = document.activeElement as HTMLElement | null;
-      if (active?.tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) {
+      if (
+        active?.tagName === "BUTTON" &&
+        (e.key === "Enter" || e.key === " ")
+      ) {
         // ...but a HELD key must not auto-activate a button that only just
         // took focus. Otherwise the same Enter that (e.g.) throws a firebomb —
         // dying you into the Game Over screen — repeats and instantly clicks

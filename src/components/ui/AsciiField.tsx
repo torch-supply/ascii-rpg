@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import type { CSSProperties } from 'react';
-import { useEffect, useRef } from 'react';
+import type { CSSProperties } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Procedural ASCII luminance-field background (drifting mist / rising embers, or
@@ -18,26 +18,20 @@ import { useEffect, useRef } from 'react';
  */
 
 type Biome =
-  | 'pit'
-  | 'forest'
-  | 'marsh'
-  | 'mountain'
-  | 'castle'
-  | 'crypt'
-  | 'throne';
+  "pit" | "forest" | "marsh" | "mountain" | "castle" | "crypt" | "throne";
 
 // Field tints — kept in sync with the game's biome palette (see content/ascii.ts).
 const TINT: Record<string, string> = {
-  pit: '#e0a94a',
-  pitHot: '#ff7a3c',
-  forest: '#5f9a4a',
-  marsh: '#6f8f74',
-  mountain: '#93c4f0',
-  castle: '#a97bff',
-  crypt: '#9aa88a',
-  throne: '#ffbe6a',
+  pit: "#e0a94a",
+  pitHot: "#ff7a3c",
+  forest: "#5f9a4a",
+  marsh: "#6f8f74",
+  mountain: "#93c4f0",
+  castle: "#a97bff",
+  crypt: "#9aa88a",
+  throne: "#ffbe6a",
 };
-const RAMP = ' .\u00b7:-=+*x#%@';
+const RAMP = " .\u00b7:-=+*x#%@";
 
 // ── cheap value noise ──────────────────────────────────────────────────────
 function hash(x: number, y: number) {
@@ -86,14 +80,14 @@ interface Grid {
 }
 
 export function AsciiField({
-  mode = 'abstract',
-  biome = 'pit',
+  mode = "abstract",
+  biome = "pit",
   bottom = false,
   intensity = 0.34,
-  className = '',
+  className = "",
   style,
 }: {
-  mode?: 'abstract' | 'scene';
+  mode?: "abstract" | "scene";
   biome?: Biome;
   bottom?: boolean;
   intensity?: number;
@@ -105,7 +99,7 @@ export function AsciiField({
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const fs = 24;
@@ -116,7 +110,7 @@ export function AsciiField({
       rows: 0,
       cellW: 0,
       cellH: 0,
-      font: '',
+      font: "",
     };
 
     const measure = () => {
@@ -128,14 +122,14 @@ export function AsciiField({
       canvas.height = h;
       g.font = `${fs}px ui-monospace, Menlo, Consolas, monospace`;
       ctx.font = g.font;
-      g.cellW = ctx.measureText('M').width || fs * 0.6;
+      g.cellW = ctx.measureText("M").width || fs * 0.6;
       g.cellH = fs * 1.12;
       g.cols = Math.ceil(w / g.cellW) + 1;
       g.rows = Math.ceil(h / g.cellH) + 1;
     };
 
     const field = (cx: number, cy: number, t: number): number => {
-      if (mode === 'scene') return scene(cx, cy, t);
+      if (mode === "scene") return scene(cx, cy, t);
       const sway = Math.sin(t * 0.13 + cy * 0.06) * 1.4;
       let n = fbm((cx + sway) * 0.11, cy * 0.15 - t * 0.3);
       n = Math.max(0, Math.min(1, (n - 0.4) * 2.4));
@@ -151,9 +145,9 @@ export function AsciiField({
     const scene = (cx: number, cy: number, t: number): number => {
       const rows = g.rows;
       let horizon: number;
-      if (biome === 'mountain') {
+      if (biome === "mountain") {
         horizon = rows * 0.5 + (fbm(cx * 0.05, 12.3) - 0.5) * rows * 0.72;
-      } else if (biome === 'forest') {
+      } else if (biome === "forest") {
         const canopy = (fbm(cx * 0.11, 3.1) - 0.5) * rows * 0.34;
         const jag = (vnoise(cx * 0.55, 7.7) - 0.5) * rows * 0.1;
         horizon = rows * 0.58 + canopy + jag;
@@ -164,7 +158,7 @@ export function AsciiField({
       }
       if (cy > horizon) {
         let base = 0.55 + 0.42 * fbm(cx * 0.22 + t * 0.08, cy * 0.26);
-        if (biome === 'mountain') {
+        if (biome === "mountain") {
           const crest = smooth(horizon, horizon + 2.5, cy);
           base += (1 - crest) * 0.35;
         }
@@ -180,7 +174,7 @@ export function AsciiField({
     const draw = (t: number) => {
       ctx.clearRect(0, 0, g.w, g.h);
       ctx.font = g.font;
-      ctx.textBaseline = 'top';
+      ctx.textBaseline = "top";
       const L = RAMP.length - 1;
       const cxMid = g.cols / 2,
         cyMid = g.rows * 0.45;
@@ -189,7 +183,7 @@ export function AsciiField({
           const v = field(cx, cy, t);
           if (v <= 0.03) continue;
           const ch = RAMP[Math.max(0, Math.min(L, Math.round(v * L)))];
-          if (ch === ' ') continue;
+          if (ch === " ") continue;
           const dx = (cx - cxMid) / cxMid,
             dy = (cy - cyMid) / (g.rows * 0.6);
           const d = Math.sqrt(dx * dx + dy * dy);
@@ -197,10 +191,10 @@ export function AsciiField({
           const a = 1.32 * intensity * (0.35 + 0.65 * v) * (0.2 + 0.8 * vign);
           if (a < 0.015) continue;
           ctx.globalAlpha = Math.min(0.92, a);
-          if (biome === 'pit') {
+          if (biome === "pit") {
             ctx.fillStyle = cy / g.rows > 0.62 ? TINT.pitHot : TINT.pit;
           } else {
-            ctx.fillStyle = TINT[biome] || '#8a8a9a';
+            ctx.fillStyle = TINT[biome] || "#8a8a9a";
           }
           ctx.fillText(ch, cx * g.cellW, cy * g.cellH);
         }
@@ -211,7 +205,7 @@ export function AsciiField({
     measure();
 
     const reduce = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
+      "(prefers-reduced-motion: reduce)",
     ).matches;
     if (reduce) {
       draw(0);

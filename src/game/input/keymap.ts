@@ -7,7 +7,16 @@ export type InputCommand =
   | { kind: "action"; action: PlayerAction }
   | {
       kind: "ui";
-      cmd: "pause" | "inventory" | "help" | "confirm" | "cancel" | "fire" | "ability" | "mute" | "debugSkip";
+      cmd:
+        | "pause"
+        | "inventory"
+        | "help"
+        | "confirm"
+        | "cancel"
+        | "fire"
+        | "ability"
+        | "mute"
+        | "debugSkip";
     }
   | { kind: "bagSlot"; n: number };
 
@@ -64,7 +73,6 @@ export function keyToCommand(e: KeyboardEvent): InputCommand | null {
       return { kind: "ui", cmd: "confirm" };
     case ">":
       return { kind: "ui", cmd: "debugSkip" }; // dev-only skip to next level
-
   }
 
   // ── bag hotkeys 1-9 ──
@@ -76,11 +84,7 @@ export function keyToCommand(e: KeyboardEvent): InputCommand | null {
 
 /** Keys we should stop from scrolling the page. */
 export function shouldPreventDefault(e: KeyboardEvent): boolean {
-  return [
-    "ArrowUp",
-    "ArrowDown",
-    "ArrowLeft",
-    "ArrowRight",
-    " ",
-  ].includes(e.key);
+  return ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(
+    e.key,
+  );
 }

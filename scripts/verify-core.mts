@@ -6,7 +6,13 @@ import { createPlayer, beginLevel, recomputeLight } from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import { isGoalComplete } from "@/game/core/goals";
-import { idx, isWalkable, isTransparent, tileAt, chebyshev } from "@/game/core/grid";
+import {
+  idx,
+  isWalkable,
+  isTransparent,
+  tileAt,
+  chebyshev,
+} from "@/game/core/grid";
 import { monsterAttackDamage, mitigate } from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
@@ -78,14 +84,23 @@ console.log("\n[1] Map-gen determinism (two RNG streams)");
   const a = generateLevel(LEVELS[0], 0, "seed-abc");
   const b = generateLevel(LEVELS[0], 0, "seed-abc");
   const c = generateLevel(LEVELS[0], 0, "seed-xyz");
-  check("same (seed,index) → identical tiles", JSON.stringify(a.map.tiles) === JSON.stringify(b.map.tiles));
+  check(
+    "same (seed,index) → identical tiles",
+    JSON.stringify(a.map.tiles) === JSON.stringify(b.map.tiles),
+  );
   check(
     "same (seed,index) → identical monster positions",
     JSON.stringify(a.monsters.map((m) => [m.defId, m.x, m.y])) ===
-      JSON.stringify(b.monsters.map((m) => [m.defId, m.x, m.y]))
+      JSON.stringify(b.monsters.map((m) => [m.defId, m.x, m.y])),
   );
-  check("same (seed,index) → identical player start", a.playerStart.x === b.playerStart.x && a.playerStart.y === b.playerStart.y);
-  check("different seed → different tiles", JSON.stringify(a.map.tiles) !== JSON.stringify(c.map.tiles));
+  check(
+    "same (seed,index) → identical player start",
+    a.playerStart.x === b.playerStart.x && a.playerStart.y === b.playerStart.y,
+  );
+  check(
+    "different seed → different tiles",
+    JSON.stringify(a.map.tiles) !== JSON.stringify(c.map.tiles),
+  );
 }
 
 // ─── 2. Gameplay RNG independence + save roundtrip ──────────────────────────
@@ -115,13 +130,26 @@ console.log("\n[3] Level 1 playthrough → reach the exit");
   const rng = new Rng(1);
 
   check("exit tile exists (reachLocation)", !!game.map.exit);
-  check("exit tile is walkable", !!game.map.exit && isWalkable(game.map, game.map.exit.x, game.map.exit.y));
-  check("player starts on a floor/exit tile", isWalkable(game.map, game.player.x, game.player.y));
+  check(
+    "exit tile is walkable",
+    !!game.map.exit && isWalkable(game.map, game.map.exit.x, game.map.exit.y),
+  );
+  check(
+    "player starts on a floor/exit tile",
+    isWalkable(game.map, game.player.x, game.player.y),
+  );
   check("initial FOV is non-empty", game.visible.length > 0);
   check("goal not complete at start", !isGoalComplete(game));
 
-  const path = bfsPath(game.map, { x: game.player.x, y: game.player.y }, game.map.exit!);
-  check("BFS finds a path to the exit (connectivity)", !!path && path.length > 0);
+  const path = bfsPath(
+    game.map,
+    { x: game.player.x, y: game.player.y },
+    game.map.exit!,
+  );
+  check(
+    "BFS finds a path to the exit (connectivity)",
+    !!path && path.length > 0,
+  );
 
   let completed = false;
   let iterations = 0;
@@ -130,7 +158,10 @@ console.log("\n[3] Level 1 playthrough → reach the exit");
     for (const step of path) {
       let guard = 0;
       // keep issuing this step until the player actually reaches it
-      while ((game.player.x !== step.x || game.player.y !== step.y) && guard < 40) {
+      while (
+        (game.player.x !== step.x || game.player.y !== step.y) &&
+        guard < 40
+      ) {
         const dx = Math.sign(step.x - game.player.x);
         const dy = Math.sign(step.y - game.player.y);
         const res = resolveTurn(game, { type: "move", dx, dy }, rng);
@@ -145,9 +176,16 @@ console.log("\n[3] Level 1 playthrough → reach the exit");
       if (completed) break;
     }
   }
-  check("reached exit → goalComplete fired", completed, `(after ${iterations} turns)`);
+  check(
+    "reached exit → goalComplete fired",
+    completed,
+    `(after ${iterations} turns)`,
+  );
   check("turnCount advanced during play", game.turnCount > 0);
-  check("fog-of-war expanded while exploring", game.explored.length >= startExplored);
+  check(
+    "fog-of-war expanded while exploring",
+    game.explored.length >= startExplored,
+  );
 }
 
 // ─── 4. collectX goal (Level 2 — Moonstone Shards) ──────────────────────────
@@ -158,7 +196,10 @@ console.log("\n[4] Level 2 collectX goal");
   const player = createPlayer();
   const game = beginLevel("collect-seed", idx2, player);
   const shards = game.items.filter((it) => it.questTag === "moonstone");
-  check("3 moonstone shards placed", goal.type === "collectX" && shards.length === goal.count);
+  check(
+    "3 moonstone shards placed",
+    goal.type === "collectX" && shards.length === goal.count,
+  );
   check("goal incomplete initially", !isGoalComplete(game));
 
   // Move the player next to the first shard, then step onto it.
@@ -173,10 +214,24 @@ console.log("\n[4] Level 2 collectX goal");
   if (neighbor) {
     game.player.x = neighbor.x;
     game.player.y = neighbor.y;
-    resolveTurn(game, { type: "move", dx: Math.sign(shard.x - neighbor.x), dy: Math.sign(shard.y - neighbor.y) }, rng);
+    resolveTurn(
+      game,
+      {
+        type: "move",
+        dx: Math.sign(shard.x - neighbor.x),
+        dy: Math.sign(shard.y - neighbor.y),
+      },
+      rng,
+    );
   }
-  check("picking up a shard increments questProgress", (game.questProgress["moonstone"] ?? 0) === 1);
-  check("shard removed from ground after pickup", !game.items.some((it) => it.id === shard.id));
+  check(
+    "picking up a shard increments questProgress",
+    (game.questProgress["moonstone"] ?? 0) === 1,
+  );
+  check(
+    "shard removed from ground after pickup",
+    !game.items.some((it) => it.id === shard.id),
+  );
 
   // Directly complete to verify threshold logic
   game.questProgress["moonstone"] = 3;
@@ -192,17 +247,21 @@ console.log("\n[4] Level 2 collectX goal");
     const { questTag, count } = cfg.goal;
     for (const seed of seeds) {
       const g = beginLevel(seed, li, createPlayer());
-      if (g.items.filter((it) => it.questTag === questTag).length !== count) short++;
+      if (g.items.filter((it) => it.questTag === questTag).length !== count)
+        short++;
     }
   }
-  check("every collectX level spawns exactly its required item count", short === 0);
+  check(
+    "every collectX level spawns exactly its required item count",
+    short === 0,
+  );
 }
 
 // ─── 5. killTarget goal (Level 3 — Frost Troll) ─────────────────────────────
 console.log("\n[5] Level 3 killTarget goal");
 {
   const idx3 = LEVELS.findIndex(
-    (l) => l.goal.type === "killTarget" && l.goal.monsterId === "frost_troll"
+    (l) => l.goal.type === "killTarget" && l.goal.monsterId === "frost_troll",
   );
   const player = createPlayer();
   const game = beginLevel("kill-seed", idx3, player);
@@ -242,7 +301,16 @@ console.log("\n[7] Turn-budget exhaustion is no longer lethal");
 // ─── 8. Connectivity — no more "trapped with no way out" (regression) ───────
 console.log("\n[8] Connectivity: player can reach every objective");
 {
-  const seeds = ["s1", "s2", "s3", "trap-check", "xyzzy", "blackwood", "abc", "999"];
+  const seeds = [
+    "s1",
+    "s2",
+    "s3",
+    "trap-check",
+    "xyzzy",
+    "blackwood",
+    "abc",
+    "999",
+  ];
   let checked = 0;
   let unreachable = 0;
   for (const seed of seeds) {
@@ -261,14 +329,15 @@ console.log("\n[8] Connectivity: player can reach every objective");
       const boss = g.monsters.find((m) => m.isGoalTarget);
       if (boss) {
         checked++;
-        if (bfsPath(g.map, from, { x: boss.x, y: boss.y }) === null) unreachable++;
+        if (bfsPath(g.map, from, { x: boss.x, y: boss.y }) === null)
+          unreachable++;
       }
     }
   }
   check(
     `all objectives reachable across ${seeds.length} seeds × ${LEVELS.length} levels`,
     unreachable === 0,
-    `(${unreachable}/${checked} unreachable)`
+    `(${unreachable}/${checked} unreachable)`,
   );
 }
 
@@ -278,9 +347,15 @@ console.log("\n[9] Wraith armor-pierce");
   const p = createPlayer();
   p.armorReduction = 4;
   // wraith: dmg 6, pierce 2 → effective armor 2 → 4 damage
-  check("wraith pierces 2 of armor", monsterAttackDamage(MONSTERS.wraith, p) === 4);
+  check(
+    "wraith pierces 2 of armor",
+    monsterAttackDamage(MONSTERS.wraith, p) === 4,
+  );
   // goblin: dmg 3, no pierce, armor 4 → min-1 floor
-  check("non-piercer respects armor + min-1 floor", monsterAttackDamage(MONSTERS.goblin, p) === 1);
+  check(
+    "non-piercer respects armor + min-1 floor",
+    monsterAttackDamage(MONSTERS.goblin, p) === 1,
+  );
 }
 
 // ─── 10. Phase 2: firebomb (auto-target + AoE + consume) ────────────────────
@@ -297,7 +372,14 @@ console.log("\n[10] Firebomb potion");
     { x: p.x, y: p.y - 1 },
   ].find((n) => isWalkable(game.map, n.x, n.y))!;
   game.monsters = [
-    { id: "test-rat", defId: "rat", x: neighbor.x, y: neighbor.y, hp: 4, state: "idle" },
+    {
+      id: "test-rat",
+      defId: "rat",
+      x: neighbor.x,
+      y: neighbor.y,
+      hp: 4,
+      state: "idle",
+    },
   ];
   game.visible = [...game.visible, idx(neighbor.x, neighbor.y, game.map.width)];
   game.player.bag = [{ defId: "p_bomb", count: 1 }];
@@ -306,16 +388,25 @@ console.log("\n[10] Firebomb potion");
   const res = resolveTurn(game, { type: "useItem", defId: "p_bomb" }, rng);
   check("firebomb consumed a turn", res.tookTurn);
   check("firebomb slew the target", game.monsters.length === 0);
-  check("firebomb removed from bag", !game.player.bag.some((b) => b.defId === "p_bomb"));
+  check(
+    "firebomb removed from bag",
+    !game.player.bag.some((b) => b.defId === "p_bomb"),
+  );
   check("kill awarded coins", game.player.coins > coinsBefore);
-  check("firebomb emitted a projectile effect", res.events.some((e) => e.kind === "projectile"));
+  check(
+    "firebomb emitted a projectile effect",
+    res.events.some((e) => e.kind === "projectile"),
+  );
 }
 
 // ─── 11. Traps ──────────────────────────────────────────────────────────────
 console.log("\n[11] Hidden traps");
 {
   const g = beginLevel("trap-seed", 0, createPlayer()); // dungeon has trapCount
-  check("dungeon scatters hidden traps", g.map.tiles.some((t) => t === "trap"));
+  check(
+    "dungeon scatters hidden traps",
+    g.map.tiles.some((t) => t === "trap"),
+  );
 
   const p = g.player;
   const nb = [
@@ -328,9 +419,16 @@ console.log("\n[11] Hidden traps");
     g.map.tiles[idx(nb.x, nb.y, g.map.width)] = "trap";
     g.monsters = [];
     const hp0 = g.player.hp;
-    resolveTurn(g, { type: "move", dx: Math.sign(nb.x - p.x), dy: Math.sign(nb.y - p.y) }, new Rng(5));
+    resolveTurn(
+      g,
+      { type: "move", dx: Math.sign(nb.x - p.x), dy: Math.sign(nb.y - p.y) },
+      new Rng(5),
+    );
     check("stepping on a trap deals damage", g.player.hp < hp0);
-    check("trap becomes sprung (one-shot)", tileAt(g.map, nb.x, nb.y) === "trapSprung");
+    check(
+      "trap becomes sprung (one-shot)",
+      tileAt(g.map, nb.x, nb.y) === "trapSprung",
+    );
   }
 }
 
@@ -344,10 +442,16 @@ console.log("\n[12] Torch fuel");
   g.player.torchId = "i_torch";
   g.player.torchFuel = 3;
   recomputeLight(g.player);
-  check("a lit torch widens the light radius", g.player.lightRadius === base + (ITEMS.i_torch.lightBonus ?? 0));
+  check(
+    "a lit torch widens the light radius",
+    g.player.lightRadius === base + (ITEMS.i_torch.lightBonus ?? 0),
+  );
   const rng = new Rng(6);
   for (let i = 0; i < 3; i++) resolveTurn(g, { type: "wait" }, rng);
-  check("torch burns out at 0 fuel", !g.player.hasTorch && g.player.torchFuel === 0);
+  check(
+    "torch burns out at 0 fuel",
+    !g.player.hasTorch && g.player.torchFuel === 0,
+  );
   check("light reverts to base once unlit", g.player.lightRadius === base);
 
   // the lantern grants its OWN (larger) bonus, not the torch's
@@ -360,7 +464,7 @@ console.log("\n[12] Torch fuel");
   check(
     "lantern grants its own light bonus (not the torch's)",
     lp.lightRadius === 5 + (ITEMS.i_lantern.lightBonus ?? 0) &&
-      (ITEMS.i_lantern.lightBonus ?? 0) > (ITEMS.i_torch.lightBonus ?? 0)
+      (ITEMS.i_lantern.lightBonus ?? 0) > (ITEMS.i_torch.lightBonus ?? 0),
   );
 }
 
@@ -369,23 +473,37 @@ console.log("\n[13] Cursor firebomb throw (throwAt)");
 {
   const g = beginLevel("throw-seed", 0, createPlayer());
   const spot = { x: g.player.x + 2, y: g.player.y };
-  g.monsters = [{ id: "t1", defId: "rat", x: spot.x, y: spot.y, hp: 4, state: "idle" }];
+  g.monsters = [
+    { id: "t1", defId: "rat", x: spot.x, y: spot.y, hp: 4, state: "idle" },
+  ];
   g.player.bag = [{ defId: "p_bomb", count: 1 }];
-  const res = resolveTurn(g, { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y }, new Rng(7));
+  const res = resolveTurn(
+    g,
+    { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y },
+    new Rng(7),
+  );
   check("throwAt consumes a turn", res.tookTurn);
   check("throwAt detonates on the targeted tile", g.monsters.length === 0);
-  check("throwAt consumes the firebomb", !g.player.bag.some((b) => b.defId === "p_bomb"));
+  check(
+    "throwAt consumes the firebomb",
+    !g.player.bag.some((b) => b.defId === "p_bomb"),
+  );
 
   const g2 = beginLevel("throw-seed2", 0, createPlayer());
   g2.player.bag = [{ defId: "p_bomb", count: 1 }];
   const r2 = resolveTurn(
     g2,
-    { type: "throwAt", defId: "p_bomb", x: g2.player.x + 40, y: g2.player.y + 40 },
-    new Rng(1)
+    {
+      type: "throwAt",
+      defId: "p_bomb",
+      x: g2.player.x + 40,
+      y: g2.player.y + 40,
+    },
+    new Rng(1),
   );
   check(
     "throwAt out of range is rejected (no turn, keeps bomb)",
-    !r2.tookTurn && g2.player.bag.some((b) => b.defId === "p_bomb")
+    !r2.tookTurn && g2.player.bag.some((b) => b.defId === "p_bomb"),
   );
 }
 
@@ -427,13 +545,30 @@ console.log("\n[14] Status potions & trap sense");
     g.player.bag = [{ defId: "p_detect", count: 1 }];
     const trapCountOnMap = g.map.tiles.filter((t) => t === "trap").length;
     resolveTurn(g, { type: "useItem", defId: "p_detect" }, new Rng(12));
-    check("detect reveals every trap", trapCountOnMap > 0 && g.knownTraps.length >= trapCountOnMap);
+    check(
+      "detect reveals every trap",
+      trapCountOnMap > 0 && g.knownTraps.length >= trapCountOnMap,
+    );
   }
   {
     const g = beginLevel("blast-seed", 0, createPlayer());
     g.monsters = [
-      { id: "b1", defId: "rat", x: g.player.x + 1, y: g.player.y, hp: 4, state: "idle" },
-      { id: "b2", defId: "rat", x: g.player.x, y: g.player.y + 1, hp: 4, state: "idle" },
+      {
+        id: "b1",
+        defId: "rat",
+        x: g.player.x + 1,
+        y: g.player.y,
+        hp: 4,
+        state: "idle",
+      },
+      {
+        id: "b2",
+        defId: "rat",
+        x: g.player.x,
+        y: g.player.y + 1,
+        hp: 4,
+        state: "idle",
+      },
     ];
     g.player.bag = [{ defId: "p_ruin", count: 1 }];
     resolveTurn(g, { type: "useItem", defId: "p_ruin" }, new Rng(13));
@@ -454,7 +589,10 @@ console.log("\n[14] Status potions & trap sense");
       g.map.tiles[idx(nb.x, nb.y, g.map.width)] = "trap";
       // wait a turn so senseTraps runs
       resolveTurn(g, { type: "wait" }, new Rng(14));
-      check("adjacent armed trap is sensed", g.knownTraps.includes(idx(nb.x, nb.y, g.map.width)));
+      check(
+        "adjacent armed trap is sensed",
+        g.knownTraps.includes(idx(nb.x, nb.y, g.map.width)),
+      );
     }
   }
 }
@@ -482,7 +620,7 @@ console.log("\n[15] Ranged attackers reload (fire every other turn)");
   check(
     "imp fires on a reload cadence, not every turn",
     fireTurns > 0 && fireTurns < 4,
-    `(fired on ${fireTurns}/4 turns)`
+    `(fired on ${fireTurns}/4 turns)`,
   );
 }
 
@@ -496,9 +634,13 @@ console.log("\n[16] Survive & cull goals");
   g.player.hp = 999999; // stay alive so we're testing the goal, not combat
   let done = false;
   for (let t = 0; t < target + 12 && !done; t++) {
-    if (resolveTurn(g, { type: "wait" }, new Rng(30 + t)).goalComplete) done = true;
+    if (resolveTurn(g, { type: "wait" }, new Rng(30 + t)).goalComplete)
+      done = true;
   }
-  check("survive goal completes after holding out", done && g.turnCount >= target);
+  check(
+    "survive goal completes after holding out",
+    done && g.turnCount >= target,
+  );
 
   // the siege must actually escalate and close in — not "stand still and win"
   {
@@ -511,10 +653,15 @@ console.log("\n[16] Survive & cull goals");
     const early = gs.monsters.length;
     for (let t = 6; t < 30; t++) resolveTurn(gs, { type: "wait" }, rng);
     check("siege escalates as the hold wears on", gs.monsters.length > early);
-    check("siege stays within the concurrent cap", gs.monsters.length <= CONFIG.siege.cap);
+    check(
+      "siege stays within the concurrent cap",
+      gs.monsters.length <= CONFIG.siege.cap,
+    );
     check(
       "the horde closes on a stationary player",
-      gs.monsters.some((m) => chebyshev(m.x, m.y, gs.player.x, gs.player.y) <= 2)
+      gs.monsters.some(
+        (m) => chebyshev(m.x, m.y, gs.player.x, gs.player.y) <= 2,
+      ),
     );
   }
 
@@ -540,18 +687,25 @@ console.log("\n[17] Monster loot drops");
     { x: p.x, y: p.y - 1 },
   ].find((n) => isWalkable(g.map, n.x, n.y))!;
   g.monsters = [
-    { id: "boss", defId: "frost_troll", x: spot.x, y: spot.y, hp: 5, state: "chase" },
+    {
+      id: "boss",
+      defId: "frost_troll",
+      x: spot.x,
+      y: spot.y,
+      hp: 5,
+      state: "chase",
+    },
   ];
   g.items = [];
   resolveTurn(
     g,
     { type: "move", dx: Math.sign(spot.x - p.x), dy: Math.sign(spot.y - p.y) },
-    new Rng(40)
+    new Rng(40),
   );
   check("guaranteed-drop boss leaves loot on its tile", g.items.length >= 1);
   check(
     "loot dropped on the corpse tile",
-    g.items.some((it) => it.x === spot.x && it.y === spot.y)
+    g.items.some((it) => it.x === spot.x && it.y === spot.y),
   );
 }
 
@@ -595,8 +749,10 @@ console.log("\n[18] Trap-free route to objectives");
       const free = trapFree(g.map, { x: g.player.x, y: g.player.y });
       const objs: Pos[] = [];
       if (g.map.exit) objs.push(g.map.exit);
-      for (const m of g.monsters) if (m.isGoalTarget) objs.push({ x: m.x, y: m.y });
-      for (const it of g.items) if (it.questTag) objs.push({ x: it.x, y: it.y });
+      for (const m of g.monsters)
+        if (m.isGoalTarget) objs.push({ x: m.x, y: m.y });
+      for (const it of g.items)
+        if (it.questTag) objs.push({ x: it.x, y: it.y });
       for (const o of objs) {
         checked++;
         if (!free.has(idx(o.x, o.y, g.map.width))) bad++;
@@ -606,7 +762,7 @@ console.log("\n[18] Trap-free route to objectives");
   check(
     `every objective is reachable without crossing a trap (${seeds.length}×${LEVELS.length} levels)`,
     bad === 0,
-    `(${bad}/${checked} required a trap)`
+    `(${bad}/${checked} required a trap)`,
   );
 }
 
@@ -637,10 +793,16 @@ console.log("\n[19] Status effects, cures & fire");
     const before = game.player.hp;
     const rng = new Rng(1);
     resolveTurn(game, { type: "wait" }, rng);
-    check("poison ticks full damage despite armor", game.player.hp === before - STATUS.poison.dmgPerTurn);
+    check(
+      "poison ticks full damage despite armor",
+      game.player.hp === before - STATUS.poison.dmgPerTurn,
+    );
     check("poison timer counts down", (game.player.effects.poison ?? 0) === 1);
     resolveTurn(game, { type: "wait" }, rng);
-    check("poison expires when its timer ends", !("poison" in game.player.effects));
+    check(
+      "poison expires when its timer ends",
+      !("poison" in game.player.effects),
+    );
   }
 
   // a status tick can be lethal (routes through the death path)
@@ -657,13 +819,18 @@ console.log("\n[19] Status effects, cures & fire");
   {
     const game = beginLevel("status-seed", 0, createPlayer());
     game.monsters = [];
-    Object.assign(game.player.effects, { poison: 4, bleed: 4, burn: 4, ward: 5 });
+    Object.assign(game.player.effects, {
+      poison: 4,
+      bleed: 4,
+      burn: 4,
+      ward: 5,
+    });
     game.player.bag.push({ defId: "p_antidote", count: 1 });
     resolveTurn(game, { type: "useItem", defId: "p_antidote" }, new Rng(1));
     const e = game.player.effects;
     check(
       "antidote cures poison/bleed/burn",
-      !("poison" in e) && !("bleed" in e) && !("burn" in e)
+      !("poison" in e) && !("bleed" in e) && !("burn" in e),
     );
     check("antidote leaves buffs (ward) intact", (e.ward ?? 0) > 0);
   }
@@ -672,12 +839,20 @@ console.log("\n[19] Status effects, cures & fire");
   {
     const game = beginLevel("status-seed", 0, createPlayer());
     game.monsters = [];
-    game.fireTiles = [{ i: idx(game.player.x, game.player.y, game.map.width), life: 2 }];
+    game.fireTiles = [
+      { i: idx(game.player.x, game.player.y, game.map.width), life: 2 },
+    ];
     const before = game.player.hp;
     resolveTurn(game, { type: "wait" }, new Rng(1));
-    check("standing in fire inflicts burn", (game.player.effects.burn ?? 0) > 0);
+    check(
+      "standing in fire inflicts burn",
+      (game.player.effects.burn ?? 0) > 0,
+    );
     check("fire deals burn damage", game.player.hp < before);
-    check("a fire tile burns down each turn", (game.fireTiles[0]?.life ?? 0) === 1);
+    check(
+      "a fire tile burns down each turn",
+      (game.fireTiles[0]?.life ?? 0) === 1,
+    );
   }
 
   // a chilled monster forfeits its turn (no attack)
@@ -685,12 +860,23 @@ console.log("\n[19] Status effects, cures & fire");
     const game = beginLevel("status-seed", 0, createPlayer());
     const spot = adjacentWalkable(game);
     game.monsters = [
-      { id: "frozey", defId: "spider", x: spot.x, y: spot.y, hp: 6, state: "chase", effects: { chill: 3 } },
+      {
+        id: "frozey",
+        defId: "spider",
+        x: spot.x,
+        y: spot.y,
+        hp: 6,
+        state: "chase",
+        effects: { chill: 3 },
+      },
     ];
     const before = game.player.hp;
     resolveTurn(game, { type: "wait" }, new Rng(1));
     check("a chilled monster cannot attack", game.player.hp === before);
-    check("chill counts down while frozen", (game.monsters[0]?.effects?.chill ?? 0) === 2);
+    check(
+      "chill counts down while frozen",
+      (game.monsters[0]?.effects?.chill ?? 0) === 2,
+    );
   }
 
   // a thrown firebomb sears monsters that survive the blast (player → monster)
@@ -698,12 +884,26 @@ console.log("\n[19] Status effects, cures & fire");
     const game = beginLevel("status-seed", 0, createPlayer());
     const spot = adjacentWalkable(game);
     game.monsters = [
-      { id: "tank", defId: "frost_troll", x: spot.x, y: spot.y, hp: 40, state: "idle" },
+      {
+        id: "tank",
+        defId: "frost_troll",
+        x: spot.x,
+        y: spot.y,
+        hp: 40,
+        state: "idle",
+      },
     ];
     game.player.bag.push({ defId: "p_bomb", count: 1 });
-    resolveTurn(game, { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y }, new Rng(1));
+    resolveTurn(
+      game,
+      { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y },
+      new Rng(1),
+    );
     const tank = game.monsters.find((m) => m.id === "tank");
-    check("firebomb burns a monster that survives the blast", !!tank && (tank.effects?.burn ?? 0) > 0);
+    check(
+      "firebomb burns a monster that survives the blast",
+      !!tank && (tank.effects?.burn ?? 0) > 0,
+    );
   }
 }
 
@@ -734,7 +934,13 @@ console.log("\n[20] Environmental interplay");
       const sy = py + dy;
       const fx = px + 2 * dx;
       const fy = py + 2 * dy;
-      if (isWalkable(game.map, sx, sy) && fx > 0 && fy > 0 && fx < w - 1 && fy < h - 1) {
+      if (
+        isWalkable(game.map, sx, sy) &&
+        fx > 0 &&
+        fy > 0 &&
+        fx < w - 1 &&
+        fy < h - 1
+      ) {
         dir = [dx, dy];
         spot = { x: sx, y: sy };
         far = { x: fx, y: fy };
@@ -744,12 +950,25 @@ console.log("\n[20] Environmental interplay");
     if (!dir || !spot || !far) throw new Error("no knockback lane found");
     game.map.tiles[idx(far.x, far.y, w)] = "water";
     game.monsters = [
-      { id: "kb", defId: "skeleton", x: spot.x, y: spot.y, hp: 12, state: "chase" },
+      {
+        id: "kb",
+        defId: "skeleton",
+        x: spot.x,
+        y: spot.y,
+        hp: 12,
+        state: "chase",
+      },
     ];
     const killsBefore = game.player.kills;
     resolveTurn(game, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
-    check("knockback shoves a survivor into water", !game.monsters.some((m) => m.id === "kb"));
-    check("the drowned monster counts as a kill", game.player.kills === killsBefore + 1);
+    check(
+      "knockback shoves a survivor into water",
+      !game.monsters.some((m) => m.id === "kb"),
+    );
+    check(
+      "the drowned monster counts as a kill",
+      game.player.kills === killsBefore + 1,
+    );
   }
 
   // a firebomb blows open a cracked wall
@@ -770,8 +989,15 @@ console.log("\n[20] Environmental interplay");
     if (!spot) throw new Error("no adjacent tile");
     game.map.tiles[idx(spot.x, spot.y, w)] = "crackedWall";
     game.player.bag.push({ defId: "p_bomb", count: 1 });
-    resolveTurn(game, { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y }, new Rng(1));
-    check("a firebomb blows open a cracked wall", game.map.tiles[idx(spot.x, spot.y, w)] === "floor");
+    resolveTurn(
+      game,
+      { type: "throwAt", defId: "p_bomb", x: spot.x, y: spot.y },
+      new Rng(1),
+    );
+    check(
+      "a firebomb blows open a cracked wall",
+      game.map.tiles[idx(spot.x, spot.y, w)] === "floor",
+    );
   }
 
   // fire ignites and spreads across adjacent oil
@@ -802,7 +1028,7 @@ console.log("\n[20] Environmental interplay");
     resolveTurn(game, { type: "wait" }, new Rng(1));
     check(
       "fire spreads onto adjacent oil (which burns to floor)",
-      game.map.tiles[b] === "floor" && game.fireTiles.some((f) => f.i === b)
+      game.map.tiles[b] === "floor" && game.fireTiles.some((f) => f.i === b),
     );
   }
 }
@@ -827,8 +1053,12 @@ console.log("\n[21] Elites & stealth");
   const stepInto = (g: ReturnType<typeof beginLevel>, s: Pos) =>
     resolveTurn(
       g,
-      { type: "move", dx: Math.sign(s.x - g.player.x), dy: Math.sign(s.y - g.player.y) },
-      new Rng(1)
+      {
+        type: "move",
+        dx: Math.sign(s.x - g.player.x),
+        dy: Math.sign(s.y - g.player.y),
+      },
+      new Rng(1),
     );
 
   // sneak attack: striking an unaware chaser hits for the sneak multiplier
@@ -836,18 +1066,25 @@ console.log("\n[21] Elites & stealth");
     const g = beginLevel("elite-seed", 0, createPlayer());
     g.player.weaponPower = 6;
     const s = adj(g);
-    g.monsters = [{ id: "z", defId: "skeleton", x: s.x, y: s.y, hp: 100, state: "idle" }];
+    g.monsters = [
+      { id: "z", defId: "skeleton", x: s.x, y: s.y, hp: 100, state: "idle" },
+    ];
     stepInto(g, s);
     const sneakLoss = 100 - g.monsters[0].hp;
 
     const g2 = beginLevel("elite-seed", 0, createPlayer());
     g2.player.weaponPower = 6;
     const s2 = adj(g2);
-    g2.monsters = [{ id: "z", defId: "skeleton", x: s2.x, y: s2.y, hp: 100, state: "chase" }];
+    g2.monsters = [
+      { id: "z", defId: "skeleton", x: s2.x, y: s2.y, hp: 100, state: "chase" },
+    ];
     stepInto(g2, s2);
     const openLoss = 100 - g2.monsters[0].hp;
 
-    check("sneak attack on an unaware monster hits harder", sneakLoss === openLoss * CONFIG.sneakMultiplier);
+    check(
+      "sneak attack on an unaware monster hits harder",
+      sneakLoss === openLoss * CONFIG.sneakMultiplier,
+    );
   }
 
   // elite brute shrugs off part of every blow
@@ -855,9 +1092,22 @@ console.log("\n[21] Elites & stealth");
     const g = beginLevel("elite-seed", 0, createPlayer());
     g.player.weaponPower = 10;
     const s = adj(g);
-    g.monsters = [{ id: "b", defId: "skeleton", x: s.x, y: s.y, hp: 100, state: "chase", elite: "brute" }];
+    g.monsters = [
+      {
+        id: "b",
+        defId: "skeleton",
+        x: s.x,
+        y: s.y,
+        hp: 100,
+        state: "chase",
+        elite: "brute",
+      },
+    ];
     stepInto(g, s);
-    check("elite brute reduces incoming damage", 100 - g.monsters[0].hp === 10 - ELITE.brute.armorBonus);
+    check(
+      "elite brute reduces incoming damage",
+      100 - g.monsters[0].hp === 10 - ELITE.brute.armorBonus,
+    );
   }
 
   // volatile elite bursts on death, catching an adjacent player
@@ -865,11 +1115,27 @@ console.log("\n[21] Elites & stealth");
     const g = beginLevel("elite-seed", 0, createPlayer());
     g.player.weaponPower = 50;
     const s = adj(g);
-    g.monsters = [{ id: "v", defId: "rat", x: s.x, y: s.y, hp: 2, state: "chase", elite: "volatile" }];
+    g.monsters = [
+      {
+        id: "v",
+        defId: "rat",
+        x: s.x,
+        y: s.y,
+        hp: 2,
+        state: "chase",
+        elite: "volatile",
+      },
+    ];
     const hp0 = g.player.hp;
     stepInto(g, s);
-    check("volatile elite explodes on death", !g.monsters.some((m) => m.id === "v"));
-    check("its blast catches an adjacent player", g.player.hp === hp0 - CONFIG.eliteExplodeDamage);
+    check(
+      "volatile elite explodes on death",
+      !g.monsters.some((m) => m.id === "v"),
+    );
+    check(
+      "its blast catches an adjacent player",
+      g.player.hp === hp0 - CONFIG.eliteExplodeDamage,
+    );
   }
 
   // elites pay double coins and always drop loot
@@ -877,11 +1143,27 @@ console.log("\n[21] Elites & stealth");
     const g = beginLevel("elite-seed", 0, createPlayer());
     g.player.weaponPower = 60;
     const s = adj(g);
-    g.monsters = [{ id: "e", defId: "skeleton", x: s.x, y: s.y, hp: 2, state: "chase", elite: "brute" }];
+    g.monsters = [
+      {
+        id: "e",
+        defId: "skeleton",
+        x: s.x,
+        y: s.y,
+        hp: 2,
+        state: "chase",
+        elite: "brute",
+      },
+    ];
     const coins0 = g.player.coins;
     stepInto(g, s);
-    check("elite pays double coins", g.player.coins === coins0 + MONSTERS.skeleton.coinReward * 2);
-    check("elite always drops loot", g.items.some((it) => it.x === s.x && it.y === s.y));
+    check(
+      "elite pays double coins",
+      g.player.coins === coins0 + MONSTERS.skeleton.coinReward * 2,
+    );
+    check(
+      "elite always drops loot",
+      g.items.some((it) => it.x === s.x && it.y === s.y),
+    );
   }
 }
 
@@ -916,11 +1198,16 @@ console.log("\n[22] Ranged weapon & altars");
     const s = adj(g);
     const ti = idx(s.x, s.y, g.map.width);
     if (!g.visible.includes(ti)) g.visible.push(ti);
-    g.monsters = [{ id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" }];
+    g.monsters = [
+      { id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" },
+    ];
     const res = resolveTurn(g, { type: "shootAt", x: s.x, y: s.y }, new Rng(1));
     check("firing the bow takes a turn", res.tookTurn);
     check("the arrow wounds the target", g.monsters[0].hp < 20);
-    check("firing consumes one arrow", (g.player.bag.find((b) => b.defId === "am_arrow")?.count ?? 0) === 4);
+    check(
+      "firing consumes one arrow",
+      (g.player.bag.find((b) => b.defId === "am_arrow")?.count ?? 0) === 4,
+    );
   }
 
   // an empty quiver refuses the shot (no turn spent)
@@ -931,10 +1218,15 @@ console.log("\n[22] Ranged weapon & altars");
     const s = adj(g);
     const ti = idx(s.x, s.y, g.map.width);
     if (!g.visible.includes(ti)) g.visible.push(ti);
-    g.monsters = [{ id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" }];
+    g.monsters = [
+      { id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" },
+    ];
     const res = resolveTurn(g, { type: "shootAt", x: s.x, y: s.y }, new Rng(1));
     check("firing with no arrows spends no turn", !res.tookTurn);
-    check("an empty quiver leaves the target unharmed", g.monsters[0].hp === 20);
+    check(
+      "an empty quiver leaves the target unharmed",
+      g.monsters[0].hp === 20,
+    );
   }
 
   // a bow-wielder out of arrows falls back to a 1-damage jab on a bump
@@ -943,8 +1235,14 @@ console.log("\n[22] Ranged weapon & altars");
     g.monsters = [];
     equipBow(g);
     const s = adj(g);
-    g.monsters = [{ id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" }];
-    resolveTurn(g, { type: "move", dx: s.x - g.player.x, dy: s.y - g.player.y }, new Rng(1));
+    g.monsters = [
+      { id: "t", defId: "skeleton", x: s.x, y: s.y, hp: 20, state: "chase" },
+    ];
+    resolveTurn(
+      g,
+      { type: "move", dx: s.x - g.player.x, dy: s.y - g.player.y },
+      new Rng(1),
+    );
     check("out of arrows, a bow bump jabs for 1", 20 - g.monsters[0].hp === 1);
   }
 
@@ -954,10 +1252,19 @@ console.log("\n[22] Ranged weapon & altars");
     g.player.coins = 40;
     g.player.maxHp = 20;
     g.player.hp = 10;
-    const m = applyAltar(g, { id: "a", x: 0, y: 0, kind: "vigor", used: false });
+    const m = applyAltar(g, {
+      id: "a",
+      x: 0,
+      y: 0,
+      kind: "vigor",
+      used: false,
+    });
     check(
       "vigor altar grants max HP + full heal for gold",
-      m != null && g.player.maxHp === 26 && g.player.hp === 26 && g.player.coins === 0
+      m != null &&
+        g.player.maxHp === 26 &&
+        g.player.hp === 26 &&
+        g.player.coins === 0,
     );
   }
 
@@ -967,15 +1274,27 @@ console.log("\n[22] Ranged weapon & altars");
     g.player.maxHp = 20;
     g.player.hp = 20;
     applyAltar(g, { id: "b", x: 0, y: 0, kind: "warblood", used: false });
-    check("warblood altar trades blood for lasting power", g.player.maxHp === 14 && g.player.weaponBonus === 3);
+    check(
+      "warblood altar trades blood for lasting power",
+      g.player.maxHp === 14 && g.player.weaponBonus === 3,
+    );
   }
 
   // altar: an unaffordable bargain is a no-op
   {
     const g = beginLevel("altar-seed", 0, createPlayer());
     g.player.coins = 10;
-    const m = applyAltar(g, { id: "c", x: 0, y: 0, kind: "vigor", used: false });
-    check("an unaffordable altar changes nothing", m === null && g.player.coins === 10);
+    const m = applyAltar(g, {
+      id: "c",
+      x: 0,
+      y: 0,
+      kind: "vigor",
+      used: false,
+    });
+    check(
+      "an unaffordable altar changes nothing",
+      m === null && g.player.coins === 10,
+    );
   }
 }
 
@@ -1006,7 +1325,13 @@ console.log("\n[23] Cracked-wall demolition");
       const sy = py + dy;
       const fx = px + 2 * dx;
       const fy = py + 2 * dy;
-      if (isWalkable(g.map, sx, sy) && fx > 0 && fy > 0 && fx < w - 1 && fy < h - 1) {
+      if (
+        isWalkable(g.map, sx, sy) &&
+        fx > 0 &&
+        fy > 0 &&
+        fx < w - 1 &&
+        fy < h - 1
+      ) {
         dir = [dx, dy];
         spot = { x: sx, y: sy };
         far = { x: fx, y: fy };
@@ -1015,10 +1340,25 @@ console.log("\n[23] Cracked-wall demolition");
     }
     if (!dir || !spot || !far) throw new Error("no knockback lane");
     g.map.tiles[idx(far.x, far.y, w)] = "crackedWall";
-    g.monsters = [{ id: "k", defId: "skeleton", x: spot.x, y: spot.y, hp: 100, state: "chase" }];
+    g.monsters = [
+      {
+        id: "k",
+        defId: "skeleton",
+        x: spot.x,
+        y: spot.y,
+        hp: 100,
+        state: "chase",
+      },
+    ];
     resolveTurn(g, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
-    check("knockback shatters a cracked wall", g.map.tiles[idx(far.x, far.y, w)] === "floor");
-    check("the slammed monster survives (driven through, not killed)", g.monsters.some((m) => m.id === "k"));
+    check(
+      "knockback shatters a cracked wall",
+      g.map.tiles[idx(far.x, far.y, w)] === "floor",
+    );
+    check(
+      "the slammed monster survives (driven through, not killed)",
+      g.monsters.some((m) => m.id === "k"),
+    );
   }
 
   // melee bash: it takes `crackedWallToughness` bumps to break
@@ -1045,11 +1385,18 @@ console.log("\n[23] Cracked-wall demolition");
     const T = CONFIG.crackedWallToughness;
     for (let n = 0; n < T - 1; n++)
       resolveTurn(g, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
-    check("cracked wall withstands the first blows", g.map.tiles[idx(spot.x, spot.y, w)] === "crackedWall");
-    const res = resolveTurn(g, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
+    check(
+      "cracked wall withstands the first blows",
+      g.map.tiles[idx(spot.x, spot.y, w)] === "crackedWall",
+    );
+    const res = resolveTurn(
+      g,
+      { type: "move", dx: dir[0], dy: dir[1] },
+      new Rng(1),
+    );
     check(
       "a final bash crumbles it to floor",
-      res.tookTurn && g.map.tiles[idx(spot.x, spot.y, w)] === "floor"
+      res.tookTurn && g.map.tiles[idx(spot.x, spot.y, w)] === "floor",
     );
   }
 }
@@ -1078,9 +1425,18 @@ console.log("\n[24] Persistent decals");
     g.monsters = [];
     g.player.weaponPower = 50;
     const s = adj(g);
-    g.monsters = [{ id: "d", defId: "rat", x: s.x, y: s.y, hp: 2, state: "chase" }];
-    resolveTurn(g, { type: "move", dx: s.x - g.player.x, dy: s.y - g.player.y }, new Rng(1));
-    check("a slain monster leaves a blood stain", g.decals[idx(s.x, s.y, g.map.width)] === "blood");
+    g.monsters = [
+      { id: "d", defId: "rat", x: s.x, y: s.y, hp: 2, state: "chase" },
+    ];
+    resolveTurn(
+      g,
+      { type: "move", dx: s.x - g.player.x, dy: s.y - g.player.y },
+      new Rng(1),
+    );
+    check(
+      "a slain monster leaves a blood stain",
+      g.decals[idx(s.x, s.y, g.map.width)] === "blood",
+    );
   }
 
   // a fire tile that burns out leaves a scorch mark
@@ -1092,17 +1448,32 @@ console.log("\n[24] Persistent decals");
     g.fireTiles = [{ i: fi, life: 1 }];
     resolveTurn(g, { type: "wait" }, new Rng(1));
     check("burnt-out fire leaves a scorch mark", g.decals[fi] === "scorch");
-    check("the spent fire tile is cleared", !g.fireTiles.some((f) => f.i === fi));
+    check(
+      "the spent fire tile is cleared",
+      !g.fireTiles.some((f) => f.i === fi),
+    );
   }
 }
 
 // ─── 25. Shop selling (flat % of base value) ────────────────────────────────
 console.log("\n[25] Shop selling");
 {
-  check("sellable gear returns a positive price", sellPrice(ITEMS.a_leather) > 0);
-  check("sell price is below the shop's buy price", sellPrice(ITEMS.w_short) < 15);
-  check("quest items and coins can't be sold", sellPrice(ITEMS.q_shard) === 0 && sellPrice(ITEMS.c_gold) === 0);
-  check("stronger gear is worth more", sellPrice(ITEMS.w_sun) > sellPrice(ITEMS.w_dagger));
+  check(
+    "sellable gear returns a positive price",
+    sellPrice(ITEMS.a_leather) > 0,
+  );
+  check(
+    "sell price is below the shop's buy price",
+    sellPrice(ITEMS.w_short) < 15,
+  );
+  check(
+    "quest items and coins can't be sold",
+    sellPrice(ITEMS.q_shard) === 0 && sellPrice(ITEMS.c_gold) === 0,
+  );
+  check(
+    "stronger gear is worth more",
+    sellPrice(ITEMS.w_sun) > sellPrice(ITEMS.w_dagger),
+  );
 }
 
 // ─── 26. Turn budget vs map size ────────────────────────────────────────────
@@ -1129,8 +1500,10 @@ console.log("\n[26] Turn budget vs map size");
       const from: Pos = { x: g.player.x, y: g.player.y };
       const objs: Pos[] = [];
       if (g.map.exit) objs.push(g.map.exit);
-      for (const m of g.monsters) if (m.isGoalTarget) objs.push({ x: m.x, y: m.y });
-      for (const it of g.items) if (it.questTag) objs.push({ x: it.x, y: it.y });
+      for (const m of g.monsters)
+        if (m.isGoalTarget) objs.push({ x: m.x, y: m.y });
+      for (const it of g.items)
+        if (it.questTag) objs.push({ x: it.x, y: it.y });
       for (const o of objs) {
         const path = bfsPath(g.map, from, o);
         if (path) worstFar = Math.max(worstFar, path.length - 1);
@@ -1138,14 +1511,16 @@ console.log("\n[26] Turn budget vs map size");
       checked++;
     }
     const ratio = cfg.turnLimit / Math.max(1, worstFar);
-    console.log(`  · ${cfg.id.padEnd(16)} ${ratio.toFixed(1)}× (${worstFar} steps / ${cfg.turnLimit} turns)`);
+    console.log(
+      `  · ${cfg.id.padEnd(16)} ${ratio.toFixed(1)}× (${worstFar} steps / ${cfg.turnLimit} turns)`,
+    );
     if (worstFar * EXPLORE_FACTOR > cfg.turnLimit) bad++;
   }
 
   check(
     `objectives fit the turn budget with ${EXPLORE_FACTOR}× headroom (${checked} level×seed)`,
     bad === 0,
-    `(a level dipped below ${EXPLORE_FACTOR}× — see the per-level list above)`
+    `(a level dipped below ${EXPLORE_FACTOR}× — see the per-level list above)`,
   );
 }
 
@@ -1155,14 +1530,17 @@ console.log("\n[27] Equipment swapping");
   const p = createPlayer(); // Rusty Dagger wielded, empty bag
   giveItem(p, "w_short"); // an upgrade → auto-equips
   check("an upgrade auto-equips", p.weaponId === "w_short");
-  check("the replaced weapon is stowed, not discarded", p.bag.some((b) => b.defId === "w_dagger"));
+  check(
+    "the replaced weapon is stowed, not discarded",
+    p.bag.some((b) => b.defId === "w_dagger"),
+  );
 
   equipWeapon(p, "w_dagger"); // switch back to the stowed weapon
   check("re-equipping a stowed weapon swaps in", p.weaponId === "w_dagger");
   check(
     "the swap leaves no duplicate and loses nothing",
     p.bag.filter((b) => b.defId === "w_dagger").length === 0 &&
-      p.bag.some((b) => b.defId === "w_short")
+      p.bag.some((b) => b.defId === "w_short"),
   );
 }
 
@@ -1171,7 +1549,16 @@ console.log("\n[27] Equipment swapping");
 // passable — they're breakable). Guards against teasing walled-off pockets.
 console.log("\n[28] No unreachable open areas");
 {
-  const OPEN = new Set<string>(["floor", "doorOpen", "exit", "trap", "trapSprung", "oil", "forage", "crackedWall"]);
+  const OPEN = new Set<string>([
+    "floor",
+    "doorOpen",
+    "exit",
+    "trap",
+    "trapSprung",
+    "oil",
+    "forage",
+    "crackedWall",
+  ]);
   const dirs = [
     [0, -1],
     [0, 1],
@@ -1214,7 +1601,7 @@ console.log("\n[28] No unreachable open areas");
   check(
     `every open tile is reachable (${openTiles} tiles across ${seeds.length}×${LEVELS.length})`,
     orphans === 0,
-    `(${orphans} orphaned)`
+    `(${orphans} orphaned)`,
   );
 }
 
@@ -1222,7 +1609,9 @@ console.log("\n[28] No unreachable open areas");
 console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
 {
   const ti = LEVELS.findIndex(
-    (l) => l.goal.type === "killTarget" && (l.goal as { monsterId?: string }).monsterId === "lich"
+    (l) =>
+      l.goal.type === "killTarget" &&
+      (l.goal as { monsterId?: string }).monsterId === "lich",
   );
   const bossHp = MONSTERS.lich.maxHp;
 
@@ -1234,7 +1623,8 @@ console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
     p.maxHp = 9999;
     p.hp = 9999;
     p.armorReduction = 0;
-    for (let dx = 1; dx <= 4; dx++) g.map.tiles[idx(p.x + dx, p.y, w)] = "floor";
+    for (let dx = 1; dx <= 4; dx++)
+      g.map.tiles[idx(p.x + dx, p.y, w)] = "floor";
     // filler adds push the summon-vs-barrage choice to always barrage
     const filler = Array.from({ length: CONFIG.lich.summonCap }, (_, i) => ({
       id: `f${i}`,
@@ -1246,7 +1636,17 @@ console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
     }));
     g.monsters = [
       ...filler,
-      { id: "M", defId: "lich", x: p.x + 3, y: p.y, hp: bossHp, state: "chase", abilityCd: 0, phase: 0, isGoalTarget: true },
+      {
+        id: "M",
+        defId: "lich",
+        x: p.x + 3,
+        y: p.y,
+        hp: bossHp,
+        state: "chase",
+        abilityCd: 0,
+        phase: 0,
+        isGoalTarget: true,
+      },
     ];
     resolveTurn(g, { type: "wait" }, new Rng(1));
     const pIdx = idx(p.x, p.y, w);
@@ -1255,11 +1655,14 @@ console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
       g.barrage.length >= 1 &&
         g.barrage.length <= CONFIG.lich.barrageTiles[0] &&
         g.barrage.includes(pIdx),
-      `(${g.barrage.length} tiles)`
+      `(${g.barrage.length} tiles)`,
     );
     const hpBefore = p.hp;
     resolveTurn(g, { type: "wait" }, new Rng(2)); // stand still → eat the fire
-    check("standing in the barrage takes damage on detonation", p.hp < hpBefore);
+    check(
+      "standing in the barrage takes damage on detonation",
+      p.hp < hpBefore,
+    );
     check("barrage tiles clear after detonating", g.barrage.length === 0);
   }
 
@@ -1274,19 +1677,31 @@ console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
     const saved = CONFIG.lich.summonChance;
     CONFIG.lich.summonChance = [1, 1, 1]; // force the summon branch
     g.monsters = [
-      { id: "M", defId: "lich", x: p.x + 2, y: p.y, hp: bossHp, state: "chase", abilityCd: 0, phase: 0, isGoalTarget: true },
+      {
+        id: "M",
+        defId: "lich",
+        x: p.x + 2,
+        y: p.y,
+        hp: bossHp,
+        state: "chase",
+        abilityCd: 0,
+        phase: 0,
+        isGoalTarget: true,
+      },
     ];
     const before = g.monsters.length;
     resolveTurn(g, { type: "wait" }, new Rng(3));
     CONFIG.lich.summonChance = saved;
-    check("lich summons adds when its ability is ready", g.monsters.length > before);
+    check(
+      "lich summons adds when its ability is ready",
+      g.monsters.length > before,
+    );
   }
 
   // (c) blink: cornered (phase 2+) the lich teleports away instead of trading blows
   {
     const g = beginLevel("lich-blink", ti, createPlayer());
     const p = g.player;
-    const w = g.map.width;
     const dirs = [
       [0, -1],
       [0, 1],
@@ -1314,10 +1729,15 @@ console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
       const m = g.monsters.find((x) => x.defId === "lich")!;
       check(
         "a cornered lich blinks clear of the player",
-        chebyshev(m.x, m.y, g.player.x, g.player.y) >= CONFIG.lich.teleportMinDist
+        chebyshev(m.x, m.y, g.player.x, g.player.y) >=
+          CONFIG.lich.teleportMinDist,
       );
     } else {
-      check("a cornered lich blinks clear of the player", true, "(no adjacent tile — skipped)");
+      check(
+        "a cornered lich blinks clear of the player",
+        true,
+        "(no adjacent tile — skipped)",
+      );
     }
   }
 
@@ -1328,27 +1748,41 @@ console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
     const w = g.map.width;
     p.maxHp = 9999;
     p.hp = 9999;
-    for (let dx = 1; dx <= 4; dx++) g.map.tiles[idx(p.x + dx, p.y, w)] = "floor";
+    for (let dx = 1; dx <= 4; dx++)
+      g.map.tiles[idx(p.x + dx, p.y, w)] = "floor";
     g.monsters = [
-      { id: "M", defId: "lich", x: p.x + 3, y: p.y, hp: Math.floor(bossHp * 0.6), state: "chase", abilityCd: 5, phase: 0, isGoalTarget: true },
+      {
+        id: "M",
+        defId: "lich",
+        x: p.x + 3,
+        y: p.y,
+        hp: Math.floor(bossHp * 0.6),
+        state: "chase",
+        abilityCd: 5,
+        phase: 0,
+        isGoalTarget: true,
+      },
     ];
     const res = resolveTurn(g, { type: "wait" }, new Rng(5));
     check(
       "entering a new phase announces itself",
-      res.events.some((e) => e.kind === "message" && e.text.includes("wreathing shadow"))
+      res.events.some(
+        (e) => e.kind === "message" && e.text.includes("wreathing shadow"),
+      ),
     );
   }
 }
 
 // ─── 30. Same-turn resolution (goal vs. death) ──────────────────────────────
-console.log("\n[30] Same-turn resolution — decisive action wins, passive tick kills");
+console.log(
+  "\n[30] Same-turn resolution — decisive action wins, passive tick kills",
+);
 {
   // (a) A goal-completing ACTION wins before end-of-turn hazards can tick you
   // out — you don't die to your own lingering DoT on the turn you win.
   {
     const g = beginLevel("sameturn-a", 0, createPlayer()); // dungeon: reachLocation
     const p = g.player;
-    const w = g.map.width;
     g.monsters = [];
     const exit = g.map.exit!;
     const nb = [
@@ -1366,12 +1800,16 @@ console.log("\n[30] Same-turn resolution — decisive action wins, passive tick 
     p.effects.burn = 3; // would kill on the end-of-turn tick, if it ran first
     const res = resolveTurn(
       g,
-      { type: "move", dx: Math.sign(exit.x - nb.x), dy: Math.sign(exit.y - nb.y) },
-      new Rng(1)
+      {
+        type: "move",
+        dx: Math.sign(exit.x - nb.x),
+        dy: Math.sign(exit.y - nb.y),
+      },
+      new Rng(1),
     );
     check(
       "a goal-completing action wins before your own DoT can tick",
-      res.goalComplete && !res.playerDied && g.player.hp === 1
+      res.goalComplete && !res.playerDied && g.player.hp === 1,
     );
   }
 
@@ -1384,7 +1822,10 @@ console.log("\n[30] Same-turn resolution — decisive action wins, passive tick 
     p.maxHp = 20;
     p.effects.burn = 3;
     const res = resolveTurn(g, { type: "wait" }, new Rng(2));
-    check("a lethal tick still kills when no goal is completed", res.playerDied && !res.goalComplete);
+    check(
+      "a lethal tick still kills when no goal is completed",
+      res.playerDied && !res.goalComplete,
+    );
   }
 
   // (c) The nuance: a PASSIVE tick that kills you wins over a goal that the same
@@ -1406,7 +1847,15 @@ console.log("\n[30] Same-turn resolution — decisive action wins, passive tick 
       .find((c) => isWalkable(g.map, c.x, c.y))!;
     // a monster that will die to its own burn this tick → completes the cull
     g.monsters = [
-      { id: "m", defId: "skeleton", x: spot.x, y: spot.y, hp: 1, state: "idle", effects: { burn: 2 } },
+      {
+        id: "m",
+        defId: "skeleton",
+        x: spot.x,
+        y: spot.y,
+        hp: 1,
+        state: "idle",
+        effects: { burn: 2 },
+      },
     ];
     // ...on the same tick the player's own burn drops them
     p.hp = 1;
@@ -1415,9 +1864,12 @@ console.log("\n[30] Same-turn resolution — decisive action wins, passive tick 
     const res = resolveTurn(g, { type: "wait" }, new Rng(3));
     check(
       "a passive killing tick beats a tick-driven goal completion",
-      res.playerDied && !res.goalComplete
+      res.playerDied && !res.goalComplete,
     );
-    check("(sanity) that tick did finish the cull count", g.levelKills >= count);
+    check(
+      "(sanity) that tick did finish the cull count",
+      g.levelKills >= count,
+    );
   }
 }
 
@@ -1448,7 +1900,10 @@ console.log("\n[31] Overtime pressure (soft clock)");
   check("overstaying the budget never triggers a timeout death", !died);
   check("crossing par announces the closing dark", sawOvertimeMsg);
   check("the world reinforces during overtime", g.monsters.length > before);
-  check("overtime respects its concurrent cap", g.monsters.length <= CONFIG.overtime.cap);
+  check(
+    "overtime respects its concurrent cap",
+    g.monsters.length <= CONFIG.overtime.cap,
+  );
 }
 
 // ─── 32. Traps are always avoidable (never the only path) ───────────────────
@@ -1463,7 +1918,16 @@ console.log("\n[32] Traps never block the sole path");
     [-1, 0],
     [1, 0],
   ];
-  const seeds = ["s1", "s2", "trap-check", "xyzzy", "blackwood", "999", "abc", "q7"];
+  const seeds = [
+    "s1",
+    "s2",
+    "trap-check",
+    "xyzzy",
+    "blackwood",
+    "999",
+    "abc",
+    "q7",
+  ];
   let bad = 0;
   let checked = 0;
   let withTraps = 0;
@@ -1509,7 +1973,7 @@ console.log("\n[32] Traps never block the sole path");
   }
   check(
     `every walkable tile is reachable without stepping on a trap (${checked} level×seed, ${withTraps} had traps)`,
-    bad === 0
+    bad === 0,
   );
 }
 
@@ -1539,18 +2003,31 @@ console.log("\n[33] Interactive doors");
     .find(
       (c) =>
         tileAt(g.map, c.x, c.y) === "floor" &&
-        !g.items.some((it) => it.x === c.x && it.y === c.y)
+        !g.items.some((it) => it.x === c.x && it.y === c.y),
     )!;
   g.map.tiles[idx(nb.x, nb.y, w)] = "doorOpen";
 
   const r1 = resolveTurn(g, { type: "closeDoor" }, new Rng(1));
-  check("closing shuts the adjacent open door", tileAt(g.map, nb.x, nb.y) === "door" && r1.tookTurn);
+  check(
+    "closing shuts the adjacent open door",
+    tileAt(g.map, nb.x, nb.y) === "door" && r1.tookTurn,
+  );
   check("a shut door blocks movement", !isWalkable(g.map, nb.x, nb.y));
   check("a shut door blocks sight", !isTransparent(g.map, nb.x, nb.y));
 
-  const r2 = resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(2));
-  check("bumping a shut door opens it", tileAt(g.map, nb.x, nb.y) === "doorOpen" && r2.tookTurn);
-  check("opening a door doesn't move you onto it", g.player.x === p.x && g.player.y === p.y);
+  const r2 = resolveTurn(
+    g,
+    { type: "move", dx: nb.x - p.x, dy: nb.y - p.y },
+    new Rng(2),
+  );
+  check(
+    "bumping a shut door opens it",
+    tileAt(g.map, nb.x, nb.y) === "doorOpen" && r2.tookTurn,
+  );
+  check(
+    "opening a door doesn't move you onto it",
+    g.player.x === p.x && g.player.y === p.y,
+  );
 }
 
 // ─── 34. Character classes (kits + passives) ────────────────────────────────
@@ -1559,10 +2036,13 @@ console.log("\n[34] Character classes");
   const warrior = createPlayer("warrior");
   check(
     "class kit equips its weapon + armor",
-    warrior.weaponId === "w_short" && warrior.armorId === "a_leather"
+    warrior.weaponId === "w_short" && warrior.armorId === "a_leather",
   );
   check("class sets its own maxHp", warrior.maxHp === 26 && warrior.hp === 26);
-  check("class grants its starting bag", warrior.bag.some((b) => b.defId === "p_heal"));
+  check(
+    "class grants its starting bag",
+    warrior.bag.some((b) => b.defId === "p_heal"),
+  );
   check("classId is recorded on the player", warrior.classId === "warrior");
 
   const pyro = createPlayer("pyromancer");
@@ -1570,18 +2050,20 @@ console.log("\n[34] Character classes");
     "Pyromancer starts with bow + arrows + bombs",
     pyro.weaponId === "w_bow" &&
       pyro.bag.some((b) => b.defId === "am_arrow") &&
-      pyro.bag.some((b) => b.defId === "p_bomb")
+      pyro.bag.some((b) => b.defId === "p_bomb"),
   );
 
   // passive: Warrior damage reduction (via the shared `mitigate` choke point)
   check("Warrior shaves 1 off an incoming hit", mitigate(warrior, 10) === 9);
-  check("the plain baseline takes full damage", mitigate(createPlayer("wanderer"), 10) === 10);
+  check(
+    "the plain baseline takes full damage",
+    mitigate(createPlayer("wanderer"), 10) === 10,
+  );
 
   // passive: the Rogue's bigger sneak multiplier out-damages the baseline (same
   // dagger, so only the ×3-vs-×2 sneak — plus any crit — differs)
   const sneakDmg = (classId: string): number => {
     const g = beginLevel("cls-sneak", 0, createPlayer(classId));
-    const w = g.map.width;
     const p = g.player;
     const nb = [
       [1, 0],
@@ -1591,12 +2073,21 @@ console.log("\n[34] Character classes");
     ]
       .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
       .find((c) => isWalkable(g.map, c.x, c.y))!;
-    g.monsters = [{ id: "t", defId: "skeleton", x: nb.x, y: nb.y, hp: 999, state: "idle" }];
-    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(5));
+    g.monsters = [
+      { id: "t", defId: "skeleton", x: nb.x, y: nb.y, hp: 999, state: "idle" },
+    ];
+    resolveTurn(
+      g,
+      { type: "move", dx: nb.x - p.x, dy: nb.y - p.y },
+      new Rng(5),
+    );
     const m = g.monsters.find((x) => x.id === "t");
     return 999 - (m ? m.hp : 999);
   };
-  check("Rogue's sneak strike out-damages the plain baseline", sneakDmg("rogue") > sneakDmg("wanderer"));
+  check(
+    "Rogue's sneak strike out-damages the plain baseline",
+    sneakDmg("rogue") > sneakDmg("wanderer"),
+  );
 }
 
 // ─── 35. Forage (heal tiles) ────────────────────────────────────────────────
@@ -1632,10 +2123,14 @@ console.log("\n[35] Forage heal tiles");
     g.map.tiles[idx(nb.x, nb.y, w)] = "forage";
     p.hp = p.maxHp - 5;
     const before = p.hp;
-    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(1));
+    resolveTurn(
+      g,
+      { type: "move", dx: nb.x - p.x, dy: nb.y - p.y },
+      new Rng(1),
+    );
     check(
       "stepping on forage heals (never past max)",
-      g.player.hp > before && g.player.hp <= g.player.maxHp
+      g.player.hp > before && g.player.hp <= g.player.maxHp,
     );
     check("forage is spent to floor", tileAt(g.map, nb.x, nb.y) === "floor");
   }
@@ -1649,10 +2144,14 @@ console.log("\n[35] Forage heal tiles");
     const nb = orthoFloor(g);
     g.map.tiles[idx(nb.x, nb.y, w)] = "forage";
     p.hp = p.maxHp;
-    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(2));
+    resolveTurn(
+      g,
+      { type: "move", dx: nb.x - p.x, dy: nb.y - p.y },
+      new Rng(2),
+    );
     check(
       "forage is left untouched at full HP",
-      tileAt(g.map, nb.x, nb.y) === "forage" && g.player.hp === g.player.maxHp
+      tileAt(g.map, nb.x, nb.y) === "forage" && g.player.hp === g.player.maxHp,
     );
   }
 }
@@ -1681,16 +2180,30 @@ console.log("\n[36] Levitation & Emberstep");
     const nb = adjFloor(g);
     g.map.tiles[idx(nb.x, nb.y, w)] = "water";
     p.effects.levitate = 5;
-    const r = resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(1));
-    check("levitation glides onto water", r.tookTurn && g.player.x === nb.x && g.player.y === nb.y);
+    const r = resolveTurn(
+      g,
+      { type: "move", dx: nb.x - p.x, dy: nb.y - p.y },
+      new Rng(1),
+    );
+    check(
+      "levitation glides onto water",
+      r.tookTurn && g.player.x === nb.x && g.player.y === nb.y,
+    );
 
     const g2 = beginLevel("levit-a", 0, createPlayer());
     g2.monsters = [];
     const p2 = g2.player;
     const nb2 = adjFloor(g2);
     g2.map.tiles[idx(nb2.x, nb2.y, g2.map.width)] = "water";
-    resolveTurn(g2, { type: "move", dx: nb2.x - p2.x, dy: nb2.y - p2.y }, new Rng(1));
-    check("without levitation water blocks the step", g2.player.x !== nb2.x || g2.player.y !== nb2.y);
+    resolveTurn(
+      g2,
+      { type: "move", dx: nb2.x - p2.x, dy: nb2.y - p2.y },
+      new Rng(1),
+    );
+    check(
+      "without levitation water blocks the step",
+      g2.player.x !== nb2.x || g2.player.y !== nb2.y,
+    );
   }
 
   // (b) levitation floats over a trap without springing it
@@ -1703,10 +2216,14 @@ console.log("\n[36] Levitation & Emberstep");
     g.map.tiles[idx(nb.x, nb.y, w)] = "trap";
     p.effects.levitate = 5;
     p.hp = p.maxHp;
-    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(1));
+    resolveTurn(
+      g,
+      { type: "move", dx: nb.x - p.x, dy: nb.y - p.y },
+      new Rng(1),
+    );
     check(
       "levitation floats over a trap unsprung",
-      g.player.hp === g.player.maxHp && tileAt(g.map, nb.x, nb.y) === "trap"
+      g.player.hp === g.player.maxHp && tileAt(g.map, nb.x, nb.y) === "trap",
     );
   }
 
@@ -1721,7 +2238,7 @@ console.log("\n[36] Levitation & Emberstep");
     resolveTurn(g, { type: "wait" }, new Rng(1));
     check(
       "emberstep: fire doesn't sear you",
-      (g.player.effects.burn ?? 0) === 0 && g.player.hp === g.player.maxHp
+      (g.player.effects.burn ?? 0) === 0 && g.player.hp === g.player.maxHp,
     );
   }
 
@@ -1738,7 +2255,8 @@ console.log("\n[36] Levitation & Emberstep");
     resolveTurn(g, { type: "wait" }, new Rng(1));
     check(
       "levitation lapsing over water shunts you to land",
-      tileAt(g.map, g.player.x, g.player.y) !== "water" && (g.player.x !== px || g.player.y !== py)
+      tileAt(g.map, g.player.x, g.player.y) !== "water" &&
+        (g.player.x !== px || g.player.y !== py),
     );
   }
 }
@@ -1767,10 +2285,16 @@ console.log("\n[37] Frostwalk / Shadow / Blink");
     const nb = adjFloor(g);
     g.map.tiles[idx(nb.x, nb.y, w)] = "water";
     p.effects.frostwalk = 5;
-    resolveTurn(g, { type: "move", dx: nb.x - p.x, dy: nb.y - p.y }, new Rng(1));
+    resolveTurn(
+      g,
+      { type: "move", dx: nb.x - p.x, dy: nb.y - p.y },
+      new Rng(1),
+    );
     check(
       "frostwalk freezes water into a walkable ice bridge",
-      tileAt(g.map, nb.x, nb.y) === "ice" && g.player.x === nb.x && g.player.y === nb.y
+      tileAt(g.map, nb.x, nb.y) === "ice" &&
+        g.player.x === nb.x &&
+        g.player.y === nb.y,
     );
   }
 
@@ -1784,16 +2308,30 @@ console.log("\n[37] Frostwalk / Shadow / Blink");
       p.baseLightRadius = 8;
       p.lightRadius = 8;
       const dir = p.x < w - 6 ? 1 : -1; // carve a clear line with room
-      for (let k = 1; k <= 4; k++) g.map.tiles[idx(p.x + dir * k, p.y, w)] = "floor";
+      for (let k = 1; k <= 4; k++)
+        g.map.tiles[idx(p.x + dir * k, p.y, w)] = "floor";
       g.monsters = [
-        { id: "m", defId: "goblin", x: p.x + dir * 3, y: p.y, hp: 20, state: "idle" },
+        {
+          id: "m",
+          defId: "goblin",
+          x: p.x + dir * 3,
+          y: p.y,
+          hp: 20,
+          state: "idle",
+        },
       ];
       if (shadowed) p.effects.shadow = 5;
       resolveTurn(g, { type: "wait" }, new Rng(1));
       return g.monsters.find((m) => m.id === "m")?.state ?? "gone";
     };
-    check("shadow keeps a monster 3 tiles off from spotting you", spotAt3(true) === "idle");
-    check("without shadow it spots you and gives chase", spotAt3(false) === "chase");
+    check(
+      "shadow keeps a monster 3 tiles off from spotting you",
+      spotAt3(true) === "idle",
+    );
+    check(
+      "without shadow it spots you and gives chase",
+      spotAt3(false) === "chase",
+    );
   }
 
   // (c) blink teleports to a chosen tile in range + spends the phial; invalid
@@ -1801,12 +2339,15 @@ console.log("\n[37] Frostwalk / Shadow / Blink");
   {
     const g = beginLevel("blink-c", 0, createPlayer());
     g.monsters = [];
-    const w = g.map.width;
     const p = g.player;
     p.bag.push({ defId: "p_blink", count: 1 });
     let dest: { x: number; y: number } | null = null;
     let wall: { x: number; y: number } | null = null;
-    for (let dy = -CONFIG.blinkRange; dy <= CONFIG.blinkRange && (!dest || !wall); dy++) {
+    for (
+      let dy = -CONFIG.blinkRange;
+      dy <= CONFIG.blinkRange && (!dest || !wall);
+      dy++
+    ) {
       for (let dx = -CONFIG.blinkRange; dx <= CONFIG.blinkRange; dx++) {
         if (dx === 0 && dy === 0) continue;
         const x = p.x + dx;
@@ -1816,22 +2357,30 @@ console.log("\n[37] Frostwalk / Shadow / Blink");
         if (!wall && tileAt(g.map, x, y) === "wall") wall = { x, y };
       }
     }
-    const r = resolveTurn(g, { type: "blinkTo", defId: "p_blink", x: dest!.x, y: dest!.y }, new Rng(1));
+    const r = resolveTurn(
+      g,
+      { type: "blinkTo", defId: "p_blink", x: dest!.x, y: dest!.y },
+      new Rng(1),
+    );
     check(
       "blink teleports to the chosen tile + spends the phial",
       r.tookTurn &&
         g.player.x === dest!.x &&
         g.player.y === dest!.y &&
-        !g.player.bag.some((b) => b.defId === "p_blink")
+        !g.player.bag.some((b) => b.defId === "p_blink"),
     );
 
     const g2 = beginLevel("blink-c", 0, createPlayer());
     g2.monsters = [];
     g2.player.bag.push({ defId: "p_blink", count: 1 });
-    const r2 = resolveTurn(g2, { type: "blinkTo", defId: "p_blink", x: wall!.x, y: wall!.y }, new Rng(1));
+    const r2 = resolveTurn(
+      g2,
+      { type: "blinkTo", defId: "p_blink", x: wall!.x, y: wall!.y },
+      new Rng(1),
+    );
     check(
       "blink into a wall is refused (no turn, phial kept)",
-      !r2.tookTurn && g2.player.bag.some((b) => b.defId === "p_blink")
+      !r2.tookTurn && g2.player.bag.some((b) => b.defId === "p_blink"),
     );
   }
 }
@@ -1861,16 +2410,30 @@ console.log("\n[38] Lose-interest (break contact to shake pursuers)");
     p.lightRadius = light;
     const nb = adjFloor(g);
     g.monsters = [
-      { id: "m", defId: "goblin", x: nb.x, y: nb.y, hp: 20, state: "chase", lostTurns: 0 },
+      {
+        id: "m",
+        defId: "goblin",
+        x: nb.x,
+        y: nb.y,
+        hp: 20,
+        state: "chase",
+        lostTurns: 0,
+      },
     ];
     for (let i = 0; i <= CONFIG.loseInterestTurns; i++)
       resolveTurn(g, { type: "wait" }, new Rng(1 + i));
     return g.monsters.find((m) => m.id === "m")?.state ?? "gone";
   };
   // pitch dark (light 0) → it can't detect you → gives up after the window
-  check("an alerted monster gives up once it can't detect you", chaseThenWait(0) === "idle");
+  check(
+    "an alerted monster gives up once it can't detect you",
+    chaseThenWait(0) === "idle",
+  );
   // still lit → keeps seeing you → stays on the hunt
-  check("it stays chasing while it can still see you", chaseThenWait(8) === "chase");
+  check(
+    "it stays chasing while it can still see you",
+    chaseThenWait(8) === "chase",
+  );
 }
 
 // ─── 39. Class active abilities ([q]) ───────────────────────────────────────
@@ -1901,14 +2464,15 @@ console.log("\n[39] Class abilities");
   check("cleave takes the turn", res.tookTurn);
   check(
     "cleave damages every adjacent monster",
-    g.monsters.length === hp0.length && g.monsters.every((m, i) => m.hp < hp0[i])
+    g.monsters.length === hp0.length &&
+      g.monsters.every((m, i) => m.hp < hp0[i]),
   );
   check("cleave sets the cooldown", g.player.abilityCooldown === 5);
   const hp1 = g.monsters.map((m) => m.hp);
   const res2 = resolveTurn(g, { type: "ability" }, new Rng(2));
   check(
     "ability refused while on cooldown (no turn, no damage)",
-    !res2.tookTurn && g.monsters.every((m, i) => m.hp === hp1[i])
+    !res2.tookTurn && g.monsters.every((m, i) => m.hp === hp1[i]),
   );
 
   // Rogue — Dash: leaps in a clear direction (player repositions).
@@ -1933,7 +2497,7 @@ console.log("\n[39] Class abilities");
         "dash moves the player along the aim",
         (gd.player.x !== x0 || gd.player.y !== y0) &&
           Math.sign(gd.player.x - x0) === dx &&
-          Math.sign(gd.player.y - y0) === dy
+          Math.sign(gd.player.y - y0) === dy,
       );
       check("dash sets the cooldown", gd.player.abilityCooldown === 4);
     } else {
@@ -1966,13 +2530,25 @@ console.log("\n[40] Run modifiers");
 {
   const base = LEVELS.find((l) => l.id === "blackwood")!;
   const dark = applyLevelMutators(base, ["dark"]);
-  check("dark cuts the light radius", dark.baseLightRadius === base.baseLightRadius - 2);
+  check(
+    "dark cuts the light radius",
+    dark.baseLightRadius === base.baseLightRadius - 2,
+  );
   const swarm = applyLevelMutators(base, ["swarm"]);
-  check("swarm raises the monster budget", swarm.monsterBudget > base.monsterBudget);
-  check("an unknown mutator id is a no-op", applyLevelMutators(base, ["nope"]) === base);
+  check(
+    "swarm raises the monster budget",
+    swarm.monsterBudget > base.monsterBudget,
+  );
+  check(
+    "an unknown mutator id is a no-op",
+    applyLevelMutators(base, ["nope"]) === base,
+  );
 
   check("no mutators → ×1 score", mutatorScoreMult([]) === 1);
-  check("mutators raise the score multiplier", mutatorScoreMult(["dark", "swarm"]) > 1);
+  check(
+    "mutators raise the score multiplier",
+    mutatorScoreMult(["dark", "swarm"]) > 1,
+  );
 
   const gp = createPlayer("warrior");
   applyPlayerMutators(gp, ["glass"]);
@@ -1983,15 +2559,21 @@ console.log("\n[40] Run modifiers");
   check("beginLevel records the active mutators", g.mutators.includes("dark"));
   check(
     "beginLevel applies the level mutator (dimmer light)",
-    g.player.baseLightRadius === base.baseLightRadius - 2
+    g.player.baseLightRadius === base.baseLightRadius - 2,
   );
   // a mutated level still generates a reachable exit/objective (guarantees hold)
-  const g2 = beginLevel("mut-seed", 0, createPlayer("warrior"), ["swarm", "treacherous", "hunted"]);
+  const g2 = beginLevel("mut-seed", 0, createPlayer("warrior"), [
+    "swarm",
+    "treacherous",
+    "hunted",
+  ]);
   check(
     "a heavily-mutated level still has the player on a floor tile",
-    isWalkable(g2.map, g2.player.x, g2.player.y)
+    isWalkable(g2.map, g2.player.x, g2.player.y),
   );
 }
 
-console.log(`\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`);
+console.log(
+  `\n${failures === 0 ? "ALL CHECKS PASSED ✓" : `${failures} CHECK(S) FAILED ✗`}`,
+);
 process.exit(failures === 0 ? 0 : 1);

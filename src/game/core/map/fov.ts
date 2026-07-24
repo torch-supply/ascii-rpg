@@ -11,11 +11,11 @@ export function computeVisible(
   map: GameMap,
   x: number,
   y: number,
-  radius: number
+  radius: number,
 ): number[] {
   const fov = new ROT.FOV.PreciseShadowcasting(
     (cx, cy) => isTransparent(map, cx, cy),
-    { topology: 8 }
+    { topology: 8 },
   );
   const out: number[] = [];
   fov.compute(x, y, radius, (fx, fy, _r, visibility) => {

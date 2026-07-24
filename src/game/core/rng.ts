@@ -14,7 +14,9 @@ export function seedMapGen(seed: number): void {
 }
 
 /** Weighted pick from the map-gen (global) stream. */
-export function mapWeighted(weights: Record<string, number>): string | undefined {
+export function mapWeighted(
+  weights: Record<string, number>,
+): string | undefined {
   return ROT.RNG.getWeightedValue(weights);
 }
 

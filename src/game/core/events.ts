@@ -21,10 +21,22 @@ export type GameEvent =
   | { kind: "trap" }
   // the player walked one tile
   | { kind: "step" }
-  | { kind: "projectile"; from: { x: number; y: number }; to: { x: number; y: number }; glyph: string }
+  | {
+      kind: "projectile";
+      from: { x: number; y: number };
+      to: { x: number; y: number };
+      glyph: string;
+    }
   // a damage number to float off a tile (toPlayer tints it red vs. gold;
   // an explicit `color` overrides that, e.g. green for poison ticks)
-  | { kind: "damage"; x: number; y: number; amount: number; toPlayer: boolean; color?: string }
+  | {
+      kind: "damage";
+      x: number;
+      y: number;
+      amount: number;
+      toPlayer: boolean;
+      color?: string;
+    }
   // a small heal (foraged berries / mote) — floats a green +N and plays a soft cue
   | { kind: "heal"; x: number; y: number; amount: number }
   // an expanding blast ring centered on a tile (firebomb / Ruin)

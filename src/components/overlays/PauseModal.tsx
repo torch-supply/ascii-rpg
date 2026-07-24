@@ -14,7 +14,9 @@ export default function PauseModal() {
         className="flex flex-col items-center gap-4 text-center"
         style={{ background: "rgba(16,16,20,0.94)", padding: "28px 34px" }}
       >
-        <h2 className="text-balance text-lg uppercase tracking-[0.3em] text-gold">Paused</h2>
+        <h2 className="text-balance text-lg uppercase tracking-[0.3em] text-gold">
+          Paused
+        </h2>
         <div className="flex flex-col gap-2">
           <MenuButton accent autoFocus onClick={() => s().setMode("playing")}>
             ▸ Resume <span className="text-xs opacity-70">(Esc)</span>

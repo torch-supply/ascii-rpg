@@ -46,7 +46,7 @@ export function clonePlayer(p: PlayerState): PlayerState {
 export function recomputeLight(p: PlayerState): void {
   const lit = p.hasTorch && p.torchFuel > 0;
   const src = p.torchId ? ITEMS[p.torchId] : null;
-  const torchBonus = lit ? src?.lightBonus ?? 0 : 0;
+  const torchBonus = lit ? (src?.lightBonus ?? 0) : 0;
   p.lightRadius = p.baseLightRadius + torchBonus;
 }
 
@@ -56,7 +56,7 @@ export function recomputeFOV(state: GameState): void {
     state.map,
     state.player.x,
     state.player.y,
-    state.player.lightRadius
+    state.player.lightRadius,
   );
   state.visible = vis;
   const explored = new Set(state.explored);
@@ -73,7 +73,7 @@ export function beginLevel(
   masterSeed: string,
   levelIndex: number,
   player: PlayerState,
-  mutators: string[] = []
+  mutators: string[] = [],
 ): GameState {
   // Run modifiers reshape the level's config (light/spawns/traps/budget/…)
   // BEFORE generation, so the generator stays a pure function of the config and

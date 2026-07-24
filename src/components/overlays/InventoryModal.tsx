@@ -30,13 +30,26 @@ export default function InventoryModal() {
       >
         <div className="flex flex-col gap-[18px] px-8 py-7 text-sm">
           <div className="flex flex-col items-center gap-[11px]">
-            <h2 className="m-0 text-lg font-semibold uppercase tracking-[0.34em] text-gold" style={{ textIndent: "0.34em" }}>
+            <h2
+              className="m-0 text-lg font-semibold uppercase tracking-[0.34em] text-gold"
+              style={{ textIndent: "0.34em" }}
+            >
               Inventory
             </h2>
             <div className="flex w-[300px] max-w-full items-center gap-3">
-              <span className="h-px flex-1" style={{ background: "linear-gradient(to right,transparent,#ffb347)" }} />
+              <span
+                className="h-px flex-1"
+                style={{
+                  background: "linear-gradient(to right,transparent,#ffb347)",
+                }}
+              />
               <span className="text-xs text-[#ffb347]">◈</span>
-              <span className="h-px flex-1" style={{ background: "linear-gradient(to left,transparent,#ffb347)" }} />
+              <span
+                className="h-px flex-1"
+                style={{
+                  background: "linear-gradient(to left,transparent,#ffb347)",
+                }}
+              />
             </div>
           </div>
 
@@ -57,7 +70,9 @@ export default function InventoryModal() {
                 </div>
                 {p.hasTorch && (
                   <div className="flex justify-between border border-[#3a3222] bg-[#100d06] px-3 py-1.5">
-                    <span className="text-gold">( {torch?.name ?? "Torch"}</span>
+                    <span className="text-gold">
+                      ( {torch?.name ?? "Torch"}
+                    </span>
                     <span style={{ color: "#c79a2f" }}>{p.torchFuel} fuel</span>
                   </div>
                 )}
@@ -65,7 +80,9 @@ export default function InventoryModal() {
               <div className="mt-0.5 flex flex-col gap-1.5">
                 <div className="flex justify-between px-0.5">
                   <span className="text-[#8a8a96]">Class</span>
-                  <span style={{ color: cls.color }}>{cls.glyph} {cls.name}</span>
+                  <span style={{ color: cls.color }}>
+                    {cls.glyph} {cls.name}
+                  </span>
                 </div>
                 <div className="flex justify-between px-0.5">
                   <span className="text-[#8a8a96]">Gold</span>
@@ -80,9 +97,13 @@ export default function InventoryModal() {
 
             {/* ── RIGHT: bag ── */}
             <div className="flex flex-col gap-2.5">
-              <div className="text-[11px] uppercase tracking-[0.28em] text-[#6f7078]">Bag</div>
+              <div className="text-[11px] uppercase tracking-[0.28em] text-[#6f7078]">
+                Bag
+              </div>
               {p.bag.length === 0 ? (
-                <p className="text-[13px] text-edge">Empty. Walk over items to pick them up.</p>
+                <p className="text-[13px] text-edge">
+                  Empty. Walk over items to pick them up.
+                </p>
               ) : (
                 <div className="flex flex-col gap-[7px]">
                   {p.bag.map((b, i) => {
@@ -91,8 +112,8 @@ export default function InventoryModal() {
                       def.category === "potion"
                         ? "use"
                         : def.category === "weapon" || def.category === "armor"
-                        ? "equip"
-                        : "";
+                          ? "equip"
+                          : "";
                     return (
                       <div
                         key={`${b.defId}-${i}`}
@@ -102,22 +123,33 @@ export default function InventoryModal() {
                           <span className="text-magic">[{i + 1}]</span>{" "}
                           <span style={{ color: def.color }}>{def.glyph}</span>{" "}
                           <span className="text-fg">{def.name}</span>
-                          {b.count > 1 && <span className="text-[#6f7078]"> ×{b.count}</span>}
+                          {b.count > 1 && (
+                            <span className="text-[#6f7078]"> ×{b.count}</span>
+                          )}
                         </span>
-                        {kind && <span className="text-[12px] text-[#5a5a64]">{kind}</span>}
+                        {kind && (
+                          <span className="text-[12px] text-[#5a5a64]">
+                            {kind}
+                          </span>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               )}
               <p className="mt-1 text-[12px] leading-[1.5] text-[#5a5a64]">
-                Walk over items to pick them up. Numbers use or equip; upgrades swap automatically.
+                Walk over items to pick them up. Numbers use or equip; upgrades
+                swap automatically.
               </p>
             </div>
           </div>
 
           <div className="flex justify-center border-t border-[#23232b] pt-4">
-            <MenuButton accent autoFocus onClick={() => gameStore.getState().setMode("playing")}>
+            <MenuButton
+              accent
+              autoFocus
+              onClick={() => gameStore.getState().setMode("playing")}
+            >
               ▸ Close <span className="text-xs opacity-70">(i / Esc)</span>
             </MenuButton>
           </div>

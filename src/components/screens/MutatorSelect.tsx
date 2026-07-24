@@ -23,12 +23,18 @@ export default function MutatorSelect() {
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)" }}
+        style={{
+          background:
+            "radial-gradient(52% 48% at 50% 38%, rgba(255,140,45,0.08), transparent 66%)",
+        }}
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)" }}
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 54%, rgba(0,0,0,0.6) 100%)",
+        }}
       />
 
       <BoxFrame
@@ -38,13 +44,16 @@ export default function MutatorSelect() {
         style={{ background: "rgba(9,9,12,0.5)", padding: "44px 52px" }}
       >
         <div className="flex flex-col items-center gap-4">
-          <h2 className="m-0 text-2xl font-semibold uppercase tracking-[0.3em] text-gold" style={{ textIndent: "0.3em" }}>
+          <h2
+            className="m-0 text-2xl font-semibold uppercase tracking-[0.3em] text-gold"
+            style={{ textIndent: "0.3em" }}
+          >
             Choose Your Trials
           </h2>
           <AccentDivider accent="#ffb347" />
           <p className="m-0 max-w-md text-balance text-[13px] leading-relaxed text-dim">
-            Optional challenges that reshape the whole run — each raises your final
-            score. Take as many as you dare, or none at all.
+            Optional challenges that reshape the whole run — each raises your
+            final score. Take as many as you dare, or none at all.
           </p>
         </div>
 
@@ -56,14 +65,20 @@ export default function MutatorSelect() {
                 key={m.id}
                 onClick={() => gameStore.getState().toggleMutator(m.id)}
                 className={`pointer-events-auto flex w-full items-baseline gap-3 border px-4 py-2.5 text-left transition-colors ${
-                  on ? "border-gold bg-gold/10" : "border-[#2c2c36] bg-[#0c0c10] hover:border-gold/60"
+                  on
+                    ? "border-gold bg-gold/10"
+                    : "border-[#2c2c36] bg-[#0c0c10] hover:border-gold/60"
                 }`}
               >
                 <span className="text-magic">[{i + 1}]</span>
-                <span className={`shrink-0 ${on ? "text-gold" : "text-edge"}`}>{on ? "◉" : "○"}</span>
+                <span className={`shrink-0 ${on ? "text-gold" : "text-edge"}`}>
+                  {on ? "◉" : "○"}
+                </span>
                 <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                   <span className={on ? "text-gold" : "text-fg"}>{m.name}</span>
-                  <span className="text-[11px] text-[#6f7078]">— {m.blurb}</span>
+                  <span className="text-[11px] text-[#6f7078]">
+                    — {m.blurb}
+                  </span>
                 </span>
                 <span className="ml-auto shrink-0 text-[11px] text-[#6f7078]">
                   +{Math.round(m.scoreMult * 100)}%
@@ -79,7 +94,11 @@ export default function MutatorSelect() {
         </div>
 
         <div className="flex flex-col items-center gap-3">
-          <MenuButton accent autoFocus onClick={() => gameStore.getState().beginRun()}>
+          <MenuButton
+            accent
+            autoFocus
+            onClick={() => gameStore.getState().beginRun()}
+          >
             ▸ Begin
             {selected.length > 0 && (
               <span className="ml-1 text-xs text-gold/80">
@@ -88,7 +107,9 @@ export default function MutatorSelect() {
             )}
             <span className="ml-1 text-xs opacity-70">(Enter)</span>
           </MenuButton>
-          <MenuButton onClick={() => gameStore.getState().setMode("classSelect")}>
+          <MenuButton
+            onClick={() => gameStore.getState().setMode("classSelect")}
+          >
             ◂ Back <span className="ml-1 text-xs text-dim">(Esc)</span>
           </MenuButton>
         </div>

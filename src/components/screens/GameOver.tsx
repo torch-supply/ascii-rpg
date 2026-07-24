@@ -20,12 +20,18 @@ export default function GameOver() {
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(56% 52% at 50% 40%, rgba(150,60,60,0.1), transparent 68%)" }}
+        style={{
+          background:
+            "radial-gradient(56% 52% at 50% 40%, rgba(150,60,60,0.1), transparent 68%)",
+        }}
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(ellipse at center, transparent 48%, rgba(0,0,0,0.72) 100%)" }}
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 48%, rgba(0,0,0,0.72) 100%)",
+        }}
       />
 
       <BoxFrame
@@ -34,10 +40,17 @@ export default function GameOver() {
         className="narr-rise z-10 flex w-[min(92vw,44rem)] flex-col items-center gap-7"
         style={{ background: "rgba(9,9,12,0.55)", padding: "46px 56px" }}
       >
-        <CinematicTitle title={GAMEOVER.title} gradient={GAMEOVER.gradient} accent="#ff5a5a" />
+        <CinematicTitle
+          title={GAMEOVER.title}
+          gradient={GAMEOVER.gradient}
+          accent="#ff5a5a"
+        />
 
         <div className="narr-rise" style={{ animationDelay: "220ms" }}>
-          <Prose text={GAMEOVER.body} className="max-w-lg text-sm leading-relaxed text-fg" />
+          <Prose
+            text={GAMEOVER.body}
+            className="max-w-lg text-sm leading-relaxed text-fg"
+          />
         </div>
 
         {game && (
@@ -54,7 +67,11 @@ export default function GameOver() {
         </div>
 
         <div className="narr-rise" style={{ animationDelay: "540ms" }}>
-          <MenuButton accent autoFocus onClick={() => gameStore.getState().quitToTitle()}>
+          <MenuButton
+            accent
+            autoFocus
+            onClick={() => gameStore.getState().quitToTitle()}
+          >
             ▸ Return to title
             <span className="ml-1 text-xs opacity-70">(Enter)</span>
           </MenuButton>

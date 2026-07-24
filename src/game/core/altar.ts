@@ -44,24 +44,31 @@ export const ALTAR_KINDS = Object.keys(ALTAR_OFFERS) as AltarKind[];
 /** Whether the player can pay an altar's price right now (+ a reason if not). */
 export function canAffordAltar(
   state: GameState,
-  kind: AltarKind
+  kind: AltarKind,
 ): { ok: boolean; reason?: string } {
   const p = state.player;
   switch (kind) {
     case "vigor":
-      return p.coins >= 40 ? { ok: true } : { ok: false, reason: "You lack the 40 gold." };
+      return p.coins >= 40
+        ? { ok: true }
+        : { ok: false, reason: "You lack the 40 gold." };
     case "warblood":
       return p.maxHp > 6
         ? { ok: true }
         : { ok: false, reason: "You are too frail to give more blood." };
     case "hoard":
-      return p.hp > 8 ? { ok: true } : { ok: false, reason: "You haven't the blood to spare." };
+      return p.hp > 8
+        ? { ok: true }
+        : { ok: false, reason: "You haven't the blood to spare." };
   }
 }
 
 /** Pay the cost + grant the boon, marking the altar spent. Returns a log line,
  * or null if it couldn't be afforded (a no-op). */
-export function applyAltar(state: GameState, altar: AltarInstance): string | null {
+export function applyAltar(
+  state: GameState,
+  altar: AltarInstance,
+): string | null {
   if (altar.used) return null;
   if (!canAffordAltar(state, altar.kind).ok) return null;
   const p = state.player;
