@@ -69,7 +69,7 @@ export interface AtmosphereDef {
   alpha: number;
 }
 export const BIOME_ATMOSPHERE: Partial<Record<Biome, AtmosphereDef>> = {
-  marsh: { kind: 'mist', color: '#7fa07a', count: 6, alpha: 0.05 }, // bog vapor
+  marsh: { kind: 'mist', color: '#8fb488', count: 7, alpha: 0.09 }, // bog vapor
   crypt: { kind: 'mist', color: '#9098a8', count: 6, alpha: 0.05 }, // cold haze
   mountain: { kind: 'snow', color: '#e6ecff', count: 80, alpha: 0.55 },
   throne: { kind: 'embers', color: '#ff8040', count: 44, alpha: 0.6 },

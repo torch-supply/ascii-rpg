@@ -801,6 +801,61 @@ function tickFires(state: GameState, events: GameEvent[]) {
   if (lit) msg(events, "Fire races across the oil!");
 }
 
+/**
+ * Flooding set-piece: on levels with `LevelConfig.flood`, water rises one ring
+ * every `interval` turns (from `startTurn`, up to `maxSteps` rings). It spreads
+ * only into `floodable` floor (never the protected dry spine) and never onto an
+ * occupied tile, so no one is stranded on impassable footing and the objective
+ * stays reachable. Levitation glides over it; Rimewalk freezes it to ice.
+ */
+function tickFlood(state: GameState, events: GameEvent[]) {
+  const cfg = LEVELS[state.currentLevel].flood;
+  if (!cfg || !state.floodable || state.floodable.length === 0) return;
+  const step = state.floodStep ?? 0;
+  if (state.turnCount < cfg.startTurn) return;
+  if ((state.turnCount - cfg.startTurn) % cfg.interval !== 0) return;
+  if (step >= cfg.maxSteps) return;
+
+  const map = state.map;
+  const w = map.width;
+  const floodable = new Set(state.floodable);
+  const occupied = new Set<number>([idx(state.player.x, state.player.y, w)]);
+  for (const m of state.monsters) occupied.add(idx(m.x, m.y, w));
+
+  let rose = false;
+  if (step === 0) {
+    for (const s of state.floodSeeds ?? []) {
+      if (!occupied.has(s) && map.tiles[s] === "floor") {
+        map.tiles[s] = "water";
+        rose = true;
+      }
+    }
+    if (rose) msg(events, "Black water begins to seep up through the crypt.");
+  } else {
+    const front: number[] = [];
+    for (let i = 0; i < map.tiles.length; i++) {
+      if (map.tiles[i] !== "water") continue;
+      const cx = i % w;
+      const cy = Math.floor(i / w);
+      for (const [dx, dy] of DIRS) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (!inBounds(map, nx, ny)) continue;
+        const ni = idx(nx, ny, w);
+        if (floodable.has(ni) && map.tiles[ni] === "floor" && !occupied.has(ni)) {
+          front.push(ni);
+        }
+      }
+    }
+    for (const ni of front) {
+      map.tiles[ni] = "water";
+      rose = true;
+    }
+    if (rose) msg(events, "The water rises higher.");
+  }
+  state.floodStep = step + 1;
+}
+
 /** Tick every monster's debuffs: DoT bites, timers count down, and any monster
  * that dies to the damage is reaped (awarding coins/loot/kills). */
 function tickMonsterStatus(state: GameState, rng: Rng, events: GameEvent[]) {
@@ -1634,6 +1689,7 @@ export function resolveTurn(
   tickFires(state, events); // fire sears whoever stands in it, refreshing burn
   tickEffects(state, events); // then the player's DoTs/buffs tick
   tickMonsterStatus(state, rng, events); // and every monster's debuffs tick
+  tickFlood(state, events); // the crypt fills — water creeps into the floodable set
   recomputeFOV(state);
   senseTraps(state);
 

@@ -48,6 +48,15 @@ export const LEVELS: LevelConfig[] = [
     title: "The Blackwood",
     biome: "forest",
     palette: { wall: "#3f7a45", floor: "#2f4326", accent: "#7fdfff" },
+    // a boggy marsh patch soaks through part of the wood (cosmetic sub-biome)
+    subBiome: {
+      biome: "marsh",
+      palette: { wall: "#5f6b3a", floor: "#39402b", accent: "#8fd0a0" },
+      threshold: 0.05,
+      hazards: [{ type: "water", density: 0.16 }], // boggy pools to weave around
+    },
+    // a hidden cache behind a cracked wall — break in for the reward
+    secretVault: { loot: [{ itemId: "p_gheal" }, { itemId: "c_gold" }] },
     mapWidth: 48,
     mapHeight: 30,
     generator: "cellular",
@@ -146,6 +155,14 @@ export const LEVELS: LevelConfig[] = [
     title: "The Iron Gate",
     biome: "castle",
     palette: { wall: "#6a5c6e", floor: "#2e2833", accent: "#d24a4a" },
+    // a scorched hollow — oil-soaked floor; one firebomb turns it into an
+    // inferno (an Emberstep region). Borrows the throne biome for its ember look.
+    subBiome: {
+      biome: "throne",
+      palette: { wall: "#4a3a34", floor: "#2a221e", accent: "#ff8c3a" },
+      threshold: 0.12,
+      hazards: [{ type: "oil", density: 0.32 }],
+    },
     mapWidth: 52,
     mapHeight: 32,
     generator: "digger",
@@ -181,18 +198,18 @@ export const LEVELS: LevelConfig[] = [
     title: "The Great Hall",
     biome: "castle",
     palette: { wall: "#5c4b70", floor: "#342d40", accent: "#c04cff" },
-    mapWidth: 56,
-    mapHeight: 34,
+    mapWidth: 72,
+    mapHeight: 46,
     generator: "digger",
-    monsterBudget: 14,
+    monsterBudget: 15,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "zombie", weight: 3 },
       { monsterId: "ghoul", weight: 4 },
       { monsterId: "wraith", weight: 2 },
     ],
-    turnLimit: 375,
-    itemDropCount: 4,
+    turnLimit: 560,
+    itemDropCount: 6,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_gheal", weight: 2 },
@@ -200,13 +217,13 @@ export const LEVELS: LevelConfig[] = [
     ],
     coinRichness: 1.4,
     baseLightRadius: 5,
-    trapCount: 4,
-    oilCount: 12,
-    crackedWallCount: 4,
-    doorCount: 3,
-    forageCount: 1,
+    trapCount: 5,
+    oilCount: 16,
+    crackedWallCount: 6,
+    doorCount: 5,
+    forageCount: 4,
     eliteChance: 0.15,
-    altarCount: 2,
+    altarCount: 3,
     goal: { type: "collectX", questTag: "sigil", count: 3 },
     narration:
       "The three dusk-sigils lock into the crypt door and it swings inward on a breath of grave-air. Down there, the last kings hid the one blade that can still cut the night: the Sunblade.",
@@ -217,6 +234,15 @@ export const LEVELS: LevelConfig[] = [
     title: "The Sunken Crypt",
     biome: "crypt",
     palette: { wall: "#6a6a5a", floor: "#262620", accent: "#9fe0b0" },
+    // a bone-walled catacomb maze fills one wing of the crypt (structural contrast)
+    subBiome: {
+      biome: "crypt",
+      palette: { wall: "#585044", floor: "#1c1c17", accent: "#9fe0b0" },
+      layout: "maze",
+      size: 0.36,
+    },
+    // the sunken crypt lives up to its name — it floods as you hunt the Sunblade
+    flood: { startTurn: 18, interval: 5, maxSteps: 16 },
     mapWidth: 54,
     mapHeight: 34,
     generator: "digger",
@@ -235,7 +261,7 @@ export const LEVELS: LevelConfig[] = [
       { itemId: "i_lantern", weight: 1 },
     ],
     coinRichness: 1.5,
-    baseLightRadius: 3,
+    baseLightRadius: 4,
     trapCount: 8,
     forageCount: 2,
     oilCount: 10,
@@ -276,7 +302,7 @@ export const LEVELS: LevelConfig[] = [
     waterCount: 12,
     eliteChance: 0.2,
     altarCount: 1,
-    goal: { type: "survive", turns: 34 },
+    goal: { type: "survive", turns: 50 },
     narration:
       "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",
     shopTier: 8,

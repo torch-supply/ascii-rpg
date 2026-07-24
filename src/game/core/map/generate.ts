@@ -2,10 +2,12 @@ import * as ROT from "rot-js";
 import type {
   AltarInstance,
   GameMap,
+  GeneratorKind,
   ItemInstance,
   LevelConfig,
   MonsterInstance,
   Pos,
+  SubBiomeSpec,
   TileType,
 } from "@/game/core/types";
 import { idx, manhattan, isWalkable } from "@/game/core/grid";
@@ -22,6 +24,8 @@ export interface LevelData {
   items: ItemInstance[];
   altars: AltarInstance[];
   playerStart: Pos;
+  floodable?: number[];
+  floodSeeds?: number[];
 }
 
 function itemIdByQuestTag(tag: string): string {
@@ -31,27 +35,375 @@ function itemIdByQuestTag(tag: string): string {
   throw new Error(`No item registered for quest tag: ${tag}`);
 }
 
-function buildTiles(config: LevelConfig): TileType[] {
-  const { mapWidth: w, mapHeight: h } = config;
+/** Generate a floor/wall grid of size w×h with `kind` (no border forcing).
+ * value 0 = floor. Used for whole levels and for sub-region wings. */
+function genGrid(kind: GeneratorKind, w: number, h: number): TileType[] {
   const tiles: TileType[] = new Array(w * h).fill("wall");
-
-  if (config.generator === "cellular") {
+  const paint = (x: number, y: number, value: number) => {
+    if (value === 0) tiles[idx(x, y, w)] = "floor";
+  };
+  if (kind === "cellular") {
     const gen = new ROT.Map.Cellular(w, h);
     gen.randomize(0.5);
     for (let i = 0; i < 4; i++) gen.create();
-    // connect() ensures every empty (value 0) cell is reachable.
-    gen.connect((x, y, value) => {
-      if (value === 0) tiles[idx(x, y, w)] = "floor";
-    }, 0);
+    gen.connect((x, y, v) => paint(x, y, v), 0); // ensures every empty cell is reachable
   } else {
     const gen =
-      config.generator === "uniform"
+      kind === "uniform"
         ? new ROT.Map.Uniform(w, h, {})
-        : new ROT.Map.Digger(w, h);
-    gen.create((x, y, value) => {
-      if (value === 0) tiles[idx(x, y, w)] = "floor";
-    });
+        : kind === "rogue"
+          ? new ROT.Map.Rogue(w, h, {})
+          : kind === "maze"
+            ? new ROT.Map.DividedMaze(w, h)
+            : new ROT.Map.Digger(w, h);
+    gen.create(paint);
   }
+  return tiles;
+}
+
+/**
+ * Carve a sub-biome region + tag it with the sub-biome's biome/palette. Two
+ * shapes: an organic Simplex-noise blob (default, cosmetic) or a rectangular
+ * wing whose STRUCTURE is a secondary generator (`spec.layout`, e.g. a maze).
+ * Deterministic (draws from the already-seeded map-gen RNG). Any optional
+ * hazard terrain is scattered after. All of this runs BEFORE the connectivity
+ * pass, so a severed pocket is simply abandoned/sealed downstream.
+ */
+function carveSubBiome(map: GameMap, config: LevelConfig) {
+  const spec = config.subBiome;
+  if (!spec) return;
+  if (spec.layout) carveSubBiomeWing(map, config, spec);
+  else carveSubBiomeBlob(map, config, spec);
+  scatterRegionHazards(map, spec);
+}
+
+/** Organic noise-blob region (cosmetic — never touches `tiles`). */
+function carveSubBiomeBlob(map: GameMap, config: LevelConfig, spec: SubBiomeSpec) {
+  const w = map.width;
+  const h = map.height;
+  const scale = spec.scale ?? 0.13;
+  const thresh = spec.threshold ?? 0.2;
+  const noise = new ROT.Noise.Simplex();
+
+  const hot = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (noise.get(x * scale, y * scale) > thresh) hot[y * w + x] = 1;
+    }
+  }
+
+  // largest connected component of the noise blob (4-connected)
+  const seen = new Uint8Array(w * h);
+  let best: number[] = [];
+  const dirs = [-w, w, -1, 1];
+  for (let s = 0; s < w * h; s++) {
+    if (!hot[s] || seen[s]) continue;
+    const comp: number[] = [];
+    const stack = [s];
+    seen[s] = 1;
+    while (stack.length) {
+      const cur = stack.pop()!;
+      comp.push(cur);
+      const cx = cur % w;
+      for (const d of dirs) {
+        const ni = cur + d;
+        if (ni < 0 || ni >= w * h || seen[ni] || !hot[ni]) continue;
+        if (d === -1 && cx === 0) continue; // no row-edge wrap
+        if (d === 1 && cx === w - 1) continue;
+        seen[ni] = 1;
+        stack.push(ni);
+      }
+    }
+    if (comp.length > best.length) best = comp;
+  }
+  if (best.length === 0) return;
+
+  const region = new Array(w * h).fill(0);
+  for (const i of best) region[i] = 1;
+  map.region = region;
+  map.regionBiome = [config.biome, spec.biome];
+  map.regionPalette = [config.palette, spec.palette];
+}
+
+/** A rectangular wing whose layout is a secondary generator (e.g. a maze),
+ * stamped into the map and bridged to the main area by a central corridor. */
+function carveSubBiomeWing(map: GameMap, config: LevelConfig, spec: SubBiomeSpec) {
+  const w = map.width;
+  const h = map.height;
+  const frac = spec.size ?? 0.42;
+  const rw = Math.max(8, Math.min(w - 3, Math.floor(w * frac)));
+  const rh = Math.max(8, Math.min(h - 3, Math.floor(h * frac)));
+  const rx = Math.max(1, w - 1 - rw); // against the right edge…
+  const ry = Math.max(1, Math.floor((h - rh) / 2)); // …vertically centered
+  const grid = genGrid(spec.layout!, rw, rh);
+
+  const region = new Array(w * h).fill(0);
+  for (let yy = 0; yy < rh; yy++) {
+    for (let xx = 0; xx < rw; xx++) {
+      const mx = rx + xx;
+      const my = ry + yy;
+      if (mx <= 0 || my <= 0 || mx >= w - 1 || my >= h - 1) continue; // keep border
+      const mi = my * w + mx;
+      map.tiles[mi] = grid[yy * rw + xx];
+      region[mi] = 1;
+    }
+  }
+  map.region = region;
+  map.regionBiome = [config.biome, spec.biome];
+  map.regionPalette = [config.palette, spec.palette];
+
+  // Arteries through the wing so the perfect maze has escape routes/loops (not
+  // just dead-ends) and stays navigable. A horizontal passage that also bridges
+  // LEFT into the main map, plus a vertical passage — together a crossroads that
+  // breaks the labyrinth into quadrants you can retreat through.
+  const by = Math.min(h - 2, Math.max(1, ry + Math.floor(rh / 2)));
+  for (let x = rx; x < rx + rw && x < w - 1; x++) map.tiles[by * w + x] = "floor";
+  for (let x = rx - 1; x >= 1; x--) {
+    if (map.tiles[by * w + x] === "floor") break; // reached the main map
+    map.tiles[by * w + x] = "floor";
+  }
+  const bx = Math.min(w - 2, Math.max(1, rx + Math.floor(rw / 2)));
+  for (let y = ry; y < ry + rh && y < h - 1; y++) map.tiles[y * w + bx] = "floor";
+}
+
+// Default hazard kit per sub-biome, used when a `subBiome` omits `hazards`.
+// Each region's terrain expresses its theme (and rewards a matching counter):
+// marsh water → Levitation/Rimewalk; scorched oil → Emberstep; frost ice → …
+const BIOME_HAZARDS: Partial<Record<string, { type: TileType; density?: number }[]>> = {
+  marsh: [{ type: "water", density: 0.16 }],
+  throne: [{ type: "oil", density: 0.3 }], // scorched hollow
+  mountain: [{ type: "ice", density: 0.25 }], // frozen patch
+};
+
+/** Scatter the region's hazard kit as small blobs confined to the tagged region
+ * — a bog's water pools, a scorched hollow's oil, etc. Each hazard's density is
+ * relative to the floor still free after the previous ones. Pre-connectivity
+ * (like `placeWater`), so severed pockets are sealed downstream. */
+function scatterRegionHazards(map: GameMap, spec: SubBiomeSpec) {
+  if (!map.region) return;
+  const hazards = spec.hazards ?? BIOME_HAZARDS[spec.biome] ?? [];
+  if (hazards.length === 0) return;
+  const w = map.width;
+  const region = map.region;
+
+  for (const hz of hazards) {
+    const regionFloors: number[] = [];
+    for (let i = 0; i < region.length; i++) {
+      if (region[i] === 1 && map.tiles[i] === "floor") regionFloors.push(i);
+    }
+    if (regionFloors.length === 0) break;
+    const target = Math.round(regionFloors.length * (hz.density ?? 0.15));
+    let placed = 0;
+    let guard = 0;
+    while (placed < target && guard++ < 1000) {
+      let cur = regionFloors[mapInt(0, regionFloors.length - 1)];
+      const blob = mapInt(2, 5);
+      for (let b = 0; b < blob && placed < target; b++) {
+        if (map.tiles[cur] === "floor") {
+          map.tiles[cur] = hz.type;
+          placed++;
+        }
+        const cx = cur % w;
+        const cy = Math.floor(cur / w);
+        const dirs = [
+          [0, -1],
+          [0, 1],
+          [-1, 0],
+          [1, 0],
+        ];
+        for (let k = dirs.length - 1; k > 0; k--) {
+          const j = mapInt(0, k);
+          [dirs[k], dirs[j]] = [dirs[j], dirs[k]];
+        }
+        let moved = false;
+        for (const [dx, dy] of dirs) {
+          const ni = (cy + dy) * w + (cx + dx);
+          if (ni >= 0 && ni < region.length && region[ni] === 1 && map.tiles[ni] === "floor") {
+            cur = ni;
+            moved = true;
+            break;
+          }
+        }
+        if (!moved) break;
+      }
+    }
+  }
+}
+
+/**
+ * Carve a hidden vault: a fully-walled room reachable ONLY through a single
+ * cracked wall, holding the level's `secretVault.loot`. Because `sealUnreachable`
+ * treats cracked walls as passable, the vault survives the seal (kept, but
+ * physically gated until the player blasts/bashes in). The room is a separate
+ * floor component, so normal placement never spills into it. Skipped silently
+ * if no valid all-wall spot is found on this seed.
+ */
+function placeSecretVault(
+  config: LevelConfig,
+  map: GameMap,
+  floors: number[],
+  occupied: Set<number>,
+  items: ItemInstance[],
+  levelIndex: number
+) {
+  const spec = config.secretVault;
+  if (!spec || floors.length === 0) return;
+  const w = map.width;
+  const h = map.height;
+  const tiles = map.tiles;
+  const inB = (x: number, y: number) => x > 0 && y > 0 && x < w - 1 && y < h - 1;
+
+  const shuffle = <T,>(arr: T[]) => {
+    for (let k = arr.length - 1; k > 0; k--) {
+      const j = mapInt(0, k);
+      [arr[k], arr[j]] = [arr[j], arr[k]];
+    }
+    return arr;
+  };
+
+  const anchors = shuffle(floors.slice());
+  for (const ai of anchors) {
+    const ax = ai % w;
+    const ay = Math.floor(ai / w);
+    for (const [dx, dy] of shuffle([
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ])) {
+      const px = dy; // perpendicular
+      const py = dx;
+      const crackX = ax + dx;
+      const crackY = ay + dy;
+      if (!inB(crackX, crackY) || tiles[crackY * w + crackX] !== "wall") continue;
+      const crackI = crackY * w + crackX;
+
+      // a 3-deep × 3-wide room just past the crack; every tile must be wall
+      const room: number[] = [];
+      let ok = true;
+      for (let s = 0; s < 3 && ok; s++) {
+        for (let lat = -1; lat <= 1; lat++) {
+          const tx = ax + (2 + s) * dx + lat * px;
+          const ty = ay + (2 + s) * dy + lat * py;
+          if (!inB(tx, ty) || tiles[ty * w + tx] !== "wall") {
+            ok = false;
+            break;
+          }
+          room.push(ty * w + tx);
+        }
+      }
+      if (!ok) continue;
+
+      // enclosure: the ONLY opening may be the crack — every neighbor of a room
+      // tile (and of the crack) that isn't room/crack must be solid wall
+      const roomSet = new Set(room);
+      const nbrs = [
+        [0, -1],
+        [0, 1],
+        [-1, 0],
+        [1, 0],
+      ];
+      for (const ri of room) {
+        const rx = ri % w;
+        const ry = Math.floor(ri / w);
+        for (const [ndx, ndy] of nbrs) {
+          const nx = rx + ndx;
+          const ny = ry + ndy;
+          const ni = ny * w + nx;
+          if (roomSet.has(ni) || ni === crackI) continue;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h || tiles[ni] !== "wall") {
+            ok = false;
+            break;
+          }
+        }
+        if (!ok) break;
+      }
+      if (!ok) continue;
+      // the crack's perpendicular sides must be wall (a clean 1-tile breach)
+      for (const [ndx, ndy] of [
+        [px, py],
+        [-px, -py],
+      ]) {
+        const nx = crackX + ndx;
+        const ny = crackY + ndy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || tiles[ny * w + nx] !== "wall") {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+
+      // carve the vault + drop its loot near the center
+      tiles[crackI] = "crackedWall";
+      for (const ri of room) tiles[ri] = "floor";
+      let n = 0;
+      for (const entry of spec.loot) {
+        const cell = room[Math.min(room.length - 1, Math.floor(room.length / 2) + n)];
+        occupied.add(cell);
+        const def = ITEMS[entry.itemId];
+        const inst: ItemInstance = {
+          id: `it${levelIndex}_v${n}`,
+          defId: entry.itemId,
+          x: cell % w,
+          y: Math.floor(cell / w),
+        };
+        if (def.category === "coin") {
+          const base = mapInt(CONFIG.coinPile.min, CONFIG.coinPile.max);
+          inst.value = Math.max(1, Math.round(base * config.coinRichness * 3)); // a cache
+        }
+        items.push(inst);
+        n++;
+      }
+      return;
+    }
+  }
+}
+
+/**
+ * Plan a level's flood: which floor tiles MAY submerge. A protected dry "spine"
+ * — the shortest walkable path from the player to each objective, dilated one
+ * tile for room to fight — never floods, so the goal stays reachable the whole
+ * time. Everything else reachable is floodable; seeds (the tiles farthest from
+ * the player) are the low corners that rise first.
+ */
+function computeFloodPlan(
+  map: GameMap,
+  from: Pos,
+  objectives: Pos[]
+): { floodable: number[]; seeds: number[] } {
+  const w = map.width;
+  const protectedSet = new Set<number>();
+  for (const o of objectives) {
+    for (const i of walkablePath(map, from, o)) protectedSet.add(i);
+  }
+  const dirs = [-w, w, -1, 1];
+  for (const i of [...protectedSet]) {
+    const cx = i % w;
+    for (const d of dirs) {
+      if (d === -1 && cx === 0) continue;
+      if (d === 1 && cx === w - 1) continue;
+      const ni = i + d;
+      if (ni >= 0 && ni < map.tiles.length) protectedSet.add(ni);
+    }
+  }
+  const floodable: number[] = [];
+  for (const i of walkableReachable(map, from)) {
+    if (!protectedSet.has(i) && map.tiles[i] === "floor") floodable.push(i);
+  }
+  const seeds = floodable
+    .slice()
+    .sort(
+      (a, b) =>
+        manhattan(b % w, Math.floor(b / w), from.x, from.y) -
+        manhattan(a % w, Math.floor(a / w), from.x, from.y)
+    )
+    .slice(0, 3);
+  return { floodable, seeds };
+}
+
+function buildTiles(config: LevelConfig): TileType[] {
+  const { mapWidth: w, mapHeight: h } = config;
+  const tiles = genGrid(config.generator, w, h);
 
   // Force a solid wall border regardless of generator.
   for (let x = 0; x < w; x++) {
@@ -693,6 +1045,7 @@ export function generateLevel(
   const tiles = buildTiles(config);
   placeWater(config, tiles, w, h); // before component calc — seals off nothing reachable
   const map: GameMap = { width: w, height: h, tiles };
+  carveSubBiome(map, config); // cosmetic region tag; doesn't touch tiles
 
   // Only ever place onto the largest connected region so nothing is unreachable.
   const floors = largestFloorComponent(map);
@@ -841,6 +1194,9 @@ export function generateLevel(
   // Risk/reward shrines on open floor.
   const altars = placeAltars(config, floors, occupied, w, levelIndex);
 
+  // Hidden vault: a sealed room reachable only by breaking a cracked wall.
+  placeSecretVault(config, map, floors, occupied, items, levelIndex);
+
   // Fairness: guarantee every walkable tile is reachable without crossing a
   // trap — traps stay an avoidable risk, never a forced toll on the only path.
   ensureTrapsAvoidable(map, playerStart);
@@ -848,5 +1204,18 @@ export function generateLevel(
   // No teasing dead pockets: seal every open tile the player can't reach.
   sealUnreachable(map, playerStart);
 
-  return { map, monsters, items, altars, playerStart };
+  // Flood plan (levels with a flood set-piece) — computed on the final geometry.
+  let floodable: number[] | undefined;
+  let floodSeeds: number[] | undefined;
+  if (config.flood) {
+    const objectives: Pos[] = [];
+    if (map.exit) objectives.push(map.exit);
+    for (const m of monsters) if (m.isGoalTarget) objectives.push({ x: m.x, y: m.y });
+    for (const it of items) if (it.questTag) objectives.push({ x: it.x, y: it.y });
+    const plan = computeFloodPlan(map, playerStart, objectives);
+    floodable = plan.floodable;
+    floodSeeds = plan.seeds;
+  }
+
+  return { map, monsters, items, altars, playerStart, floodable, floodSeeds };
 }
