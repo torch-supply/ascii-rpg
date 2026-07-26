@@ -5,6 +5,7 @@ import type {
   GameState,
   PlayerAction,
   AltarInstance,
+  LoreInstance,
   TurnResult,
   Biome,
 } from "@/game/core/types";
@@ -46,6 +47,7 @@ export type UIMode =
   | "shop"
   | "targeting"
   | "altar"
+  | "lore"
   | "gameover"
   | "victory";
 
@@ -95,6 +97,8 @@ export interface GameStore {
   targeting: TargetingData | null;
   /** the shrine being contemplated (null unless mode === "altar") */
   activeAltar: AltarInstance | null;
+  /** the lore prop being read (null unless mode === "lore") */
+  activeLore: LoreInstance | null;
   /** stats captured when a run ends (shown on victory / game-over) */
   runResult: RunResult | null;
   /** global SFX toggle (persisted across sessions) */
@@ -131,6 +135,9 @@ export interface GameStore {
   // altar / shrine interaction
   acceptAltar: () => void;
   declineAltar: () => void;
+
+  // lore prop interaction (read + dismiss)
+  closeLore: () => void;
 
   // the turn-based LoopDriver entry point (the seam)
   submitAction: (action: PlayerAction) => void;
@@ -331,6 +338,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     shopPurchases: {},
     targeting: null,
     activeAltar: null,
+    activeLore: null,
     runResult: null,
     soundOn: true,
     pendingClassId: "warrior",
@@ -444,7 +452,20 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const altar = game.altars.find(
         (a) => !a.used && a.x === game.player.x && a.y === game.player.y,
       );
-      if (altar) set({ mode: "altar", activeAltar: altar });
+      if (altar) {
+        set({ mode: "altar", activeAltar: altar });
+        return;
+      }
+      // Stepping onto an unread lore prop opens it (and marks it read so it
+      // won't reopen) — same "read + walk on" flow as an altar's decline.
+      const lore = game.lore?.find(
+        (l) => !l.read && l.x === game.player.x && l.y === game.player.y,
+      );
+      if (lore) {
+        lore.read = true;
+        set({ game: { ...game }, mode: "lore", activeLore: lore });
+        persist();
+      }
     },
 
     continueNarration: () => {
@@ -782,6 +803,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
 
     declineAltar: () => set({ mode: "playing", activeAltar: null }),
 
+    closeLore: () => set({ mode: "playing", activeLore: null }),
+
     setMode: (mode: UIMode) => set({ mode }),
 
     toggleSound: () => {
@@ -850,6 +873,9 @@ export const gameStore = createStore<GameStore>((set, get) => {
           } else if (mode === "altar") {
             playSfx("uiBack");
             get().declineAltar();
+          } else if (mode === "lore") {
+            playSfx("uiBack");
+            get().closeLore();
           } else if (
             mode === "paused" ||
             mode === "inventory" ||
@@ -905,6 +931,9 @@ export const gameStore = createStore<GameStore>((set, get) => {
             get().confirmTarget(); // its own shoot/blast SFX
           } else if (mode === "altar") {
             get().acceptAltar(); // its own chime
+          } else if (mode === "lore") {
+            playSfx("uiBack");
+            get().closeLore();
           } else if (mode === "gameover" || mode === "victory") {
             playSfx("uiSelect");
             get().quitToTitle();

@@ -25,7 +25,8 @@ import { MONSTERS, ELITE } from "@/content/monsters";
 import { ITEMS, sellPrice } from "@/content/items";
 import { giveItem, equipWeapon } from "@/game/core/inventory";
 import { CONFIG } from "@/content/config";
-import type { GameMap, Pos } from "@/game/core/types";
+import { beatAmbient, ambientForBiome } from "@/render/lighting";
+import type { GameMap, Pos, TileType } from "@/game/core/types";
 
 let failures = 0;
 function check(name: string, cond: boolean, extra = "") {
@@ -1590,6 +1591,8 @@ console.log("\n[28] No unreachable open areas");
     "forage",
     "ice",
     "glowcap",
+    "bramble",
+    "sporeVent",
     "crackedWall",
   ]);
   const dirs = [
@@ -2694,6 +2697,8 @@ console.log("\n[43] Every placed item is reachable (incl. gated loot)");
     "forage",
     "ice",
     "glowcap",
+    "bramble", // walkable (snags you)
+    "sporeVent", // walkable (gasses you)
     "crackedWall", // breakable
   ]);
   const dirs = [
@@ -2738,6 +2743,379 @@ console.log("\n[43] Every placed item is reachable (incl. gated loot)");
     `no item is stranded unreachable (${checkedItems} items across ${seeds.length}×${LEVELS.length})`,
     stranded === 0,
     `(${stranded} unreachable — a hut/vault sealed off its loot?)`,
+  );
+}
+
+// ─── 44. Chasm — Levitation glides it, but Rimewalk can't bridge a void ──────
+// A chasm is like water (impassable, shove-kill, levitate-glide) EXCEPT it can't
+// be frozen into an ice bridge — only Levitation crosses it.
+console.log("\n[44] Chasm: Levitation glides, Rimewalk cannot bridge");
+{
+  // hand-built arena: player on floor, chasm to the east, water to the west
+  const setup = () => {
+    const g = beginLevel("chasm-test", 0, createPlayer());
+    g.monsters = [];
+    g.player.hp = g.player.maxHp = 1e9;
+    const w = g.map.width;
+    const px = 5;
+    const py = 5;
+    g.player.x = px;
+    g.player.y = py;
+    g.map.tiles[py * w + px] = "floor";
+    g.map.tiles[py * w + (px + 1)] = "chasm";
+    g.map.tiles[py * w + (px - 1)] = "water";
+    return g;
+  };
+  const w = setup().map.width;
+
+  const gl = setup();
+  gl.player.effects.levitate = 5;
+  resolveTurn(gl, { type: "move", dx: 1, dy: 0 }, new Rng(1));
+  check("Levitation glides onto a chasm", gl.player.x === 6);
+
+  const gr = setup();
+  gr.player.effects.frostwalk = 5;
+  resolveTurn(gr, { type: "move", dx: 1, dy: 0 }, new Rng(1));
+  check(
+    "Rimewalk cannot bridge a chasm (stays put, void unfrozen)",
+    gr.player.x === 5 && gr.map.tiles[5 * w + 6] === "chasm",
+  );
+
+  const gw = setup();
+  gw.player.effects.frostwalk = 5;
+  resolveTurn(gw, { type: "move", dx: -1, dy: 0 }, new Rng(1));
+  check(
+    "Rimewalk still freezes water into an ice bridge (control)",
+    gw.player.x === 4 && gw.map.tiles[5 * w + 4] === "ice",
+  );
+}
+
+// ─── 45. Shover knockback — a gargoyle can hurl you off a ledge ──────────────
+// A `knockback` monster's melee shoves you back a tile: into a chasm/water = a
+// fall (a death), onto open ground = just thrown back, and Levitation saves you.
+console.log("\n[45] Shover: knocked into the void = a fall (unless floating)");
+{
+  const px = 6;
+  const py = 6;
+  // gargoyle to the EAST, `behind` tile to the WEST (the shove target)
+  const arena = (behind: TileType, levit = false) => {
+    const g = beginLevel("brink-seed", 0, createPlayer());
+    g.player.hp = g.player.maxHp = 40;
+    if (levit) g.player.effects.levitate = 5;
+    const w = g.map.width;
+    g.player.x = px;
+    g.player.y = py;
+    g.map.tiles[py * w + px] = "floor";
+    g.map.tiles[py * w + (px + 1)] = "floor";
+    g.map.tiles[py * w + (px - 1)] = behind;
+    g.monsters = [
+      { id: "gg", defId: "gargoyle", x: px + 1, y: py, hp: 22, state: "chase" },
+    ];
+    resolveTurn(g, { type: "wait" }, new Rng(1));
+    return g;
+  };
+  check(
+    "shoved off a ledge into a chasm = a fall (dead)",
+    arena("chasm").player.hp <= 0,
+  );
+  const shoved = arena("floor");
+  check(
+    "on open ground the shove just throws you back (survive)",
+    shoved.player.hp > 0 && shoved.player.x === px - 1,
+  );
+  const flew = arena("chasm", true);
+  check(
+    "Levitation saves you — you drift out over the void instead of falling",
+    flew.player.hp > 0 && flew.player.x === px - 1,
+  );
+}
+
+// ─── 46. Bramble — thorns bleed you on entry; fire clears the thicket ────────
+// Stepping onto bramble snags you (a bleed); Levitation floats over it; and a
+// fire tile beside bramble spreads into it, burning the thicket to bare floor.
+console.log("\n[46] Bramble: snags/bleeds you; fire clears a path");
+{
+  const px = 6;
+  const py = 6;
+  const setup = () => {
+    const g = beginLevel("bramble-test", 0, createPlayer());
+    g.monsters = [];
+    g.player.hp = g.player.maxHp = 40;
+    const w = g.map.width;
+    g.player.x = px;
+    g.player.y = py;
+    g.map.tiles[py * w + px] = "floor";
+    g.map.tiles[py * w + (px + 1)] = "bramble";
+    return { g, w };
+  };
+
+  const { g: gb } = setup();
+  resolveTurn(gb, { type: "move", dx: 1, dy: 0 }, new Rng(1));
+  check(
+    "stepping into bramble snags you (bleeding) and you stand on it",
+    gb.player.x === px + 1 && (gb.player.effects.bleed ?? 0) > 0,
+  );
+
+  const { g: gl } = setup();
+  gl.player.effects.levitate = 5;
+  resolveTurn(gl, { type: "move", dx: 1, dy: 0 }, new Rng(1));
+  check(
+    "Levitation floats over the thorns — no bleed",
+    gl.player.x === px + 1 && (gl.player.effects.bleed ?? 0) <= 0,
+  );
+
+  // fire adjacent to bramble spreads into it and burns it down to floor
+  const { g: gf, w } = setup();
+  gf.map.tiles[py * w + (px - 2)] = "floor";
+  gf.player.x = px - 2; // stand clear of the fire
+  gf.player.y = py;
+  gf.fireTiles.push({ i: py * w + px, life: CONFIG.fire.duration });
+  resolveTurn(gf, { type: "wait" }, new Rng(1));
+  check(
+    "fire spreads into adjacent bramble, clearing it to floor",
+    gf.map.tiles[py * w + (px + 1)] === "floor" &&
+      gf.fireTiles.some((t) => t.i === py * w + (px + 1)),
+  );
+}
+
+// ─── 47. Spore vents — a bounded, drifting poison haze that poisons occupants ─
+// A `sporeVent` seeps gas around itself each turn; standing in the haze poisons
+// you, and the cloud stays bounded to a small pocket (never fills the map).
+console.log("\n[47] Spore vent: seeps a bounded poison haze");
+{
+  const px = 8;
+  const py = 8;
+  const setup = () => {
+    const g = beginLevel("spore-test", 0, createPlayer());
+    g.monsters = [];
+    g.player.hp = g.player.maxHp = 40;
+    const w = g.map.width;
+    // carve a clear room so the haze has open floor to fill
+    for (let y = py - 3; y <= py + 3; y++)
+      for (let x = px - 3; x <= px + 3; x++) g.map.tiles[y * w + x] = "floor";
+    g.map.tiles[py * w + px] = "sporeVent";
+    g.player.x = px + 1; // stand on a tile the vent will gas
+    g.player.y = py;
+    return { g, w };
+  };
+
+  const { g } = setup();
+  resolveTurn(g, { type: "wait" }, new Rng(1)); // turn 1: the haze wells up
+  check("a vent emits a poison haze", g.gasTiles.length > 0);
+  resolveTurn(g, { type: "wait" }, new Rng(2)); // turn 2: standing in it now bites
+  check("standing in the haze poisons you", (g.player.effects.poison ?? 0) > 0);
+
+  // run many turns — the cloud must stay bounded (never engulf the whole room)
+  for (let t = 0; t < 20; t++) resolveTurn(g, { type: "wait" }, new Rng(t + 2));
+  check(
+    "the haze stays bounded to a small pocket (does not fill the map)",
+    g.gasTiles.length <= 12,
+  );
+
+  // levitation gives NO protection from airborne spores (unlike a chasm/water)
+  const { g: gv } = setup();
+  gv.player.effects.levitate = 9;
+  resolveTurn(gv, { type: "wait" }, new Rng(1));
+  resolveTurn(gv, { type: "wait" }, new Rng(2));
+  check(
+    "Levitation does NOT protect against the airborne haze",
+    (gv.player.effects.poison ?? 0) > 0,
+  );
+}
+
+// ─── 48. Lore props — placed, distinct, and reachable ───────────────────────
+// Environmental-storytelling props sit on walkable floor, carry distinct text
+// per level, and are always reachable (they live on the main component, so
+// `sealUnreachable` never walls them off — a lore glyph you can't reach is dead).
+console.log("\n[48] Lore props: placed, distinct, reachable");
+{
+  const seeds = ["u1", "u2", "abc", "777"];
+  let checkedLevels = 0;
+  let placedOk = true;
+  let walkableOk = true;
+  let reachableOk = true;
+  let distinctOk = true;
+  for (let li = 0; li < LEVELS.length; li++) {
+    const want = LEVELS[li].loreCount ?? 0;
+    if (want <= 0) continue;
+    for (const seed of seeds) {
+      const g = beginLevel(seed, li, createPlayer());
+      checkedLevels++;
+      const lore = g.lore ?? [];
+      if (lore.length === 0 || lore.length > want) placedOk = false;
+      const titles = new Set<string>();
+      const from = { x: g.player.x, y: g.player.y };
+      for (const l of lore) {
+        if (!isWalkable(g.map, l.x, l.y)) walkableOk = false;
+        if (bfsPath(g.map, from, { x: l.x, y: l.y }) === null)
+          reachableOk = false;
+        titles.add(l.title);
+      }
+      if (titles.size !== lore.length) distinctOk = false; // no dupes in a level
+    }
+  }
+  check(`lore props placed on ${checkedLevels} lore levels`, checkedLevels > 0);
+  check("lore count is within the level's loreCount (and non-empty)", placedOk);
+  check("every lore prop sits on a walkable tile", walkableOk);
+  check("every lore prop is reachable from the player", reachableOk);
+  check("lore fragments are distinct within a level", distinctOk);
+}
+
+// ─── 49. Ambient wisps — harmless wildlife: flee, never attack, disperse ─────
+// A will-o'-wisp (behavior "ambient") is placed outside the combat budget,
+// flees when you approach, deals no damage, and winks out harmlessly if caught
+// (no combat / coins / kill credit).
+console.log("\n[49] Ambient wisps: placed, flee, harmless, disperse on touch");
+{
+  const bwi = LEVELS.findIndex((l) => l.id === "blackwood");
+  let hasWisps = false;
+  for (const seed of ["a", "b", "c"]) {
+    const g = beginLevel(seed, bwi, createPlayer());
+    if (g.monsters.some((m) => MONSTERS[m.defId].behavior === "ambient"))
+      hasWisps = true;
+  }
+  check("the Blackwood spawns ambient wisps", hasWisps);
+
+  const px = 8;
+  const py = 8;
+  const arena = () => {
+    const g = beginLevel("wisp-seed", 0, createPlayer());
+    g.player.hp = g.player.maxHp = 40;
+    const w = g.map.width;
+    g.player.x = px;
+    g.player.y = py;
+    for (let y = py - 4; y <= py + 4; y++)
+      for (let x = px - 4; x <= px + 4; x++) g.map.tiles[y * w + x] = "floor";
+    return { g, w };
+  };
+
+  // flee: a wisp within its shy radius never closes to attack range
+  {
+    const { g } = arena();
+    g.monsters = [
+      { id: "wsp", defId: "wisp", x: px + 2, y: py, hp: 1, state: "idle" },
+    ];
+    let minDist = 2;
+    for (let t = 0; t < 5; t++) {
+      resolveTurn(g, { type: "wait" }, new Rng(t + 1));
+      const wsp = g.monsters[0];
+      if (wsp)
+        minDist = Math.min(
+          minDist,
+          Math.abs(wsp.x - g.player.x) + Math.abs(wsp.y - g.player.y),
+        );
+    }
+    check("a wisp flees — never closes to attack range", minDist >= 2);
+    check("a wisp deals no damage (player unharmed)", g.player.hp === 40);
+  }
+
+  // disperse: bumping a wisp removes it — no damage, coins, or kill credit
+  {
+    const { g } = arena();
+    g.monsters = [
+      { id: "wsp", defId: "wisp", x: px + 1, y: py, hp: 1, state: "idle" },
+    ];
+    const coins0 = g.player.coins;
+    const kills0 = g.levelKills;
+    resolveTurn(g, { type: "move", dx: 1, dy: 0 }, new Rng(1));
+    check("bumping a wisp disperses it (removed)", g.monsters.length === 0);
+    check("dispersing a wisp is harmless (no hp loss)", g.player.hp === 40);
+    check(
+      "dispersing a wisp gives no coins / kill credit",
+      g.player.coins === coins0 && g.levelKills === kills0,
+    );
+    check("bumping a wisp does not move the player onto it", g.player.x === px);
+  }
+}
+
+// ─── 50. Gallery generator — niche offerings + varied collapsed pit ──────────
+// The Antechamber's `gallery` places "offering" caches in niche DEAD-ENDS (incl.
+// cracked-wall-gated ones), and drops a ragged COLLAPSED chasm pit on ~half of
+// seeds (varied, and — being kept interior — it never severs the hall; [28]/[43]
+// already guarantee full reachability, so here we assert the gallery-specific
+// bits: offerings reach the niches, and the pit genuinely varies run to run).
+console.log("\n[50] Gallery: niche offerings + varied collapsed pit");
+{
+  const ai = LEVELS.findIndex((l) => l.id === "antechamber");
+  const deadEndOpen = (map: GameMap, i: number) => {
+    const w = map.width;
+    const passish = (t: TileType) =>
+      t === "floor" ||
+      t === "doorOpen" ||
+      t === "exit" ||
+      t === "oil" ||
+      t === "forage" ||
+      t === "ice" ||
+      t === "crackedWall";
+    let n = 0;
+    if (passish(map.tiles[i - w])) n++;
+    if (passish(map.tiles[i + w])) n++;
+    if (passish(map.tiles[i - 1])) n++;
+    if (passish(map.tiles[i + 1])) n++;
+    return n;
+  };
+  const seeds = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  let pitSeeds = 0;
+  let anyOfferingInNiche = false;
+  for (const seed of seeds) {
+    const g = beginLevel(seed, ai, createPlayer());
+    if (g.map.tiles.some((t) => t === "chasm")) pitSeeds++;
+    // at least one item tucked in a dead-end nook = an offering landed in a niche
+    const w = g.map.width;
+    for (const it of g.items) {
+      if (deadEndOpen(g.map, idx(it.x, it.y, w)) <= 1) {
+        anyOfferingInNiche = true;
+        break;
+      }
+    }
+  }
+  check("gallery tucks offerings into niche dead-ends", anyOfferingInNiche);
+  check(
+    "the collapsed pit varies per seed (present on some, absent on others)",
+    pitSeeds > 0 && pitSeeds < seeds.length,
+  );
+}
+
+// ─── 51. Dawn/dusk lighting beat (pure ambient transform) ────────────────────
+// `beatAmbient` warms+brightens ("dawn") or dims+cools ("dusk") the ambient as
+// the beat intensity `g` rises 0→1; `g=0` is a no-op. Render-side but pure.
+console.log("\n[51] Dawn/dusk lighting beat: warms vs. dims by intensity");
+{
+  const throne = ambientForBiome("throne");
+  const castle = ambientForBiome("castle");
+
+  const same = (a: [number, number, number], b: [number, number, number]) =>
+    a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+  check(
+    "g=0 leaves the ambient unchanged (dawn)",
+    same(beatAmbient("dawn", 0, throne).center, throne.center),
+  );
+
+  const dawn = beatAmbient("dawn", 1, throne).center;
+  check(
+    "dawn brightens every channel toward daylight",
+    dawn[0] > throne.center[0] &&
+      dawn[1] > throne.center[1] &&
+      dawn[2] > throne.center[2],
+  );
+
+  const dusk = beatAmbient("dusk", 1, castle).center;
+  check(
+    "dusk dims the overall ambient",
+    dusk[0] < castle.center[0] && dusk[1] < castle.center[1],
+  );
+  // "holds the blue" → blue is dimmed LESS than red (reads colder as it darkens)
+  const rRatio = dusk[0] / castle.center[0];
+  const bRatio = dusk[2] / castle.center[2];
+  check("dusk holds the blue (cools as it darkens)", bRatio > rRatio);
+
+  // the two boss levels are actually wired to the beats
+  const t = LEVELS.find((l) => l.id === "throne_of_dusk");
+  const a = LEVELS.find((l) => l.id === "antechamber");
+  check("the Throne is wired to the dawn beat", t?.lightingBeat === "dawn");
+  check(
+    "the Antechamber is wired to the dusk beat",
+    a?.lightingBeat === "dusk",
   );
 }
 

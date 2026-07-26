@@ -16,6 +16,7 @@ import { createDisplay } from "./Display";
 import {
   AMBIENT_ENTITY,
   ambientForBiome,
+  beatAmbient,
   type BiomeAmbient,
   computeLightMap,
   type ExtraLight,
@@ -24,8 +25,10 @@ import {
 import {
   BIOME_ATMOSPHERE,
   WEATHER_ATMOSPHERE,
+  CHASM_BG,
   CRACKED_WALL_CRACK_DIM,
   dim,
+  GAS_COLOR,
   FOG_DIM,
   PLAYER_COLOR,
   PLAYER_GLYPH,
@@ -612,27 +615,35 @@ export class CanvasRenderer {
     this.ambByRegion = (map.regionBiome ?? [level.biome]).map(ambientForBiome);
 
     // ── dynamic set-piece lighting beats (modulate the ambient) ──
-    // Throne: the fire FLARES as the lich makes his last stand (phase 3, ≤1/3
-    // HP) — the hall brightens + warms in a pulse, cresting with the danger
-    // music. Crypt: the braziers GUTTER as the flood drowns it — ambient dims
-    // and cools the higher the water rises.
-    if (level.biome === "throne") {
+    // dawn/dusk shift the hall as you close the quest. They use DIFFERENT
+    // triggers because the two levels are shaped differently:
+    //  • DAWN (Throne) — keyed to Malachar's remaining HP. His fight IS the
+    //    level (an 80-HP multi-phase brawl → victory), so the sky rekindling as
+    //    his HP drains plays out over a long, visible arc, cresting on the kill.
+    //  • DUSK (Antechamber) — keyed to how far you've ADVANCED toward the Herald
+    //    (the gate to the throne), NOT his HP. The Herald dies fast and the level
+    //    then transitions, so an HP-keyed dusk would only bottom out for the one
+    //    instant before you leave. Distance-keyed, the dread instead deepens
+    //    across the whole approach and peaks as you reach him — actually felt.
+    if (level.lightingBeat === "dawn" || level.lightingBeat === "dusk") {
       const boss = state.monsters.find((m) => MONSTERS[m.defId].isBoss);
-      if (boss && boss.hp / MONSTERS[boss.defId].maxHp <= 1 / 3) {
-        const p = this.reduceMotion
-          ? 0.8
-          : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.006));
-        const warm = (
-          c: [number, number, number],
-        ): [number, number, number] => [
-          Math.min(255, c[0] + 100 * p),
-          Math.min(255, c[1] + 42 * p),
-          Math.max(0, c[2] - 12 * p),
-        ];
-        this.ambByRegion = this.ambByRegion.map((a) => ({
-          center: warm(a.center),
-          edge: warm(a.edge),
-        }));
+      if (boss) {
+        let prog: number;
+        if (level.lightingBeat === "dawn") {
+          prog = 1 - Math.max(0, boss.hp) / MONSTERS[boss.defId].maxHp;
+        } else {
+          const start = state.entryPlayer ?? player; // this level's spawn tile
+          const full = Math.abs(start.x - boss.x) + Math.abs(start.y - boss.y);
+          const cur = Math.abs(player.x - boss.x) + Math.abs(player.y - boss.y);
+          prog = full > 0 ? clamp(1 - cur / full, 0, 1) : 0;
+        }
+        const pulse = this.reduceMotion
+          ? 1
+          : 0.85 + 0.15 * Math.abs(Math.sin(now * 0.006));
+        const g = prog * pulse;
+        this.ambByRegion = this.ambByRegion.map((a) =>
+          beatAmbient(level.lightingBeat!, g, a),
+        );
       }
     } else if (level.flood && state.floodStep) {
       const t = Math.min(
@@ -694,7 +705,11 @@ export class CanvasRenderer {
           else if (rBiome === "marsh" && t === "wall")
             color = dim(color, 0.9 + 0.1 * Math.sin(now * 0.0035 + i * 0.6));
         }
-        this.display.draw(sx, sy, glyph, color, null);
+        // a chasm is a blank glyph — a faint cool bg tint marks the void so it
+        // reads as a hole, not the pure-black off-map dark (dimmer in memory)
+        const bg =
+          t === "chasm" ? (isVis ? CHASM_BG : dim(CHASM_BG, FOG_DIM)) : null;
+        this.display.draw(sx, sy, glyph, color, bg);
       }
     }
 
@@ -713,6 +728,22 @@ export class CanvasRenderer {
         !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? "*" : "▴";
       const base = f.life <= 1 ? "#ff5a3c" : "#ff9d3c";
       this.display.draw(sx, sy, glyph, dim(base, flick), null);
+    }
+
+    // drifting poison haze (spore vents) — a faint toxic shimmer over terrain
+    for (const g of state.gasTiles) {
+      if (!visible.has(g.i)) continue;
+      const gx = g.i % map.width;
+      const gy = Math.floor(g.i / map.width);
+      const sx = gx - camX;
+      const sy = gy - camY;
+      if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
+      const swirl = this.reduceMotion
+        ? 0.7
+        : 0.5 + 0.28 * Math.abs(Math.sin(now * 0.006 + g.i * 0.7));
+      const glyph =
+        !this.reduceMotion && Math.sin(now * 0.008 + g.i) > 0 ? "∴" : "°";
+      this.display.draw(sx, sy, glyph, dim(GAS_COLOR, swirl), null);
     }
 
     // lich barrage telegraph: tiles about to be hit by dark fire next turn —
@@ -744,6 +775,26 @@ export class CanvasRenderer {
         ? this.litVis(base, i, effR, true)
         : dim(base, FOG_DIM);
       this.display.draw(sx, sy, "‡", color, null);
+    }
+
+    // lore props (drawn from memory too — a curiosity you can return to). Gold
+    // while unread, dimmed once read.
+    for (const l of state.lore ?? []) {
+      const i = idx(l.x, l.y, map.width);
+      const isVis = visible.has(i);
+      if (!isVis && !explored.has(i)) continue;
+      const sx = l.x - camX;
+      const sy = l.y - camY;
+      if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
+      const base = l.read
+        ? "#6a6a66"
+        : l.kind === "remains"
+          ? "#b0a890"
+          : "#cbb488";
+      const color = isVis
+        ? this.litVis(base, i, effR, true)
+        : dim(base, FOG_DIM);
+      this.display.draw(sx, sy, "¶", color, null);
     }
 
     // items (only where currently visible)
@@ -939,6 +990,17 @@ export class CanvasRenderer {
       glow(fx, fy, "#ff8a30", cw * 2.6, 0.15 * flick);
     }
 
+    // poison haze — a soft sickly-green wash over each spore cloud
+    for (const g of state.gasTiles) {
+      if (!visible.has(g.i)) continue;
+      const gx = ((g.i % w) - camX + 0.5) * cw;
+      const gy = (Math.floor(g.i / w) - camY + 0.5) * ch;
+      const swirl = this.reduceMotion
+        ? 0.7
+        : 0.5 + 0.3 * Math.abs(Math.sin(now * 0.006 + g.i * 0.7));
+      glow(gx, gy, GAS_COLOR, cw * 2.2, 0.12 * swirl);
+    }
+
     // bioluminescent fungi — soft teal halos, each gently pulsing
     for (const i of visible) {
       if (state.map.tiles[i] !== "glowcap") continue;
@@ -948,6 +1010,18 @@ export class CanvasRenderer {
         ? 0.85
         : 0.66 + 0.34 * Math.abs(Math.sin(now * 0.006 + i));
       glow(gx, gy, "#4fd6c0", cw * 1.9, 0.09 * pulse);
+    }
+
+    // ambient wisps — a small drifting pale halo (the lure through the wood)
+    for (const m of state.monsters) {
+      if (MONSTERS[m.defId]?.behavior !== "ambient") continue;
+      if (!visible.has(idx(m.x, m.y, w))) continue;
+      const sx = (m.x - camX + 0.5) * cw;
+      const sy = (m.y - camY + 0.5) * ch;
+      const pulse = this.reduceMotion
+        ? 0.8
+        : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.009 + m.x * 1.7 + m.y));
+      glow(sx, sy, "#9fe8d0", cw * 1.7, 0.12 * pulse);
     }
 
     // the Sunblade on the ground — a gently pulsing gold radiance

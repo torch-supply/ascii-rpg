@@ -127,7 +127,19 @@ function clearReachLevelInvincible() {
   g.player.maxHp = 1e9;
   const exit = g.map.exit!;
   let guard = 0;
-  while (st().mode === "playing" && guard++ < 5000) {
+  while (guard++ < 5000) {
+    const mode = st().mode;
+    // A POI modal (lore / altar) can open mid-walk — a real player just dismisses
+    // it and carries on, so don't mistake it for the level-clear transition.
+    if (mode === "lore") {
+      st().closeLore();
+      continue;
+    }
+    if (mode === "altar") {
+      st().declineAltar();
+      continue;
+    }
+    if (mode !== "playing") break; // the level-clear flow (narration/shop) fired
     const cur = st().game!;
     const step = stepToward(cur, exit);
     if (!step || (step.dx === 0 && step.dy === 0)) {
@@ -399,6 +411,60 @@ console.log("\n[S9] Save/resume roundtrip");
       st().game!.turnCount === snap.turn &&
       st().game!.player.hp === snap.hp,
   );
+}
+
+// ─── S10. Lore prop interaction: step on → read → dismiss → stays read ──────
+console.log("\n[S10] Lore prop: step onto → read modal → dismiss → stays read");
+{
+  await bootToPlay("store-seed");
+  const g = st().game!;
+  const w = g.map.width;
+  const l = g.lore[0]; // level 0 (the Pit) carries lore props
+  check("(setup) the level has a lore prop", !!l);
+  if (l) {
+    // stand on a floor neighbor of the prop and clear the way, then step onto it
+    const nbrs = [
+      [0, -1],
+      [0, 1],
+      [-1, 0],
+      [1, 0],
+    ];
+    let dir: { dx: number; dy: number } | null = null;
+    for (const [dx, dy] of nbrs) {
+      const nx = l.x + dx;
+      const ny = l.y + dy;
+      if (g.map.tiles[idx(nx, ny, w)] === "floor") {
+        g.player.x = nx;
+        g.player.y = ny;
+        dir = { dx: -dx, dy: -dy }; // from the neighbor back onto the prop
+        break;
+      }
+    }
+    // clear any monsters off the prop + stand tiles so the step isn't a bump
+    g.monsters = g.monsters.filter(
+      (m) =>
+        !(m.x === l.x && m.y === l.y) &&
+        !(m.x === g.player.x && m.y === g.player.y),
+    );
+    check("(setup) found a floor approach to the prop", dir !== null);
+
+    st().submitAction({ type: "move", dx: dir!.dx, dy: dir!.dy });
+    check("stepping onto the prop opens the lore modal", st().mode === "lore");
+    check("the prop is now marked read", g.lore[0].read === true);
+    check(
+      "the active lore is the prop stepped on",
+      st().activeLore?.id === l.id,
+    );
+
+    st().closeLore();
+    check("dismissing lore returns to play", st().mode === "playing");
+
+    // stepping onto it again does NOT reopen (already read)
+    g.player.x = l.x - dir!.dx;
+    g.player.y = l.y - dir!.dy;
+    st().submitAction({ type: "move", dx: dir!.dx, dy: dir!.dy });
+    check("a read prop does not reopen", st().mode === "playing");
+  }
 }
 
 console.log(

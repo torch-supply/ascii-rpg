@@ -7,7 +7,14 @@ export const CONFIG = {
   startingWeaponId: "w_dagger",
   startingArmorId: "a_rags",
   /** how far a coin pile's value can swing, before coinRichness multiplier */
-  coinPile: { min: 5, max: 15 },
+  coinPile: { min: 3, max: 9 },
+  /** GLOBAL economy dials — scale a level's ground-loot and forage counts at
+   * generation (applied on top of any run-modifier tweak). Lower = leaner: the
+   * shop becomes a real "what can I afford?" choice and HP attrition bites, so a
+   * careless run costs a life. Tune these (with `coinPile` + monster
+   * `coinReward`) rather than editing every level. */
+  lootScale: 0.67, // ground item drops (gold piles + potions/gear on the floor)
+  forageScale: 0.5, // wild heal tiles — halved so healing isn't free-flowing
   /** keep monsters from spawning right on top of the player */
   minSpawnDistanceFromPlayer: 6,
   /** message log lines kept in memory */
@@ -89,10 +96,22 @@ export const CONFIG = {
     /** per-tile chance to catch fire within the blast footprint */
     spawnChance: 0.6,
   },
+  /** how long the bleed lasts when you push through a bramble thicket (Levitation
+   * floats over the thorns untouched; fire clears the thicket to bare floor) */
+  brambleBleedDuration: 3,
+  /** poison-spore vents (`sporeVent` tiles) that seep a lingering toxic haze */
+  gas: {
+    /** turns of gas life set on a vent + its neighbors each turn it re-emits */
+    ventLife: 3,
+    /** every Nth turn the vent "breathes" — the haze swells one ring further */
+    breathPeriod: 3,
+    /** how long the poison lasts when you breathe the haze */
+    poisonDuration: 4,
+  },
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "36",
+  contentVersion: "47",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */

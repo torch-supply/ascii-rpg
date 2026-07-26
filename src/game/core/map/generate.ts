@@ -5,6 +5,7 @@ import type {
   GeneratorKind,
   ItemInstance,
   LevelConfig,
+  LoreInstance,
   MonsterInstance,
   Pos,
   SubBiomeSpec,
@@ -13,6 +14,7 @@ import type {
 import { idx, manhattan, isWalkable } from "@/game/core/grid";
 import { seedMapGen, mapInt, mapWeighted } from "@/game/core/rng";
 import { ALTAR_KINDS } from "@/game/core/altar";
+import { loreForBiome } from "@/content/lore";
 import { levelSeed } from "@/lib/hash";
 import { CONFIG } from "@/content/config";
 import { ITEMS } from "@/content/items";
@@ -23,6 +25,7 @@ export interface LevelData {
   monsters: MonsterInstance[];
   items: ItemInstance[];
   altars: AltarInstance[];
+  lore: LoreInstance[];
   playerStart: Pos;
   floodable?: number[];
   floodSeeds?: number[];
@@ -35,9 +38,203 @@ function itemIdByQuestTag(tag: string): string {
   throw new Error(`No item registered for quest tag: ${tag}`);
 }
 
+/** A grand cathedral: a wide central NAVE running the map's length (flanked by
+ * two colonnades → a central nave + side aisles) and a row of FLANKING CHAPELS
+ * above and below, each opening onto the nave through a doorway. A purpose-built,
+ * symmetric castle layout — distinct from the winding digger. Lightly varied per
+ * seed (proportions jitter, an optional crossing transept, an occasional chapel
+ * collapsed into the void) so no two runs are identical while it stays a
+ * recognizable cathedral. Deterministic per seed (draws from the map-gen RNG). */
+function genHall(w: number, h: number): TileType[] {
+  const t: TileType[] = new Array(w * h).fill("wall");
+  const carve = (x: number, y: number) => {
+    if (x >= 1 && y >= 1 && x < w - 1 && y < h - 1) t[y * w + x] = "floor";
+  };
+  const cy = Math.floor(h / 2);
+  const nh = Math.max(3, Math.floor(h * (0.14 + mapInt(0, 4) / 100))); // dominant nave, jittered
+  const ny0 = cy - nh;
+  const ny1 = cy + nh;
+
+  // central nave (full width, inset from the border)
+  for (let y = ny0; y <= ny1; y++) for (let x = 2; x < w - 2; x++) carve(x, y);
+  // two colonnades near the nave's long edges → a central nave + side aisles
+  const colStep = 2 + mapInt(0, 2); // pillar spacing jitter
+  for (const py of [ny0 + 2, ny1 - 2]) {
+    for (let x = 5; x < w - 5; x += colStep) t[py * w + x] = "wall";
+  }
+
+  // flanking chapels, above and below, connected to the nave by doorways
+  const roomW = 8 + mapInt(0, 3); // chapel width/count jitter
+  const chapels: { rx: number; y0: number; y1: number }[] = [];
+  for (const side of ["top", "bottom"] as const) {
+    const y0 = side === "top" ? 1 : ny1 + 2;
+    const y1 = side === "top" ? ny0 - 2 : h - 2;
+    if (y1 < y0) continue;
+    const wallRow = side === "top" ? ny0 - 1 : ny1 + 1; // divider vs. the nave
+    for (let rx = 2; rx + roomW <= w - 2; rx += roomW + 1) {
+      for (let y = y0; y <= y1; y++)
+        for (let x = rx; x < rx + roomW; x++) carve(x, y);
+      carve(rx + Math.floor(roomW / 2), wallRow); // doorway into the nave
+      chapels.push({ rx, y0, y1 });
+    }
+  }
+
+  // occasional COLLAPSED chapel — its floor dropped into the void (you reach the
+  // doorway and peer into the chasm). Done before the transept so a crossing
+  // hall can still bridge it.
+  if (chapels.length > 0 && mapInt(0, 9) < 4) {
+    const c = chapels[mapInt(0, chapels.length - 1)];
+    for (let y = c.y0; y <= c.y1; y++)
+      for (let x = c.rx; x < c.rx + roomW; x++) t[y * w + x] = "chasm";
+  }
+
+  // optional TRANSEPT — a perpendicular crossing hall (a cruciform cathedral),
+  // carved last so it re-floors a walkway even through a collapsed chapel
+  if (mapInt(0, 9) < 4) {
+    const tw = 3 + mapInt(0, 1);
+    const tx =
+      Math.floor(w * 0.34) + mapInt(0, Math.max(0, Math.floor(w * 0.3)));
+    for (let y = 1; y < h - 1; y++)
+      for (let x = tx; x < tx + tw && x < w - 1; x++) carve(x, y);
+  }
+
+  return t;
+}
+
+/** A castle RAMPART: a long horizontal WALL-WALK (the battlement top you fight
+ * along), a bottomless CHASM void beyond its outer (lower) edge fronted by a
+ * crenellated parapet (merlon teeth + embrasure gaps you can shove the dead
+ * through), and the inner castle backing with a few TOWER rooms to fall back to.
+ * Linear and exposed — distinct from a blobby digger. Lightly varied per seed
+ * (draws from the map-gen RNG); connectivity holds (the walk is one band, towers
+ * open onto it, the void is impassable and simply unused). */
+function genRampart(w: number, h: number): TileType[] {
+  const t: TileType[] = new Array(w * h).fill("wall");
+  const carve = (x: number, y: number) => {
+    if (x >= 1 && y >= 1 && x < w - 1 && y < h - 1) t[y * w + x] = "floor";
+  };
+
+  // the outer void: the bottom band drops away into a bottomless chasm
+  const voidH = Math.floor(h * 0.3) + mapInt(0, 3);
+  const voidTop = h - 1 - voidH;
+  for (let y = voidTop; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) t[y * w + x] = "chasm";
+
+  // the wall-walk: a WIDE floor band above the void (room to hold + kite)
+  const walkH = 6 + mapInt(0, 3);
+  const walkTop = Math.max(2, voidTop - walkH);
+  for (let y = walkTop; y < voidTop; y++)
+    for (let x = 2; x < w - 2; x++) carve(x, y);
+
+  // crenellated parapet along the outer edge: merlon teeth (wall) alternating
+  // with embrasures (floor gaps over the void — shove enemies through them)
+  for (let x = 3; x < w - 3; x += 2) t[(voidTop - 1) * w + x] = "wall";
+
+  // inner tower rooms jutting up from the walk-top — fall-back / hold points
+  const towers = 2 + mapInt(0, 2);
+  for (let k = 0; k < towers; k++) {
+    const tw = 5 + mapInt(0, 2);
+    const tx = 3 + mapInt(0, Math.max(0, w - 6 - tw));
+    const ty1 = walkTop - 1; // sits just above the walk (so it opens onto it)
+    const ty0 = Math.max(1, ty1 - (4 + mapInt(0, Math.max(0, walkTop - 4))));
+    for (let y = ty0; y <= ty1; y++)
+      for (let x = tx; x < tx + tw; x++) carve(x, y);
+  }
+
+  return t;
+}
+
+/** A processional STATUE GALLERY (the Dusk Antechamber): a wide central
+ * promenade flanked by a double COLONNADE — two rows of statue plinths (wall
+ * pillars) just inside the long edges, so the strip behind each pillar row is a
+ * narrow SIDE AISLE you can slip into through the gaps between pillars (flank a
+ * pursuer, break line-of-sight). STATUE NICHES are recessed into the outer walls
+ * at each bay — the alcoves the gallery's figures stand in. Formal, symmetric,
+ * and stately — a fitting approach to the throne, distinct from the digger
+ * warren. Lightly varied per seed (bay spacing + hall depth jitter). Pair it
+ * with gargoyle spawns: `guardChase` "statues" that wake as you walk the hall.
+ * Connectivity holds — the promenade is one band, side aisles open onto it
+ * through the pillar gaps, and any severed niche is sealed downstream. */
+function genGallery(w: number, h: number): TileType[] {
+  const t: TileType[] = new Array(w * h).fill("wall");
+  const carve = (x: number, y: number) => {
+    if (x >= 1 && y >= 1 && x < w - 1 && y < h - 1) t[y * w + x] = "floor";
+  };
+  const cy = Math.floor(h / 2);
+  const hallH = Math.max(3, Math.floor(h * (0.2 + mapInt(0, 3) / 100)));
+  const r0 = cy - hallH;
+  const r1 = cy + hallH;
+
+  // central promenade (full width, inset from the border)
+  for (let y = r0; y <= r1; y++) for (let x = 2; x < w - 2; x++) carve(x, y);
+
+  // double colonnade: a row of plinth pillars just inside each long edge. The
+  // strip between a pillar row and the hall edge becomes a side aisle; the gaps
+  // between pillars are the passages onto it.
+  const bay = 3 + mapInt(0, 1); // pillar spacing jitter
+  const inset = 2;
+  for (const py of [r0 + inset, r1 - inset]) {
+    for (let x = 4; x < w - 4; x += bay) t[py * w + x] = "wall";
+  }
+
+  // statue niches recessed into the outer walls — VARIED per bay so no two runs
+  // read alike: ~30% stay solid wall (no niche), the rest are alcoves 1–2 deep,
+  // and ~40% of the deep ones are sealed behind a CRACKED WALL (bash/blast in for
+  // the offering the assembly tucks in the back — a sealed reliquary niche). A
+  // gated niche's back is a separate floor pocket (crackedWall stays passable in
+  // `sealUnreachable`, so it survives; spawns never leak in through solid floor).
+  for (const dir of [-1, 1]) {
+    const edgeRow = dir < 0 ? r0 : r1; // the hall's outer floor row on this side
+    for (let x = 5; x < w - 5; x += bay * 2) {
+      const roll = mapInt(0, 9);
+      if (roll < 3) continue; // solid — no niche this bay
+      const depth = roll < 8 ? 2 : 1; // mostly 2-deep alcoves, some shallow
+      for (let d = 1; d <= depth; d++) carve(x, edgeRow + dir * d);
+      if (depth === 2 && mapInt(0, 9) < 4)
+        t[(edgeRow + dir) * w + x] = "crackedWall"; // seal the mouth
+    }
+  }
+
+  // an occasional COLLAPSED section — a stretch of the promenade floor has given
+  // way into a bottomless chasm. Kept strictly interior (floor margins on every
+  // side + between the colonnades) so you always route around it and it never
+  // severs the hall — but a gargoyle can shove you into it (a fall).
+  if (mapInt(0, 9) < 5) {
+    const pitH = 3 + mapInt(0, 2);
+    const pitW = 4 + mapInt(0, 3);
+    // vertical: centered in the band between the two colonnades, clamped so a
+    // floor row survives above and below the pit
+    const bandTop = r0 + inset + 1;
+    const bandBot = r1 - inset - 1;
+    let py0 = cy - Math.floor(pitH / 2);
+    py0 = Math.max(bandTop, Math.min(py0, bandBot - pitH + 1));
+    // horizontal: somewhere across the middle, leaving a floor margin each end
+    const px0 =
+      Math.floor(w * 0.3) + mapInt(0, Math.max(0, Math.floor(w * 0.3)));
+    // Erode the OUTLINE so the void reads as a crumbling collapse, not a clean
+    // rectangle: the core is always chasm, edge tiles sometimes survive as floor,
+    // corners usually do. Only ever LEAVES floor (never adds chasm), so it can't
+    // sever the hall.
+    for (let y = py0; y < py0 + pitH; y++) {
+      for (let x = px0; x < px0 + pitW && x < w - 3; x++) {
+        const edgeX = x === px0 || x === px0 + pitW - 1;
+        const edgeY = y === py0 || y === py0 + pitH - 1;
+        if (edgeX && edgeY && mapInt(0, 9) < 7) continue; // corner: ~70% eroded
+        if ((edgeX || edgeY) && mapInt(0, 9) < 4) continue; // edge: ~40% eroded
+        t[y * w + x] = "chasm";
+      }
+    }
+  }
+
+  return t;
+}
+
 /** Generate a floor/wall grid of size w×h with `kind` (no border forcing).
  * value 0 = floor. Used for whole levels and for sub-region wings. */
 function genGrid(kind: GeneratorKind, w: number, h: number): TileType[] {
+  if (kind === "hall") return genHall(w, h);
+  if (kind === "rampart") return genRampart(w, h);
+  if (kind === "gallery") return genGallery(w, h);
   const tiles: TileType[] = new Array(w * h).fill("wall");
   const paint = (x: number, y: number, value: number) => {
     if (value === 0) tiles[idx(x, y, w)] = "floor";
@@ -184,6 +381,7 @@ const BIOME_HAZARDS: Partial<
   throne: [{ type: "oil", density: 0.3 }], // scorched hollow
   mountain: [{ type: "ice", density: 0.25 }], // frozen patch
   cavern: [{ type: "glowcap", density: 0.12 }], // bioluminescent fungi (light)
+  forest: [{ type: "bramble", density: 0.14, clumps: 3 }], // thorn thickets (fire clears)
 };
 
 /** Scatter the region's hazard kit as small blobs confined to the tagged region
@@ -819,15 +1017,17 @@ function farthestSafeCell(
   return cands[0].i;
 }
 
-/** Convert floor cells into water blobs (impassable). Done BEFORE computing the
- * connected component, so any pockets water seals off are simply never used. */
-function placeWater(
-  config: LevelConfig,
+/** Convert floor cells into impassable blobs of `type` (water or chasm). Done
+ * BEFORE the connected-component pass, so any pockets it seals off are simply
+ * never used. */
+function placeImpassable(
   tiles: TileType[],
   w: number,
   h: number,
+  type: TileType,
+  count: number,
 ) {
-  let remaining = config.waterCount ?? 0;
+  let remaining = count;
   let guard = 0;
   while (remaining > 0 && guard < 200) {
     guard++;
@@ -839,7 +1039,7 @@ function placeWater(
     const blob = mapInt(3, 7);
     for (let b = 0; b < blob && remaining > 0; b++) {
       if (tiles[cur] === "floor") {
-        tiles[cur] = "water";
+        tiles[cur] = type;
         remaining--;
       }
       const cx = cur % w;
@@ -985,6 +1185,42 @@ function placeOil(
   }
 }
 
+/** Scatter isolated `sporeVent` tiles (a bog's poison fumaroles). Unlike the
+ * blob hazards, vents are placed as SINGLETONS spaced ≥ `SPORE_VENT_GAP` apart,
+ * so each seeps its own small poison pocket instead of merging into one big
+ * lethal cloud. Placed on plain floor, off the start, before the connectivity
+ * pass (a vent stranded in a severed pocket is simply sealed away). */
+const SPORE_VENT_GAP = 5;
+function placeSporeVents(
+  config: LevelConfig,
+  tiles: TileType[],
+  occupied: Set<number>,
+  w: number,
+) {
+  let remaining = config.sporeVentCount ?? 0;
+  if (remaining <= 0) return;
+  const placed: number[] = [];
+  let guard = 0;
+  while (remaining > 0 && guard++ < 400) {
+    const floors: number[] = [];
+    for (let i = 0; i < tiles.length; i++)
+      if (tiles[i] === "floor" && !occupied.has(i)) floors.push(i);
+    if (floors.length === 0) break;
+    const cand = floors[mapInt(0, floors.length - 1)];
+    const cx = cand % w;
+    const cy = Math.floor(cand / w);
+    const tooClose = placed.some((p) => {
+      const dx = (p % w) - cx;
+      const dy = Math.floor(p / w) - cy;
+      return Math.abs(dx) + Math.abs(dy) < SPORE_VENT_GAP;
+    });
+    if (tooClose) continue;
+    tiles[cand] = "sporeVent";
+    placed.push(cand);
+    remaining--;
+  }
+}
+
 /** Fracture some interior walls that separate two open spaces into destructible
  * "cracked walls" — an explosion blows them open into a shortcut. */
 function placeCrackedWalls(
@@ -1075,7 +1311,7 @@ function placeForage(
   h: number,
   playerStart: Pos,
 ) {
-  const count = config.forageCount ?? 0;
+  const count = Math.round((config.forageCount ?? 0) * CONFIG.forageScale);
   if (count <= 0) return;
   const nooks: number[] = [];
   const rest: number[] = [];
@@ -1131,6 +1367,69 @@ function placeAltars(
   return altars;
 }
 
+/** Place environmental-storytelling props (lore) on reachable floor, biased
+ * toward NOOKS off the main path (`openOrthoCount <= 2`) so they reward
+ * exploration rather than sitting on the beeline. Each gets a DISTINCT entry
+ * from the level biome's `LORE_POOLS` pool (text/kind stored inline so it
+ * roundtrips in the save). Walkable — step on one to read it. */
+function placeLore(
+  config: LevelConfig,
+  tiles: TileType[],
+  floors: number[],
+  occupied: Set<number>,
+  w: number,
+  levelIndex: number,
+): LoreInstance[] {
+  const count = config.loreCount ?? 0;
+  if (count <= 0) return [];
+  const pool = loreForBiome(config.biome);
+  if (pool.length === 0) return [];
+
+  // candidate floor cells, nooks first (off the path), then the rest
+  const nooks: number[] = [];
+  const rest: number[] = [];
+  for (const i of floors) {
+    if (occupied.has(i) || tiles[i] !== "floor") continue;
+    (openOrthoCount(tiles, w, i) <= 2 ? nooks : rest).push(i);
+  }
+  for (let k = nooks.length - 1; k > 0; k--) {
+    const j = mapInt(0, k);
+    [nooks[k], nooks[j]] = [nooks[j], nooks[k]];
+  }
+  for (let k = rest.length - 1; k > 0; k--) {
+    const j = mapInt(0, k);
+    [rest[k], rest[j]] = [rest[j], rest[k]];
+  }
+  const cells = [...nooks, ...rest];
+
+  const lore: LoreInstance[] = [];
+  const usedEntries = new Set<number>();
+  const want = Math.min(count, pool.length, cells.length);
+  let ci = 0;
+  while (lore.length < want && ci < cells.length) {
+    const i = cells[ci++];
+    // pick an unused entry (distinct fragments per level)
+    let e = mapInt(0, pool.length - 1);
+    let guard = 0;
+    while (usedEntries.has(e) && guard++ < pool.length)
+      e = (e + 1) % pool.length;
+    if (usedEntries.has(e)) break;
+    usedEntries.add(e);
+    occupied.add(i);
+    const entry = pool[e];
+    lore.push({
+      id: `lore${levelIndex}_${lore.length}`,
+      x: i % w,
+      y: Math.floor(i / w),
+      kind: entry.kind,
+      title: entry.title,
+      text: entry.text,
+      read: false,
+    });
+  }
+  return lore;
+}
+
 /** A tile the player could stand on or pass through. Cracked walls count —
  * they're breakable, so a region reached only through one is still reachable. */
 function isOpenTile(t: TileType): boolean {
@@ -1145,6 +1444,8 @@ function isOpenTile(t: TileType): boolean {
     t === "forage" ||
     t === "ice" ||
     t === "glowcap" ||
+    t === "bramble" ||
+    t === "sporeVent" ||
     t === "crackedWall"
   );
 }
@@ -1336,7 +1637,9 @@ export function generateLevel(
   const w = config.mapWidth;
   const h = config.mapHeight;
   const tiles = buildTiles(config);
-  placeWater(config, tiles, w, h); // before component calc — seals off nothing reachable
+  // impassable terrain BEFORE the component calc so severed pockets are dropped
+  placeImpassable(tiles, w, h, "water", config.waterCount ?? 0);
+  placeImpassable(tiles, w, h, "chasm", config.chasmCount ?? 0);
   const map: GameMap = { width: w, height: h, tiles };
   carveSubBiome(map, config); // cosmetic region tag; doesn't touch tiles
 
@@ -1434,6 +1737,26 @@ export function generateLevel(
     monsters.push(inst);
   }
 
+  // Ambient wildlife (wisps, …) — placed OUTSIDE the combat budget, on ordinary
+  // reachable floor (no elite roll, no far-from-player rule; they're harmless
+  // atmosphere that drifts and flees).
+  for (const spec of config.ambient ?? []) {
+    const def = monsterDef(spec.monsterId);
+    for (let n = 0; n < spec.count; n++) {
+      const cell = pickCell(floors, occupied, w);
+      if (cell === null) break;
+      occupied.add(cell);
+      monsters.push({
+        id: `m${levelIndex}_${mCounter++}`,
+        defId: def.id,
+        x: cell % w,
+        y: Math.floor(cell / w),
+        hp: def.maxHp,
+        state: "idle",
+      });
+    }
+  }
+
   // Quest items (collectX / findItem).
   if (config.goal.type === "collectX") {
     const questItemId = itemIdByQuestTag(config.goal.questTag);
@@ -1467,10 +1790,11 @@ export function generateLevel(
     }
   }
 
-  // Ordinary drops from the weighted drop table.
+  // Ordinary drops from the weighted drop table (scaled by the global loot dial).
   const dropWeights: Record<string, number> = {};
   for (const d of config.dropTable) dropWeights[d.itemId] = d.weight;
-  for (let n = 0; n < config.itemDropCount; n++) {
+  const dropCount = Math.round(config.itemDropCount * CONFIG.lootScale);
+  for (let n = 0; n < dropCount; n++) {
     const cell = pickCell(floors, occupied, w, farFromPlayer);
     if (cell === null) break;
     const itemId = mapWeighted(dropWeights);
@@ -1490,17 +1814,64 @@ export function generateLevel(
     items.push(inst);
   }
 
+  // Gallery "statue offerings" — tuck a cache into some niche dead-ends (incl.
+  // the cracked-wall-gated ones: bash in for the reward). Scans tiles directly,
+  // because a gated niche's back is a separate floor pocket (not in the main
+  // `floors` component). Runs before the connectivity seal, which keeps the
+  // crackedWall-gated pockets reachable.
+  if (config.generator === "gallery") {
+    const passish = (t: TileType) =>
+      t === "floor" || t === "doorOpen" || t === "crackedWall";
+    const backs: number[] = [];
+    for (let i = 0; i < tiles.length; i++) {
+      if (tiles[i] !== "floor" || occupied.has(i) || i === startIdx) continue;
+      let open = 0;
+      if (passish(tiles[i - w])) open++;
+      if (passish(tiles[i + w])) open++;
+      if (passish(tiles[i - 1])) open++;
+      if (passish(tiles[i + 1])) open++;
+      if (open === 1) backs.push(i); // a dead-end nook = a niche back
+    }
+    for (let k = backs.length - 1; k > 0; k--) {
+      const j = mapInt(0, k);
+      [backs[k], backs[j]] = [backs[j], backs[k]];
+    }
+    const offerN = Math.min(backs.length, 3 + mapInt(0, 2));
+    for (let k = 0; k < offerN; k++) {
+      const cell = backs[k];
+      const itemId = mapWeighted(dropWeights);
+      if (!itemId) break;
+      occupied.add(cell);
+      const def = ITEMS[itemId];
+      const inst: ItemInstance = {
+        id: `it${levelIndex}_${iCounter++}`,
+        defId: itemId,
+        x: cell % w,
+        y: Math.floor(cell / w),
+      };
+      if (def.category === "coin") {
+        const base = mapInt(CONFIG.coinPile.min, CONFIG.coinPile.max);
+        inst.value = Math.max(1, Math.round(base * config.coinRichness));
+      }
+      items.push(inst);
+    }
+  }
+
   // Hidden traps last, on free reachable floor (not under the player/items/exit).
   placeTraps(config, tiles, floors, occupied, w, playerStart);
 
   // Environmental terrain: oil slicks (walkable) + destructible cracked walls.
   placeOil(config, tiles, occupied, w, h);
+  placeSporeVents(config, tiles, occupied, w); // isolated poison fumaroles
   placeCrackedWalls(config, tiles, w, h);
   placeDoors(config, tiles, occupied, w, h, playerStart); // interactive doors (open)
   placeForage(config, tiles, occupied, w, h, playerStart); // heal tiles in nooks
 
   // Risk/reward shrines on open floor.
   const altars = placeAltars(config, floors, occupied, w, levelIndex);
+
+  // Environmental-storytelling props (readable lore), tucked into nooks.
+  const lore = placeLore(config, tiles, floors, occupied, w, levelIndex);
 
   // Hidden vault: a sealed room reachable only by breaking a cracked wall.
   placeSecretVault(config, map, floors, occupied, items, levelIndex);
@@ -1526,10 +1897,22 @@ export function generateLevel(
     // keep a dry path to each — otherwise the flood submerges the altar tile and
     // it renders as a stranded `+` you can't reach.
     for (const a of altars) objectives.push({ x: a.x, y: a.y });
+    // Keep lore props readable too — a drowned inscription you can't reach is
+    // just a stranded glyph (same reasoning as altars).
+    for (const l of lore) objectives.push({ x: l.x, y: l.y });
     const plan = computeFloodPlan(map, playerStart, objectives);
     floodable = plan.floodable;
     floodSeeds = plan.seeds;
   }
 
-  return { map, monsters, items, altars, playerStart, floodable, floodSeeds };
+  return {
+    map,
+    monsters,
+    items,
+    altars,
+    lore,
+    playerStart,
+    floodable,
+    floodSeeds,
+  };
 }

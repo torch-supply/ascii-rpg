@@ -61,6 +61,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 4,
     doorCount: 3,
     forageCount: 5,
+    loreCount: 2, // prisoners' scratchings in the pit
     goal: { type: "reachLocation" },
     narration:
       "You haul yourself out of the pit into cold night air. No stars — only a black wall of trees ahead, whispering, and the sagging roofs of a hamlet the wood has all but swallowed. The Blackwood. Somewhere past its ruins lies the path the dead don't want you to find.",
@@ -88,6 +89,15 @@ export const LEVELS: LevelConfig[] = [
         scale: 0.16,
         threshold: 0.28,
         hazards: [],
+      },
+      // a thorn-choked briar — tangled bramble thickets that snag and bleed you;
+      // burn a path through (firebombs / the Pyromancer's cone shine here)
+      {
+        biome: "forest",
+        palette: { wall: "#3f5a2c", floor: "#2a3a1e", accent: "#8faf5f" },
+        scale: 0.14,
+        threshold: 0.3,
+        hazards: [{ type: "bramble", density: 0.28, clumps: 4 }],
       },
     ],
     // the ruins of a woodcutters' hamlet, swallowed by the cursed wood — several
@@ -147,6 +157,8 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 4,
     waterCount: 22,
     forageCount: 14,
+    loreCount: 2, // the fall of the woodcutters' hamlet
+    ambient: [{ monsterId: "wisp", count: 5 }], // pale lights drifting in the cursed wood
     goal: { type: "collectX", questTag: "moonstone", count: 3 },
     narration:
       "The three shards flare as one, and a silver thread pulls you downward — toward a reek of rot and black standing water. The Mire. Whatever the dead are guarding, the only path runs through it.",
@@ -206,8 +218,10 @@ export const LEVELS: LevelConfig[] = [
     forageCount: 10,
     waterCount: 64,
     oilCount: 16,
+    sporeVentCount: 5, // fumaroles seeping poison haze across the rotting bog
     eliteChance: 0.1,
     altarCount: 1,
+    loreCount: 2, // drowned pilgrims, a liar's signpost
     goal: { type: "reachLocation" },
     narration:
       "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into a warren of ice-choked caves and black crevasses — the Frostspine Pass — and something enormous is breathing on the wind.",
@@ -263,9 +277,13 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.25,
     baseLightRadius: 5,
     trapCount: 4,
-    waterCount: 44,
+    // crevasses: frozen tarns (water — Rimewalk can bridge) AND bottomless
+    // chasms (only Levitation crosses) — the pass choked with both
+    waterCount: 18,
+    chasmCount: 28,
     forageCount: 8,
     eliteChance: 0.12,
+    loreCount: 2, // the border-watch's retreat, a frozen climber
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
       "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — and their wardens have already seen you.",
@@ -310,10 +328,11 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 5,
     crackedWallCount: 4,
     doorCount: 3,
-    forageCount: 1,
+    forageCount: 4, // a few arcane motes to soften the cull grind (→ ~2 after lootScale)
     eliteChance: 0.15,
     altarCount: 1,
-    goal: { type: "killCount", count: 8 },
+    loreCount: 1, // the castle's surrender, in gilt
+    goal: { type: "killCount", count: 7 },
     narration:
       "The last of the gate's wardens falls and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
     shopTier: 5,
@@ -334,7 +353,7 @@ export const LEVELS: LevelConfig[] = [
     },
     mapWidth: 72,
     mapHeight: 46,
-    generator: "digger",
+    generator: "hall", // a grand cathedral nave + flanking chambers
     monsterBudget: 15,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
@@ -358,6 +377,7 @@ export const LEVELS: LevelConfig[] = [
     forageCount: 4,
     eliteChance: 0.15,
     altarCount: 3,
+    loreCount: 2, // a servant's diary, a guardsman at his post
     goal: { type: "collectX", questTag: "sigil", count: 3 },
     narration:
       "The three dusk-sigils lock into the crypt door and it swings inward on a breath of grave-air. Down there, the last kings hid the one blade that can still cut the night: the Sunblade.",
@@ -415,6 +435,7 @@ export const LEVELS: LevelConfig[] = [
     doorCount: 2,
     eliteChance: 0.18,
     altarCount: 1,
+    loreCount: 2, // the Sunblade's rifled tomb, its keeper's vow
     goal: { type: "findItem", questTag: "sunblade" },
     narration:
       "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. There is no way up but the ramparts — open to a black, thundering sky, and to whatever wheels across it.",
@@ -438,9 +459,10 @@ export const LEVELS: LevelConfig[] = [
         hazards: [{ type: "ice", density: 0.22 }],
       },
     ],
-    mapWidth: 54,
-    mapHeight: 32,
-    generator: "digger",
+    // a long, exposed wall-walk (the void beyond the parapet, towers to hold in)
+    mapWidth: 84,
+    mapHeight: 34,
+    generator: "rampart",
     monsterBudget: 14,
     spawnTable: [
       { monsterId: "wraith", weight: 4 },
@@ -458,9 +480,9 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 6,
     trapCount: 2,
     forageCount: 3,
-    waterCount: 12,
     eliteChance: 0.2,
     altarCount: 1,
+    loreCount: 1, // a besieger's helm on the wall-walk
     goal: { type: "survive", turns: 50 },
     narration:
       "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",
@@ -476,15 +498,19 @@ export const LEVELS: LevelConfig[] = [
       gate: "door",
       loot: [{ itemId: "p_gheal" }, { itemId: "p_bomb" }, { itemId: "c_gold" }],
     },
-    // a longer, grander approach to the throne — more hall to fight through
-    mapWidth: 60,
+    // a grand processional STATUE GALLERY — a colonnaded promenade lined with
+    // gargoyle "statues" (guardChase: still as stone until you draw near, then
+    // they wake and shove); side aisles behind the pillars to flank/break LOS
+    lightingBeat: "dusk", // dread deepens as the Herald falls — darkest before the dawn
+    mapWidth: 66,
     mapHeight: 40,
-    generator: "digger",
-    monsterBudget: 17,
+    generator: "gallery",
+    monsterBudget: 14,
     spawnTable: [
-      { monsterId: "wraith", weight: 4 },
-      { monsterId: "skeleton", weight: 3 },
-      { monsterId: "ghoul", weight: 3 },
+      { monsterId: "gargoyle", weight: 3 }, // the gallery's statues, come alive
+      { monsterId: "wraith", weight: 2 },
+      { monsterId: "skeleton", weight: 4 },
+      { monsterId: "ghoul", weight: 4 },
     ],
     turnLimit: 540,
     itemDropCount: 6,
@@ -499,7 +525,8 @@ export const LEVELS: LevelConfig[] = [
     crackedWallCount: 3,
     doorCount: 2,
     forageCount: 1,
-    eliteChance: 0.2,
+    eliteChance: 0.12,
+    loreCount: 1, // a last fragment before the throne
     goal: { type: "killTarget", monsterId: "herald" },
     narration:
       "The Herald falls to ash and the black door yields. Beyond, a stair of black marble climbs to the Throne of Dusk. Malachar is waiting. End this.",
@@ -510,6 +537,7 @@ export const LEVELS: LevelConfig[] = [
     title: "The Throne of Dusk",
     biome: "throne",
     palette: { wall: "#74494a", floor: "#3a2b2b", accent: "#ffd700" },
+    lightingBeat: "dawn", // the sky rekindles as Malachar falls — the quest's payoff
     mapWidth: 44,
     mapHeight: 28,
     generator: "digger",
@@ -528,6 +556,7 @@ export const LEVELS: LevelConfig[] = [
     baseLightRadius: 5,
     trapCount: 2,
     doorCount: 2,
+    loreCount: 1, // the words at the base of the throne
     goal: { type: "killTarget", monsterId: "lich" },
     // Final level: this narration is unused for transition (the Victory screen
     // shows VICTORY.body instead), but kept for completeness.

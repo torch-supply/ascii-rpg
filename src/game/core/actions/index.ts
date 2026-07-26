@@ -10,7 +10,14 @@ import type {
 } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
 import { Rng } from "@/game/core/rng";
-import { idx, isWalkable, chebyshev, inBounds, tileAt } from "@/game/core/grid";
+import {
+  idx,
+  isWalkable,
+  chebyshev,
+  manhattan,
+  inBounds,
+  tileAt,
+} from "@/game/core/grid";
 import { recomputeFOV, recomputeLight } from "@/game/core/state";
 import { equipWeapon, equipArmor, addToBag } from "@/game/core/inventory";
 import { isGoalComplete } from "@/game/core/goals";
@@ -39,6 +46,18 @@ const DIRS = [
   [0, 1],
   [-1, 0],
   [1, 0],
+];
+
+// 8-way (orthogonal + diagonal) — used where a hazard fills a full ring.
+const DIRS8 = [
+  [0, -1],
+  [0, 1],
+  [-1, 0],
+  [1, 0],
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1],
 ];
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -277,7 +296,8 @@ function knockBack(
   for (let s = 0; s < dist; s++) {
     const nx = target.x + dx;
     const ny = target.y + dy;
-    if (tileAt(state.map, nx, ny) === "water") {
+    const shoveTile = tileAt(state.map, nx, ny);
+    if (shoveTile === "water" || shoveTile === "chasm") {
       events.push({ kind: "hit", x: nx, y: ny });
       msg(events, `You hurl the ${def.name} into the depths!`);
       awardKill(state, target, def, rng, events);
@@ -490,6 +510,30 @@ function resolveMonsterAttack(
   msg(events, `The ${def.name} hits you for ${dmg}.`);
   if (state.player.hp > 0)
     tryAfflict(state.player.effects, def.inflicts, rng, "You", events);
+
+  // a shover knocks you back a tile — into a chasm/water (and not floating) that
+  // means a fall to your death; onto open ground it just throws you off-balance.
+  if (def.knockback && state.player.hp > 0) {
+    const p = state.player;
+    const tx = p.x + Math.sign(p.x - m.x);
+    const ty = p.y + Math.sign(p.y - m.y);
+    const tile = tileAt(state.map, tx, ty);
+    if (tile === "chasm" || tile === "water") {
+      if ((p.effects.levitate ?? 0) > 0) {
+        p.x = tx;
+        p.y = ty; // floating — the blow just drifts you out over the void
+        msg(events, `The ${def.name} hurls you out over the void — you drift.`);
+      } else {
+        p.hp = 0; // shoved off the edge → a fall (handled as a death upstream)
+        msg(events, `The ${def.name} hurls you off the edge into the void!`);
+      }
+    } else if (isWalkable(state.map, tx, ty) && !monsterAt(state, tx, ty)) {
+      p.x = tx;
+      p.y = ty;
+      events.push({ kind: "thud" });
+      msg(events, `The ${def.name} throws you back.`);
+    }
+  }
 }
 
 // ── player action ────────────────────────────────────────────────────────
@@ -506,6 +550,17 @@ function movePlayer(
 
   const target = monsterAt(state, nx, ny);
   if (target) {
+    // ambient wildlife (a wisp) isn't an enemy — touching it just scatters it,
+    // no attack/damage/loot/kill-credit. It winks out with a small shimmer.
+    if (monsterDef(target.defId).behavior === "ambient") {
+      state.monsters = state.monsters.filter((x) => x.id !== target.id);
+      events.push({ kind: "blast", x: nx, y: ny, radius: 0 });
+      msg(
+        events,
+        `The ${monsterDef(target.defId).name} gutters out at your touch.`,
+      );
+      return true; // costs the turn
+    }
     const wpn = ITEMS[p.weaponId];
     if (wpn.ranged) {
       // point-blank shot with the equipped bow (feeble jab if out of arrows)
@@ -519,10 +574,11 @@ function movePlayer(
     return true; // attacking costs a turn
   }
   if (!isWalkable(state.map, nx, ny)) {
-    // levitation lets you glide out over water / the chasm (nothing to trip or
+    // levitation lets you glide out over water / a chasm (nothing to trip or
     // grab out there — just drift across)
+    const glide = tileAt(state.map, nx, ny);
     if (
-      tileAt(state.map, nx, ny) === "water" &&
+      (glide === "water" || glide === "chasm") &&
       (p.effects.levitate ?? 0) > 0
     ) {
       p.x = nx;
@@ -560,6 +616,7 @@ function movePlayer(
   springTrap(state, events);
   pickUp(state, events);
   forageOnTile(state, events);
+  brambleSnag(state, events);
   return true;
 }
 
@@ -577,6 +634,19 @@ function forageOnTile(state: GameState, events: GameEvent[]) {
   state.map.tiles[i] = "floor"; // consumed
   events.push({ kind: "heal", x: p.x, y: p.y, amount: gained });
   msg(events, `You gather ${style.name} — +${gained} HP.`);
+}
+
+/** Push through a bramble thicket: the thorns snag and bleed you (refreshing a
+ * short bleed). Levitation floats you over the thorns untouched. The thicket
+ * stays — burn it away to clear a safe path. */
+function brambleSnag(state: GameState, events: GameEvent[]) {
+  const p = state.player;
+  if ((p.effects.levitate ?? 0) > 0) return; // drifting over the thorns
+  const i = idx(p.x, p.y, state.map.width);
+  if (state.map.tiles[i] !== "bramble") return;
+  const had = (p.effects.bleed ?? 0) > 0;
+  applyStatus(p.effects, "bleed", CONFIG.brambleBleedDuration);
+  if (!had) msg(events, "Thorns rake you — you're bleeding.");
 }
 
 /** Trigger a hidden trap under the player, revealing and spending it. */
@@ -793,7 +863,8 @@ function tickEffects(state: GameState, events: GameEvent[]) {
  * lapsed potion never means a silent drop into the void. */
 function landFromLevitation(state: GameState, events: GameEvent[]) {
   const p = state.player;
-  if (tileAt(state.map, p.x, p.y) !== "water") return;
+  const here = tileAt(state.map, p.x, p.y);
+  if (here !== "water" && here !== "chasm") return;
   const w = state.map.width;
   const seen = new Set<number>([idx(p.x, p.y, w)]);
   const q: Pos[] = [{ x: p.x, y: p.y }];
@@ -815,10 +886,11 @@ function landFromLevitation(state: GameState, events: GameEvent[]) {
       if (isWalkable(state.map, nx, ny) && !monsterAt(state, nx, ny)) {
         p.x = nx;
         p.y = ny;
-        msg(events, "You splash down and scramble to solid ground.");
+        msg(events, "You scramble to solid ground.");
         return;
       }
-      if (tileAt(state.map, nx, ny) === "water") q.push({ x: nx, y: ny });
+      const t = tileAt(state.map, nx, ny);
+      if (t === "water" || t === "chasm") q.push({ x: nx, y: ny });
     }
   }
 }
@@ -827,8 +899,8 @@ function landFromLevitation(state: GameState, events: GameEvent[]) {
  * carry flame; walls/water won't take. Returns whether it ignited. */
 function igniteTile(state: GameState, i: number, life: number): boolean {
   const t = state.map.tiles[i];
-  if (t === "oil")
-    state.map.tiles[i] = "floor"; // the slick is consumed
+  if (t === "oil" || t === "bramble")
+    state.map.tiles[i] = "floor"; // the slick / thicket is consumed
   else if (t !== "floor" && t !== "trapSprung" && t !== "doorOpen")
     return false;
   const ex = state.fireTiles.find((f) => f.i === i);
@@ -874,13 +946,83 @@ function tickFires(state: GameState, events: GameEvent[]) {
       const ny = fy + dy;
       if (!inBounds(state.map, nx, ny)) continue;
       const ni = idx(nx, ny, w);
-      if (state.map.tiles[ni] === "oil") spread.push(ni);
+      const nt = state.map.tiles[ni];
+      if (nt === "oil" || nt === "bramble") spread.push(ni);
     }
   }
   let lit = false;
-  for (const ni of spread)
+  let hitBramble = false;
+  for (const ni of spread) {
+    if (state.map.tiles[ni] === "bramble") hitBramble = true;
     if (igniteTile(state, ni, CONFIG.fire.duration)) lit = true;
-  if (lit) msg(events, "Fire races across the oil!");
+  }
+  if (lit)
+    msg(
+      events,
+      hitBramble
+        ? "Fire crackles through the thicket!"
+        : "Fire races across the oil!",
+    );
+}
+
+/**
+ * Poison-spore vents: each `sporeVent` tile seeps a lingering toxic haze
+ * (`gasTiles`). Every turn the existing haze poisons whoever stands in it and
+ * decays, then each vent re-emits — refreshing the haze on itself + its
+ * orthogonal neighbors, and on a "breath" turn (every `breathPeriod`) swelling
+ * one diagonal ring further. So the cloud pulses around a bounded pocket rather
+ * than filling the map — an avoidable poison zone, not a death trap. Levitation
+ * gives NO protection (it's airborne); the counter is simply to hold your breath
+ * and go around, or breathe an Antidote after. Deterministic (no RNG) so it
+ * roundtrips through the save cleanly. */
+function tickGas(state: GameState, events: GameEvent[]) {
+  const w = state.map.width;
+  const vents: number[] = [];
+  for (let i = 0; i < state.map.tiles.length; i++)
+    if (state.map.tiles[i] === "sporeVent") vents.push(i);
+  if (vents.length === 0 && state.gasTiles.length === 0) return;
+
+  // (1) existing haze poisons occupants, then decays
+  const p = state.player;
+  const survivors: { i: number; life: number }[] = [];
+  for (const g of state.gasTiles) {
+    const gx = g.i % w;
+    const gy = Math.floor(g.i / w);
+    if (p.x === gx && p.y === gy) {
+      const had = (p.effects.poison ?? 0) > 0;
+      applyStatus(p.effects, "poison", CONFIG.gas.poisonDuration);
+      if (!had) msg(events, "You choke on a lungful of spores!");
+    }
+    for (const m of state.monsters) {
+      if (m.x === gx && m.y === gy) {
+        if (!m.effects) m.effects = {};
+        applyStatus(m.effects, "poison", CONFIG.gas.poisonDuration);
+      }
+    }
+    g.life -= 1;
+    if (g.life > 0) survivors.push(g);
+  }
+  state.gasTiles = survivors;
+
+  // (2) vents re-emit — refresh the haze on the vent + a ring (breath = wider)
+  const breath = state.turnCount % CONFIG.gas.breathPeriod === 0;
+  const emit = (i: number) => {
+    if (!isWalkable(state.map, i % w, Math.floor(i / w))) return;
+    const ex = state.gasTiles.find((g) => g.i === i);
+    if (ex) ex.life = Math.max(ex.life, CONFIG.gas.ventLife);
+    else state.gasTiles.push({ i, life: CONFIG.gas.ventLife });
+  };
+  const ring = breath ? DIRS8 : DIRS;
+  for (const v of vents) {
+    emit(v);
+    const vx = v % w;
+    const vy = Math.floor(v / w);
+    for (const [dx, dy] of ring) {
+      const nx = vx + dx;
+      const ny = vy + dy;
+      if (inBounds(state.map, nx, ny)) emit(idx(nx, ny, w));
+    }
+  }
 }
 
 /**
@@ -1270,6 +1412,7 @@ function abilityDash(
   springTrap(state, events); // you land fully — a trap underfoot bites
   pickUp(state, events);
   forageOnTile(state, events);
+  brambleSnag(state, events);
   msg(events, `You dash ${steps} tile${steps > 1 ? "s" : ""} in a blur.`);
   return true;
 }
@@ -1380,6 +1523,7 @@ function resolvePlayerBlink(
   springTrap(state, events); // you land on the tile — a trap underfoot bites
   pickUp(state, events);
   forageOnTile(state, events);
+  brambleSnag(state, events);
   return true;
 }
 
@@ -1480,6 +1624,50 @@ function moveRandom(
       m.y = ny;
       return;
     }
+  }
+}
+
+/** Non-hostile ambient drift (a will-o'-wisp): wanders idly, but FLEES when the
+ * player comes within its shy radius — retreating to the neighbor that puts the
+ * most distance between you (so it lures you deeper as you follow). Never steps
+ * onto the player and never attacks; if cornered it just shimmers in place. */
+function driftAmbient(
+  state: GameState,
+  m: MonsterInstance,
+  def: MonsterDef,
+  rng: Rng,
+) {
+  const p = state.player;
+  const flee = chebyshev(m.x, m.y, p.x, p.y) <= (def.sightRadius ?? 5);
+  const dirs = DIRS.slice();
+  for (let i = dirs.length - 1; i > 0; i--) {
+    const j = rng.int(0, i);
+    [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+  }
+  const curDist = manhattan(m.x, m.y, p.x, p.y);
+  let best: [number, number] | null = null;
+  let bestDist = -1;
+  for (const [dx, dy] of dirs) {
+    const nx = m.x + dx;
+    const ny = m.y + dy;
+    if (nx === p.x && ny === p.y) continue; // never drift into the player
+    if (!isWalkable(state.map, nx, ny) || monsterAt(state, nx, ny, m.id))
+      continue;
+    if (!flee) {
+      m.x = nx; // idle wander: first open neighbor
+      m.y = ny;
+      return;
+    }
+    const d = manhattan(nx, ny, p.x, p.y);
+    if (d > bestDist) {
+      bestDist = d;
+      best = [nx, ny];
+    }
+  }
+  // fleeing: only move if it actually gains distance; else hold (shimmer)
+  if (flee && best && bestDist >= curDist) {
+    m.x = best[0];
+    m.y = best[1];
   }
 }
 
@@ -1727,7 +1915,10 @@ function actMonster(
   // Detection is light-limited: a chaser only notices you within the smaller of
   // its sight and your own light (Shadow shrinks it further). Dousing your
   // torch / low light lets you slip past unseen and set up a sneak attack.
-  const isChaser = def.behavior !== "wander" && def.behavior !== "erratic";
+  const isChaser =
+    def.behavior !== "wander" &&
+    def.behavior !== "erratic" &&
+    def.behavior !== "ambient";
   const detectRange = Math.min(
     def.sightRadius,
     p.lightRadius,
@@ -1759,6 +1950,9 @@ function actMonster(
       return;
     case "erratic":
       if (rng.chance(0.85)) moveRandom(state, m, def, rng, events);
+      return;
+    case "ambient":
+      driftAmbient(state, m, def, rng);
       return;
     case "slowChase":
       // shambles: acts only every other turn
@@ -1976,6 +2170,7 @@ export function resolveTurn(
 
   tickTorch(state, events);
   tickFires(state, events); // fire sears whoever stands in it, refreshing burn
+  tickGas(state, events); // spore vents seep a poison haze around themselves
   tickEffects(state, events); // then the player's DoTs/buffs tick
   tickMonsterStatus(state, rng, events); // and every monster's debuffs tick
   tickFlood(state, events); // the crypt fills — water creeps into the floodable set
@@ -2024,6 +2219,30 @@ export function resolveTurn(
     };
   }
 
+  senseBrink(state, events); // warn if a shover could knock you into the void
   pushLog(state, events);
   return { tookTurn: true, goalComplete: false, playerDied: false, events };
+}
+
+/** Telegraph: after monsters move, if a knockback ("shover") monster is now
+ * adjacent with a chasm/water directly at your back (and you're not floating),
+ * warn — so you can reposition before it hurls you over the edge next turn. */
+function senseBrink(state: GameState, events: GameEvent[]) {
+  const p = state.player;
+  if ((p.effects.levitate ?? 0) > 0) return; // floating — no fall risk
+  for (const m of state.monsters) {
+    const def = monsterDef(m.defId);
+    if (!def.knockback) continue;
+    if (m.x === p.x && m.y === p.y) continue;
+    if (Math.abs(m.x - p.x) > 1 || Math.abs(m.y - p.y) > 1) continue; // adjacent
+    const t = tileAt(
+      state.map,
+      p.x + Math.sign(p.x - m.x),
+      p.y + Math.sign(p.y - m.y),
+    );
+    if (t === "chasm" || t === "water") {
+      msg(events, `The ${def.name} looms — the void yawns at your back!`);
+      return;
+    }
+  }
 }

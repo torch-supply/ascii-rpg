@@ -29,7 +29,9 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
     t === "oil" ||
     t === "forage" ||
     t === "ice" ||
-    t === "glowcap"
+    t === "glowcap" ||
+    t === "bramble" || // walkable, but snags/bleeds you as you push through
+    t === "sporeVent" // walkable fumarole (you can cross it — and get gassed)
   );
 }
 

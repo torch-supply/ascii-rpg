@@ -14,6 +14,7 @@ const ROWS: [string, string, boolean?][] = [
   ["c", "Close an adjacent door"],
   ["i", "Open inventory"],
   ["1 – 9", "Use / equip a bag item"],
+  ["m", "Mute / unmute sound"],
   ["p  ·  Esc", "Pause"],
   ["?", "This help"],
   ["Enter", "Confirm / continue"],
@@ -26,6 +27,9 @@ const LEGEND: [string, string, string][] = [
   ["!", "#ff5fa2", "potion"],
   ["*", "#7fdfff", "quest"],
   [">", "#ffd700", "exit"],
+  ["+", "#b07a3f", "door"],
+  ["‡", "#d6a4ff", "shrine"],
+  ["¶", "#cbb488", "lore"],
 ];
 
 export default function HelpModal() {
@@ -65,7 +69,9 @@ export default function HelpModal() {
         <p className="text-balance text-center text-sm leading-relaxed text-dim">
           A turn-based ASCII RPG: the world only moves when you do. Explore in
           the torchlight, fight what you must, and complete each level&apos;s
-          goal (shown top-right) to press on toward the Throne.
+          goal (shown top-right) to press on toward the Throne. You have three
+          lives — falling costs one and restarts the level; lose all three and
+          the dark takes you.
         </p>
 
         {/* controls — two columns, each a key + description on a ruled row */}

@@ -43,6 +43,32 @@ const BIOME_AMBIENT: Record<Biome, BiomeAmbient> = {
 export function ambientForBiome(biome: Biome): BiomeAmbient {
   return BIOME_AMBIENT[biome] ?? BIOME_AMBIENT.dungeon;
 }
+
+/**
+ * The dawn/dusk set-piece ambient shift (pure — no DOM, so it's unit-testable).
+ * `g` is the eased 0→1 intensity (boss-HP or approach-distance × a pulse):
+ *  • `"dawn"` warms + brightens every channel toward a rekindled sunrise;
+ *  • `"dusk"` dims all channels but holds the blue, so it darkens AND cools.
+ * `g = 0` returns the ambient unchanged. Applied per region in `renderBase`.
+ */
+export function beatAmbient(
+  beat: "dawn" | "dusk",
+  g: number,
+  amb: BiomeAmbient,
+): BiomeAmbient {
+  const shift =
+    beat === "dawn"
+      ? (c: [number, number, number]): [number, number, number] => [
+          Math.min(255, c[0] + 122 * g), // warm gold + brighten toward
+          Math.min(255, c[1] + 96 * g), // full daylight as the sun returns
+          Math.min(255, c[2] + 44 * g),
+        ]
+      : (c: [number, number, number]): [number, number, number] => {
+          const k = 1 - 0.5 * g; // dim toward 50% as you near the gate
+          return [c[0] * k, c[1] * k, Math.min(255, c[2] * k * 1.15)]; // hold blue → colder
+        };
+  return { center: shift(amb.center), edge: shift(amb.edge) };
+}
 // Flat floor keeping monsters/items readable in the dark (not biome-tinted).
 export const AMBIENT_ENTITY: [number, number, number] = [132, 128, 148];
 
@@ -55,6 +81,7 @@ const ALTAR_LIGHT: [number, number, number] = [150, 95, 225];
 const BOSS_LIGHT: [number, number, number] = [95, 40, 130]; // cold necrotic aura
 const BARRAGE_LIGHT: [number, number, number] = [215, 45, 30]; // dark-fire telegraph
 const GLOWCAP_LIGHT: [number, number, number] = [58, 168, 146]; // bioluminescent teal (soft)
+const WISP_LIGHT: [number, number, number] = [96, 196, 176]; // pale drifting witch-light
 
 const LOW_FUEL = 20; // torch starts guttering at/under this (matches HUD warning)
 const REFLECTIVITY = 0.12; // how much surfaces bounce light (0–1)
@@ -155,6 +182,15 @@ export function computeLightMap(
   // ── boss aura — a cold necrotic glow that precedes it into a room ────────────
   for (const m of state.monsters) {
     if (MONSTERS[m.defId]?.isBoss) lighting.setLight(m.x, m.y, BOSS_LIGHT);
+  }
+
+  // ── ambient wisps — each a small drifting pale light (the lure) ──────────────
+  for (const m of state.monsters) {
+    if (MONSTERS[m.defId]?.behavior !== "ambient") continue;
+    const wp = reduceMotion
+      ? 0.85
+      : 0.6 + 0.4 * Math.abs(Math.sin(now * 0.009 + m.x * 1.7 + m.y));
+    lighting.setLight(m.x, m.y, scale(WISP_LIGHT, wp));
   }
 
   // ── lich dark-fire barrage — pulsing red underlight on the telegraphed tiles ─

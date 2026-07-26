@@ -84,7 +84,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "chase",
     sightRadius: 6,
     speed: 1,
-    coinReward: 2,
+    coinReward: 1,
     inflicts: { effect: "poison", chance: 0.4, duration: 6 },
   },
   imp: {
@@ -98,11 +98,24 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "ranged",
     sightRadius: 6,
     speed: 1,
-    coinReward: 3,
+    coinReward: 2,
     rangedDmg: 3,
     rangedRange: 4,
     rangedCooldown: 2, // reload two turns between bolts — fire every 3rd turn (eases crossfire)
     inflicts: { effect: "poison", chance: 0.3, duration: 5 },
+  },
+  wisp: {
+    id: "wisp",
+    name: "Will-o'-Wisp",
+    glyph: "✦",
+    color: "#9fe8d0", // pale, cold witch-light
+    maxHp: 1,
+    dmg: 0, // harmless — never attacks
+    armor: 0,
+    behavior: "ambient", // drifts, flees when you near it, guttering out if caught
+    sightRadius: 5, // doubles as its "shy radius": flees within this
+    speed: 1,
+    coinReward: 0,
   },
   goblin: {
     id: "goblin",
@@ -115,9 +128,9 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "chase",
     sightRadius: 6,
     speed: 1,
-    coinReward: 3,
+    coinReward: 2,
     opensDoors: true, // goblins are clever enough to work a latch
-    loot: { chance: 0.15, table: [{ itemId: "p_heal", weight: 1 }] },
+    loot: { chance: 0.1, table: [{ itemId: "p_heal", weight: 1 }] },
   },
   skeleton: {
     id: "skeleton",
@@ -130,9 +143,9 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "chase",
     sightRadius: 7,
     speed: 1,
-    coinReward: 5,
+    coinReward: 3,
     loot: {
-      chance: 0.18,
+      chance: 0.12,
       table: [
         { itemId: "p_heal", weight: 3 },
         { itemId: "a_leather", weight: 1 },
@@ -150,8 +163,8 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "slowChase", // shambles — acts every other turn
     sightRadius: 6,
     speed: 1,
-    coinReward: 6,
-    loot: { chance: 0.2, table: [{ itemId: "p_heal", weight: 1 }] },
+    coinReward: 3,
+    loot: { chance: 0.12, table: [{ itemId: "p_heal", weight: 1 }] },
   },
   wraith: {
     id: "wraith",
@@ -164,11 +177,11 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "chase",
     sightRadius: 8,
     speed: 1,
-    coinReward: 8,
+    coinReward: 4,
     armorPierce: 2, // its touch slips past armor
     inflicts: { effect: "bleed", chance: 0.5, duration: 4 },
     loot: {
-      chance: 0.25,
+      chance: 0.16,
       table: [
         { itemId: "p_gheal", weight: 2 },
         { itemId: "p_ward", weight: 1 },
@@ -186,8 +199,8 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "chase",
     sightRadius: 6,
     speed: 1,
-    coinReward: 5,
-    loot: { chance: 0.18, table: [{ itemId: "p_heal", weight: 2 }] },
+    coinReward: 3,
+    loot: { chance: 0.12, table: [{ itemId: "p_heal", weight: 2 }] },
   },
   gargoyle: {
     id: "gargoyle",
@@ -198,11 +211,12 @@ export const MONSTERS: Record<string, MonsterDef> = {
     dmg: 6,
     armor: 2,
     behavior: "guardChase", // still as stone until you draw near
+    knockback: true, // a stone brute — its blow hurls you back (off a ledge = a fall)
     sightRadius: 8,
     speed: 1,
-    coinReward: 10,
+    coinReward: 5,
     loot: {
-      chance: 0.3,
+      chance: 0.2,
       table: [
         { itemId: "p_gheal", weight: 2 },
         { itemId: "a_scale", weight: 1 },
@@ -220,7 +234,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "guardChase",
     sightRadius: 9,
     speed: 1,
-    coinReward: 22,
+    coinReward: 12,
     isBoss: false, // an elite gate guard, not a unique boss — several can hold the gate
     miniBoss: true, // still tough — gets a small HP bar in view
     opensDoors: true, // a warden won't be stopped by a shut door
@@ -244,7 +258,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "ranged",
     sightRadius: 10,
     speed: 1,
-    coinReward: 22,
+    coinReward: 12,
     isBoss: true,
     opensDoors: true,
     rangedDmg: 7,
@@ -269,7 +283,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     behavior: "guardChase", // guards the bridge until it spots you
     sightRadius: 9,
     speed: 1,
-    coinReward: 30,
+    coinReward: 16,
     isBoss: true,
     loot: {
       chance: 1,

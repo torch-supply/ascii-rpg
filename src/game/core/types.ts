@@ -18,7 +18,10 @@ export type TileType =
   | "ice" // frozen water (Frostwalk) — permanent walkable bridge
   | "forage" // walkable; step on it to heal a little, then it's spent (→ floor)
   | "glowcap" // walkable glowing fungus: emits colored light (bioluminescent grotto)
-  | "water"; // impassable but transparent (chasm / water)
+  | "bramble" // walkable thorn thicket: snags/bleeds whoever pushes through; fire clears it
+  | "sporeVent" // walkable fumarole: seeps a lingering poison haze (gasTiles) around itself
+  | "water" // impassable but transparent; Rimewalk freezes it, floods can fill it
+  | "chasm"; // impassable void: like water but NO ice bridge (Rimewalk can't cross)
 
 export interface GameMap {
   width: number;
@@ -88,7 +91,10 @@ export type GeneratorKind =
   | "uniform"
   | "cellular"
   | "rogue" // classic rooms + connecting corridors
-  | "maze"; // dense perfect maze (DividedMaze) — for labyrinth wings
+  | "maze" // dense perfect maze (DividedMaze) — for labyrinth wings
+  | "hall" // a grand cathedral nave: colonnaded central hall + flanking chambers
+  | "rampart" // a linear wall-walk battlement: void beside the path + tower rooms
+  | "gallery"; // a processional statue gallery: promenade + double colonnade + niches
 
 export type MonsterBehavior =
   | "wander"
@@ -97,6 +103,10 @@ export type MonsterBehavior =
   | "guardChase"
   | "slowChase"
   | "ranged"
+  // non-hostile ambient wildlife (e.g. a will-o'-wisp): drifts, FLEES when you
+  // draw near (luring you off-path), never attacks; bumping it disperses it
+  // harmlessly (no combat, loot, or kill credit). See actMonster/movePlayer.
+  | "ambient"
   // the final boss: HP-gated phases with bolts, telegraphed barrages,
   // summoned adds, and a blink-away when cornered (see actMonster).
   | "bossLich";
@@ -136,6 +146,20 @@ export interface AltarInstance {
   used: boolean;
 }
 
+/** An environmental-storytelling prop you bump/step onto to read a short lore
+ * fragment (no cost, no boon — pure flavor/reward-for-curiosity). `inscription`
+ * = a carved stone/scrawl, `remains` = a fallen adventurer's effects. */
+export type LoreKind = "inscription" | "remains";
+export interface LoreInstance {
+  id: string;
+  x: number;
+  y: number;
+  kind: LoreKind;
+  title: string;
+  text: string;
+  read: boolean;
+}
+
 export interface MonsterDef {
   id: string;
   name: string;
@@ -154,6 +178,9 @@ export interface MonsterDef {
   miniBoss?: boolean;
   /** can shove a closed door open (spends a turn); dumb monsters just reroute */
   opensDoors?: boolean;
+  /** its melee hit KNOCKS the player back a tile — shoved into a chasm/water (and
+   * not levitating) means a fall (lose a life). Positioning matters near the void. */
+  knockback?: boolean;
   rangedDmg?: number;
   rangedRange?: number;
   /** turns a ranged attacker must reload between shots (default 1) */
@@ -258,6 +285,12 @@ export interface LevelConfig {
    * lightning flashes. Purely render-side; mapped to an atmosphere in `tiles.ts`
    * (and `"storm"` gates `paintLightning`). */
   weather?: "rain" | "storm";
+  /** a boss-HP-keyed set-piece ambient beat (render-side only, in `renderBase`):
+   * `"dawn"` warms + brightens the hall toward a rekindled sunrise as the boss
+   * falls (the Throne); `"dusk"` dims + cools it as the boss falls (the
+   * Antechamber — dread pressing in, darkest before the dawn beyond). Keyed to
+   * the level's `isBoss` monster's remaining HP. */
+  lightingBeat?: "dawn" | "dusk";
   mapWidth: number;
   mapHeight: number;
   generator: GeneratorKind;
@@ -270,10 +303,16 @@ export interface LevelConfig {
   baseLightRadius: number;
   /** hidden spike traps scattered on the path (default 0) */
   trapCount?: number;
-  /** impassable water/chasm tiles, placed as blobs (default 0) */
+  /** impassable water tiles, placed as blobs (Rimewalk-freezable; default 0) */
   waterCount?: number;
+  /** impassable chasm-void tiles, placed as blobs — a fall; only Levitation
+   * crosses (Rimewalk can't bridge a void). Default 0. */
+  chasmCount?: number;
   /** walkable oil slicks that fire ignites and spreads across (default 0) */
   oilCount?: number;
+  /** isolated poison-spore vents (fumaroles) — each seeps a small toxic haze;
+   * placed spaced apart so clouds don't merge (default 0) */
+  sporeVentCount?: number;
   /** destructible cracked walls bordering rooms (default 0) */
   crackedWallCount?: number;
   /** interactive doors placed on 1-wide chokepoints, generated open (default 0) */
@@ -284,6 +323,12 @@ export interface LevelConfig {
   eliteChance?: number;
   /** risk/reward shrines placed on open floor (default 0) */
   altarCount?: number;
+  /** environmental-storytelling lore props tucked off the path (default 0);
+   * text is drawn from the biome's `LORE_POOLS` pool in `content/lore.ts` */
+  loreCount?: number;
+  /** non-hostile ambient wildlife (behavior `"ambient"`), placed OUTSIDE the
+   * combat `monsterBudget` — atmosphere, not threats (e.g. Blackwood wisps) */
+  ambient?: { monsterId: string; count: number }[];
   goal: GoalConfig;
   /** Transition narration shown after completing this level. */
   narration: string;
@@ -388,6 +433,9 @@ export interface GameState {
   knownTraps: number[];
   /** lingering fire tiles (from firebombs): tile index -> turns remaining */
   fireTiles: { i: number; life: number }[];
+  /** lingering poison-spore clouds (from `sporeVent` tiles): tile index -> turns
+   * remaining. Re-emitted by vents each turn; poisons whoever stands in one. */
+  gasTiles: { i: number; life: number }[];
   /** melee-bash progress on cracked walls: tile index -> hits taken so far */
   crackedWallHits: Record<number, number>;
   /** lasting floor stains: tile index -> decal kind (scorch / blood) */
@@ -400,6 +448,8 @@ export interface GameState {
   floodStep?: number;
   /** risk/reward shrines on the level */
   altars: AltarInstance[];
+  /** environmental-storytelling props (bump/step to read; `read` persists) */
+  lore: LoreInstance[];
   /** tiles telegraphed by the lich's barrage — they detonate at the start of
    * the next monster phase, giving the player one turn to step clear */
   barrage: number[];

@@ -29,6 +29,7 @@ import PauseModal from "@/components/overlays/PauseModal";
 import HelpModal from "@/components/overlays/HelpModal";
 import InventoryModal from "@/components/overlays/InventoryModal";
 import AltarModal from "@/components/overlays/AltarModal";
+import LoreModal from "@/components/overlays/LoreModal";
 
 const CANVAS_MODES = new Set([
   "playing",
@@ -37,6 +38,7 @@ const CANVAS_MODES = new Set([
   "help",
   "targeting",
   "altar",
+  "lore",
 ]);
 
 /** Danger level (0–1) fed to the adaptive music: 0 anywhere but active play,
@@ -175,6 +177,7 @@ export default function GameRoot() {
       {mode === "inventory" && <InventoryModal />}
       {mode === "help" && <HelpModal />}
       {mode === "altar" && <AltarModal />}
+      {mode === "lore" && <LoreModal />}
     </div>
   );
 }

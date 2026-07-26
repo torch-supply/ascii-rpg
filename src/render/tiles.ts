@@ -15,6 +15,9 @@ export const TERRAIN_GLYPH: Record<TileType, string> = {
   ice: "▒", // frozen water — a walkable bridge (Frostwalk)
   forage: "%", // default; terrainGlyph swaps per biome (berries vs. arcane mote)
   glowcap: "ψ", // glowing fungus cluster
+  bramble: "‡", // a tangled thorn thicket (snags you; fire clears it)
+  sporeVent: "○", // a fumarole seeping toxic spores
+  chasm: " ", // a void — an empty dark gap in the floor
 };
 
 // Per-biome glyph overrides give each region its own silhouette (colored by the
@@ -47,6 +50,16 @@ export const TRAP_COLOR = "#ff5a3c";
 export const WATER_COLOR = "#3a6ea5";
 export const OIL_COLOR = "#6b6f3a";
 export const GLOWCAP_COLOR = "#6ad6c2"; // soft luminous teal — reads as its own light
+export const BRAMBLE_COLOR = "#5f6f37"; // dead thorny green-brown
+// toxic acid-green — deliberately brighter/yellower than the biome greens (and
+// matched to the poison status tint) so the vent + its haze read as a HAZARD,
+// not more foliage.
+export const SPORE_VENT_COLOR = "#a6f03a"; // bubbling toxic vent source
+export const GAS_COLOR = "#b6f24a"; // drifting poison haze (overlay)
+/** Chasm cells get a cool background tint (a cold void), so the empty gap reads
+ * as a distinct dark patch instead of the pure-black off-map/unseen area — and
+ * clearly enough that the (lethal) drop is legible. */
+export const CHASM_BG = "#0e1c34";
 export const DOOR_COLOR = "#b07a3f"; // closed door — warm wood, reads as a barrier
 export const DOOR_OPEN_COLOR = "#6e5330"; // open door — dim, out of the way
 /** Cracked walls tint the biome wall color a touch toward this warm ochre —
@@ -116,8 +129,14 @@ export function terrainColor(
       return "#bfe8ff"; // pale frost
     case "glowcap":
       return GLOWCAP_COLOR;
+    case "bramble":
+      return BRAMBLE_COLOR;
+    case "sporeVent":
+      return SPORE_VENT_COLOR;
     case "water":
       return WATER_COLOR;
+    case "chasm":
+      return "#12141c"; // near-black void (glyph is blank, so mostly unseen)
   }
 }
 
