@@ -25,6 +25,7 @@ import { OPENING, BIOME_GRADIENT } from "@/content/ascii";
 import { gameplaySeed } from "@/lib/hash";
 import { emitEffects } from "@/lib/effectBus";
 import { initSound, isSoundOn, setSoundOn, playSfx } from "@/lib/sound";
+import { playSting } from "@/lib/music";
 import type { InputCommand } from "@/game/input/keymap";
 import { serialize } from "@/save/serialize";
 import {
@@ -270,7 +271,10 @@ export const gameStore = createStore<GameStore>((set, get) => {
     armInputSettle(); // don't let the clearing keypress skip the cleared card
     const isLast = game.currentLevel >= LEVELS.length - 1;
     // on the final level the victory music is the payoff — skip the level-clear jingle
-    if (!isLast) playSfx("levelClear");
+    if (!isLast) {
+      playSfx("levelClear");
+      playSting("clear"); // a brief in-key cadence over the music
+    }
     if (isLast) {
       clearSave();
       set({
@@ -463,6 +467,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       );
       if (lore) {
         lore.read = true;
+        playSting("lore"); // a wistful fragment of the Ember motif
         set({ game: { ...game }, mode: "lore", activeLore: lore });
         persist();
       }
@@ -797,6 +802,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const result = applyAltar(game, activeAltar); // pays cost + grants boon in-place
       if (result == null) return; // can't afford — keep the modal open
       playSfx("altar");
+      playSting("altar"); // a cold, unresolved shimmer over the music
       set({ game: { ...game }, mode: "playing", activeAltar: null });
       persist();
     },
