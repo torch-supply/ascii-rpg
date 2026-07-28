@@ -1032,6 +1032,54 @@ function tickGas(state: GameState, events: GameEvent[]) {
  * occupied tile, so no one is stranded on impassable footing and the objective
  * stays reachable. Levitation glides over it; Rimewalk freezes it to ice.
  */
+/**
+ * Tiles that must stay dry THIS step so the player is never sealed in: a
+ * walkable route from wherever they're standing back to permanently-dry ground
+ * (any tile outside `floodable` — i.e. the protected spine).
+ *
+ * The flood plan keeps the OBJECTIVES reachable, but that only helps a player
+ * who is standing on the spine. Step off it into a side pocket and the ring
+ * floods every neighbour, marooning you on a single tile — and since the turn
+ * limit is only a score target, nothing ever ends the run. That's a softlock,
+ * not a hazard. Returns `null` if no route exists (already stranded), which
+ * tells the caller to hold the water rather than make it worse.
+ */
+function floodEscapeRoute(
+  state: GameState,
+  floodable: Set<number>,
+): Set<number> | null {
+  const map = state.map;
+  const w = map.width;
+  const start = idx(state.player.x, state.player.y, w);
+  const prev = new Map<number, number>([[start, -1]]);
+  const q = [start];
+  let safe = -1;
+  while (q.length) {
+    const cur = q.shift()!;
+    // dry ground the flood can never take — the player is safe once here
+    if (!floodable.has(cur) && map.tiles[cur] !== "water") {
+      safe = cur;
+      break;
+    }
+    const cx = cur % w;
+    const cy = Math.floor(cur / w);
+    for (const [dx, dy] of DIRS) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!inBounds(map, nx, ny)) continue;
+      const ni = idx(nx, ny, w);
+      if (prev.has(ni) || !isWalkable(map, nx, ny)) continue;
+      prev.set(ni, cur);
+      q.push(ni);
+    }
+  }
+  if (safe < 0) return null;
+  const route = new Set<number>();
+  for (let c = safe; c !== -1 && c !== undefined; c = prev.get(c)!)
+    route.add(c);
+  return route;
+}
+
 function tickFlood(state: GameState, events: GameEvent[]) {
   const cfg = LEVELS[state.currentLevel].flood;
   if (!cfg || !state.floodable || state.floodable.length === 0) return;
@@ -1045,6 +1093,14 @@ function tickFlood(state: GameState, events: GameEvent[]) {
   const floodable = new Set(state.floodable);
   const occupied = new Set<number>([idx(state.player.x, state.player.y, w)]);
   for (const m of state.monsters) occupied.add(idx(m.x, m.y, w));
+
+  // Keep an escape route open. Levitation crosses water, so a floating player
+  // can never be sealed in and needs no reservation.
+  if ((state.player.effects.levitate ?? 0) <= 0) {
+    const route = floodEscapeRoute(state, floodable);
+    if (route === null) return; // already stranded — don't make it worse
+    for (const i of route) occupied.add(i);
+  }
 
   let rose = false;
   if (step === 0) {

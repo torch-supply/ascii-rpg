@@ -2,7 +2,12 @@
 // Run with: npx tsx verify-core.mts   — deleted after verification.
 import { generateLevel } from "@/game/core/map/generate";
 import { LEVELS } from "@/content/levels";
-import { createPlayer, beginLevel, recomputeLight } from "@/game/core/state";
+import {
+  createPlayer,
+  beginLevel,
+  recomputeLight,
+  recomputeFOV,
+} from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import { isGoalComplete, levelParBonus } from "@/game/core/goals";
@@ -12,21 +17,46 @@ import {
   isTransparent,
   tileAt,
   chebyshev,
+  manhattan,
 } from "@/game/core/grid";
-import { monsterAttackDamage, mitigate } from "@/game/core/combat";
+import {
+  monsterAttackDamage,
+  playerAttackDamage,
+  mitigate,
+} from "@/game/core/combat";
 import { STATUS } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
 import {
   applyLevelMutators,
   applyPlayerMutators,
   mutatorScoreMult,
+  MUTATORS,
 } from "@/content/mutators";
 import { MONSTERS, ELITE } from "@/content/monsters";
-import { ITEMS, sellPrice } from "@/content/items";
+import { ITEMS, SHOP_TIERS, sellPrice } from "@/content/items";
+import { CLASS_LIST } from "@/content/classes";
+import { LORE_POOLS } from "@/content/lore";
 import { giveItem, equipWeapon } from "@/game/core/inventory";
 import { CONFIG } from "@/content/config";
+import {
+  colorDistance,
+  CHASM_BG,
+  GAS_COLOR,
+  SPORE_VENT_COLOR,
+  TRAP_COLOR,
+  WATER_COLOR,
+  GLOWCAP_COLOR,
+  PLAYER_COLOR,
+  EXIT_COLOR,
+} from "@/render/tiles";
 import { beatAmbient, ambientForBiome } from "@/render/lighting";
-import type { GameMap, Pos, TileType } from "@/game/core/types";
+import type {
+  GameMap,
+  GameState,
+  Pos,
+  TileType,
+  StatusKind,
+} from "@/game/core/types";
 
 let failures = 0;
 function check(name: string, cond: boolean, extra = "") {
@@ -36,6 +66,63 @@ function check(name: string, cond: boolean, extra = "") {
     failures++;
     console.log(`  ✗ FAIL: ${name} ${extra}`);
   }
+}
+
+/**
+ * Index of the level matching `pred` — or a loud, named failure.
+ *
+ * Many tests are PREMISED on a level with some goal type / id existing. When
+ * content moves that premise away, a bare `findIndex` returns -1 and the test
+ * crashes cryptically or quietly exercises `LEVELS[-1]` (this really happened:
+ * retiring the last `killCount` level broke two tests that way). Naming the
+ * premise turns "Cannot read properties of undefined" into a one-line reason.
+ */
+function levelIndexBy(
+  label: string,
+  pred: (l: (typeof LEVELS)[number]) => boolean,
+): number {
+  const i = LEVELS.findIndex(pred);
+  if (i < 0) {
+    console.log(
+      `\n  ✗ FAIL: test premise gone — no level ${label}. A test assumed one ` +
+        `exists; update or retire that test to match the content.`,
+    );
+    process.exit(1);
+  }
+  return i;
+}
+
+/**
+ * Assert `pred` holds for EVERY item — and that there was at least `min` item to
+ * check. Guards against the vacuous pass: `[].every(...)` is `true`, so a setup
+ * that silently produces an empty collection would otherwise report a green
+ * check having verified nothing. Use this for any assertion over a collection
+ * built at runtime (generated monsters/items/levels), not a hand-built literal.
+ */
+function checkOver<T>(
+  name: string,
+  items: T[],
+  pred: (item: T, i: number) => boolean,
+  min = 1,
+) {
+  if (items.length < min) {
+    failures++;
+    console.log(
+      `  ✗ FAIL: ${name} (vacuous — only ${items.length} item(s), expected ≥${min})`,
+    );
+    return;
+  }
+  const bad = items.findIndex((it, i) => !pred(it, i));
+  // name the offender, not just its index — for a 124-reference sweep,
+  // "(item 30 failed)" sends you counting; the value itself sends you to the fix
+  let why = "";
+  if (bad >= 0) {
+    const v = items[bad];
+    const desc =
+      typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
+    why = `(item ${bad} failed: ${desc.length > 120 ? desc.slice(0, 117) + "…" : desc})`;
+  }
+  check(name, bad < 0, why);
 }
 
 // BFS over walkable tiles; returns list of steps from -> to (exclusive of from).
@@ -77,6 +164,174 @@ function bfsPath(map: GameMap, from: Pos, to: Pos): Pos[] | null {
   }
   path.reverse();
   return path;
+}
+// ─── 0. Content integrity: every referenced id exists, every color is real ──
+// RUNS FIRST, deliberately: an id typo makes generation throw a raw stack trace
+// from whichever later test happens to touch it. Validating the data up front
+// turns that into one clear line naming the bad reference.
+// The render tables are compile-enforced (`Record<TileType,…>` + exhaustive
+// switches), but the STRING IDS wiring content together are not: a typo'd
+// `itemId` in a drop table / structure loot / shop tier, or a `monsterId` in a
+// spawn table, type-checks fine and only explodes at generation time — on one
+// level, on some seeds. Same for palettes: a malformed hex renders as garbage
+// rather than failing. This sweeps every reference in one pass.
+console.log("\n[0] Content integrity: id references + color validity");
+{
+  const isHex = (s: string) => /^#[0-9a-fA-F]{6}$/.test(s);
+  const itemExists = (id: string) => !!ITEMS[id];
+  const monExists = (id: string) => !!MONSTERS[id];
+
+  // ── every monster id referenced by a level ──
+  const monRefs: { where: string; id: string }[] = [];
+  const itemRefs: { where: string; id: string }[] = [];
+  const colors: { where: string; hex: string }[] = [];
+  LEVELS.forEach((l, i) => {
+    const at = `${l.id}[${i}]`;
+    for (const s of l.spawnTable)
+      monRefs.push({ where: `${at}.spawnTable`, id: s.monsterId });
+    for (const a of l.ambient ?? [])
+      monRefs.push({ where: `${at}.ambient`, id: a.monsterId });
+    if (l.goal.type === "killTarget")
+      monRefs.push({ where: `${at}.goal`, id: l.goal.monsterId });
+    for (const d of l.dropTable)
+      itemRefs.push({ where: `${at}.dropTable`, id: d.itemId });
+    for (const v of l.secretVault?.loot ?? [])
+      itemRefs.push({ where: `${at}.secretVault`, id: v.itemId });
+    for (const st of l.structures ?? [])
+      for (const v of st.loot ?? [])
+        itemRefs.push({ where: `${at}.structures`, id: v.itemId });
+    // palettes (level + every sub-biome + every structure)
+    for (const [k, hex] of Object.entries(l.palette))
+      colors.push({ where: `${at}.palette.${k}`, hex });
+    for (const sb of l.subBiomes ?? [])
+      for (const [k, hex] of Object.entries(sb.palette ?? {}))
+        colors.push({ where: `${at}.subBiome.${k}`, hex });
+    for (const st of l.structures ?? [])
+      for (const [k, hex] of Object.entries(st.palette ?? {}))
+        colors.push({ where: `${at}.structure.${k}`, hex });
+  });
+  // monster loot tables + shop tiers reference items too
+  for (const m of Object.values(MONSTERS)) {
+    for (const e of m.loot?.table ?? [])
+      itemRefs.push({ where: `monster ${m.id}.loot`, id: e.itemId });
+    colors.push({ where: `monster ${m.id}.color`, hex: m.color });
+  }
+  for (const [tier, stock] of Object.entries(SHOP_TIERS))
+    for (const e of stock)
+      itemRefs.push({ where: `SHOP_TIERS[${tier}]`, id: e.itemId });
+  for (const it of Object.values(ITEMS))
+    colors.push({ where: `item ${it.id}.color`, hex: it.color });
+
+  checkOver(
+    `every monster id referenced by content exists (${monRefs.length} refs)`,
+    monRefs,
+    (r) => monExists(r.id),
+  );
+  checkOver(
+    `every item id referenced by content exists (${itemRefs.length} refs)`,
+    itemRefs,
+    (r) => itemExists(r.id),
+  );
+  checkOver(
+    `every declared color is a valid #rrggbb hex (${colors.length} colors)`,
+    colors,
+    (c) => isHex(c.hex),
+  );
+
+  // ── ambient species must actually BE ambient (a hostile here would maul you) ──
+  const ambientRefs = LEVELS.flatMap((l) =>
+    (l.ambient ?? []).map((a) => ({ lvl: l.id, id: a.monsterId })),
+  );
+  checkOver(
+    "every `ambient` entry names a non-hostile ambient-behavior monster",
+    ambientRefs,
+    (r) => MONSTERS[r.id]?.behavior === "ambient",
+  );
+
+  // ── quest goals must have a matching quest item registered ──
+  const questRefs = LEVELS.filter(
+    (l) => l.goal.type === "collectX" || l.goal.type === "findItem",
+  ).map((l) => ({
+    lvl: l.id,
+    tag: (l.goal as { questTag: string }).questTag,
+  }));
+  checkOver(
+    "every collect/find goal has an item registered for its questTag",
+    questRefs,
+    (r) => Object.values(ITEMS).some((it) => it.questTag === r.tag),
+  );
+
+  // ── a level's shopTier must exist in SHOP_TIERS (else the shop is empty) ──
+  const tierRefs = LEVELS.filter((l) => l.shopTier != null).map((l) => ({
+    lvl: l.id,
+    tier: l.shopTier!,
+  }));
+  checkOver(
+    "every level's shopTier resolves to real stock",
+    tierRefs,
+    (r) => (SHOP_TIERS[r.tier]?.length ?? 0) > 0,
+  );
+
+  // ── each class's starting kit must reference real items ──
+  const kitRefs = CLASS_LIST.flatMap((c) => [
+    { who: c.id, id: c.weaponId },
+    { who: c.id, id: c.armorId },
+    ...(c.bag ?? []).map((b) => ({ who: c.id, id: b.defId })),
+  ]);
+  checkOver("every class's starting kit references real items", kitRefs, (r) =>
+    itemExists(r.id),
+  );
+
+  // ── biomes a level actually uses should have their OWN lore pool (the
+  //    fallback silently serves dungeon fragments in, say, a mountain) ──
+  const usedBiomes = [
+    ...new Set(
+      LEVELS.flatMap((l) => [
+        ...(l.loreCount ? [l.biome] : []),
+        ...(l.subBiomes ?? []).map((s) => s.biome),
+      ]),
+    ),
+  ];
+  // Lore is placed per REGION, so a prop can draw from any biome the level
+  // carries — base OR sub-biome. Every one of those needs its own pool, else
+  // the fallback silently serves dungeon fragments in, say, a fungal grove.
+  const loreBiomes = [
+    ...new Set(
+      LEVELS.filter((l) => (l.loreCount ?? 0) > 0).flatMap((l) => [
+        l.biome,
+        ...(l.subBiomes ?? []).map((s) => s.biome),
+      ]),
+    ),
+  ];
+  checkOver(
+    "every biome a lore prop can land in has its own pool (no silent fallback)",
+    loreBiomes,
+    (b) => (LORE_POOLS[b]?.length ?? 0) > 0,
+  );
+  // …and a fragment must not name a place its pool can appear OUTSIDE of (the
+  // marsh pilgrim said "The Mire kept them" while turning up in the Blackwood).
+  // match the bare proper noun, case-insensitively — "the Mire" missed "The
+  // Mire kept them", so the guard passed on the very line that motivated it
+  const placeNames = ["blackwood", "mire", "frostspine", "veldrin"];
+  const homes = new Map<string, Set<string>>();
+  for (const l of LEVELS)
+    for (const b of [l.biome, ...(l.subBiomes ?? []).map((s) => s.biome)])
+      homes.set(b, (homes.get(b) ?? new Set()).add(l.id));
+  const named = Object.entries(LORE_POOLS).flatMap(([b, pool]) =>
+    pool.flatMap((e) =>
+      placeNames
+        .filter((p) => e.text.toLowerCase().includes(p))
+        .map((p) => ({ biome: b, title: e.title, place: p })),
+    ),
+  );
+  check(
+    "no lore fragment names a place its biome can appear outside of",
+    named.every((n) => (homes.get(n.biome)?.size ?? 0) <= 1),
+    named
+      .filter((n) => (homes.get(n.biome)?.size ?? 0) > 1)
+      .map((n) => `"${n.title}" names ${n.place} but ${n.biome} spans levels`)
+      .join("; "),
+  );
 }
 
 // ─── 1. Determinism ─────────────────────────────────────────────────────────
@@ -261,7 +516,8 @@ console.log("\n[4] Level 2 collectX goal");
 // ─── 5. killTarget goal (Level 3 — Frost Troll) ─────────────────────────────
 console.log("\n[5] Level 3 killTarget goal");
 {
-  const idx3 = LEVELS.findIndex(
+  const idx3 = levelIndexBy(
+    "with the frost_troll killTarget goal",
     (l) => l.goal.type === "killTarget" && l.goal.monsterId === "frost_troll",
   );
   const player = createPlayer();
@@ -276,7 +532,10 @@ console.log("\n[5] Level 3 killTarget goal");
 // ─── 6. findItem goal (Level 4 — Sunblade) ──────────────────────────────────
 console.log("\n[6] Level 4 findItem goal");
 {
-  const idx4 = LEVELS.findIndex((l) => l.goal.type === "findItem");
+  const idx4 = levelIndexBy(
+    "with a findItem goal",
+    (l) => l.goal.type === "findItem",
+  );
   const player = createPlayer();
   const game = beginLevel("find-seed", idx4, player);
   const sun = game.items.find((it) => it.questTag === "sunblade");
@@ -634,10 +893,13 @@ console.log("\n[15] Ranged attackers reload (fire every other turn)");
   );
 }
 
-// ─── 16. Survive & cull goals ───────────────────────────────────────────────
-console.log("\n[16] Survive & cull goals");
+// ─── 16. Survive goal & escalating siege ────────────────────────────────────
+console.log("\n[16] Survive goal & escalating siege");
 {
-  const si = LEVELS.findIndex((l) => l.goal.type === "survive");
+  const si = levelIndexBy(
+    "with a survive goal",
+    (l) => l.goal.type === "survive",
+  );
   const target = (LEVELS[si].goal as { turns: number }).turns;
   const g = beginLevel("survive-seed", si, createPlayer());
   g.player.maxHp = 999999;
@@ -675,12 +937,9 @@ console.log("\n[16] Survive & cull goals");
     );
   }
 
-  const ci = LEVELS.findIndex((l) => l.goal.type === "killCount");
-  const count = (LEVELS[ci].goal as { count: number }).count;
-  const g2 = beginLevel("cull-seed", ci, createPlayer());
-  check("cull incomplete at start", !isGoalComplete(g2));
-  g2.levelKills = count;
-  check("cull completes at the kill count", isGoalComplete(g2));
+  // (No level currently uses `killCount` — the Iron Gate is now killTarget — so
+  // the cull-completion mechanic isn't exercised here; the goal type stays
+  // supported in goals.ts for future reuse.)
 }
 
 // ─── 17. Monster loot drops ─────────────────────────────────────────────────
@@ -1644,7 +1903,8 @@ console.log("\n[28] No unreachable open areas");
 // ─── 29. Boss mechanics (Malachar) ──────────────────────────────────────────
 console.log("\n[29] Boss mechanics — Malachar's phases/barrage/summon/blink");
 {
-  const ti = LEVELS.findIndex(
+  const ti = levelIndexBy(
+    "with the lich killTarget goal",
     (l) =>
       l.goal.type === "killTarget" &&
       (l.goal as { monsterId?: string }).monsterId === "lich",
@@ -1865,14 +2125,15 @@ console.log(
   }
 
   // (c) The nuance: a PASSIVE tick that kills you wins over a goal that the same
-  // tick would have completed (only your own action wins through a tie).
+  // tick would have completed (only your own action wins through a tie). Uses a
+  // real killTarget level and a goal-target that dies to its OWN burn this tick.
   {
-    const ci = LEVELS.findIndex((l) => l.goal.type === "killCount");
-    const count = (LEVELS[ci].goal as { count: number }).count;
-    const g = beginLevel("sameturn-c", ci, createPlayer());
+    const ti = levelIndexBy(
+      "with a killTarget goal",
+      (l) => l.goal.type === "killTarget",
+    );
+    const g = beginLevel("sameturn-c", ti, createPlayer());
     const p = g.player;
-    g.monsters = [];
-    g.levelKills = count - 1; // one kill short of the cull goal
     const spot = [
       [1, 0],
       [0, 1],
@@ -1881,7 +2142,7 @@ console.log(
     ]
       .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
       .find((c) => isWalkable(g.map, c.x, c.y))!;
-    // a monster that will die to its own burn this tick → completes the cull
+    // the goal target itself dies to its own burn this tick → completes killTarget
     g.monsters = [
       {
         id: "m",
@@ -1890,6 +2151,7 @@ console.log(
         y: spot.y,
         hp: 1,
         state: "idle",
+        isGoalTarget: true,
         effects: { burn: 2 },
       },
     ];
@@ -1903,8 +2165,8 @@ console.log(
       res.playerDied && !res.goalComplete,
     );
     check(
-      "(sanity) that tick did finish the cull count",
-      g.levelKills >= count,
+      "(sanity) that tick did slay the goal target",
+      !g.monsters.some((m) => m.isGoalTarget),
     );
   }
 }
@@ -2499,17 +2761,21 @@ console.log("\n[39] Class abilities");
   const hp0 = g.monsters.map((m) => m.hp);
   const res = resolveTurn(g, { type: "ability" }, new Rng(1));
   check("cleave takes the turn", res.tookTurn);
-  check(
+  // checkOver: fails if the arena setup produced no adjacent monsters (an empty
+  // `.every()` would otherwise pass having verified nothing)
+  checkOver(
     "cleave damages every adjacent monster",
-    g.monsters.length === hp0.length &&
-      g.monsters.every((m, i) => m.hp < hp0[i]),
+    g.monsters,
+    (m, i) => m.hp < hp0[i],
   );
   check("cleave sets the cooldown", g.player.abilityCooldown === 5);
   const hp1 = g.monsters.map((m) => m.hp);
   const res2 = resolveTurn(g, { type: "ability" }, new Rng(2));
-  check(
-    "ability refused while on cooldown (no turn, no damage)",
-    !res2.tookTurn && g.monsters.every((m, i) => m.hp === hp1[i]),
+  check("ability refused while on cooldown (no turn)", !res2.tookTurn);
+  checkOver(
+    "ability on cooldown deals no damage",
+    g.monsters,
+    (m, i) => m.hp === hp1[i],
   );
 
   // Rogue — Dash: leaps in a clear direction (player repositions).
@@ -2649,7 +2915,7 @@ console.log("\n[41] Flood never submerges an altar");
 // player agency against getting boxed in by the rising flood.
 console.log("\n[42] Flood: open door conducts water, closed door blocks it");
 {
-  const ci = LEVELS.findIndex((l) => l.id === "sunken_crypt");
+  const ci = levelIndexBy("sunken_crypt", (l) => l.id === "sunken_crypt");
   const flood = LEVELS[ci].flood!;
   // hand-built patch: water — door — floor in a row; tick one flood step and see
   // whether the water crosses the door tile.
@@ -2967,7 +3233,7 @@ console.log("\n[48] Lore props: placed, distinct, reachable");
 // (no combat / coins / kill credit).
 console.log("\n[49] Ambient wisps: placed, flee, harmless, disperse on touch");
 {
-  const bwi = LEVELS.findIndex((l) => l.id === "blackwood");
+  const bwi = levelIndexBy("blackwood", (l) => l.id === "blackwood");
   let hasWisps = false;
   for (const seed of ["a", "b", "c"]) {
     const g = beginLevel(seed, bwi, createPlayer());
@@ -2975,6 +3241,24 @@ console.log("\n[49] Ambient wisps: placed, flee, harmless, disperse on touch");
       hasWisps = true;
   }
   check("the Blackwood spawns ambient wisps", hasWisps);
+
+  // every level that declares `ambient` species actually spawns them (its
+  // exact monsterIds, outside the combat budget) across a few seeds
+  // flatten to (level, species) pairs so checkOver can assert we tested a
+  // non-empty set — otherwise removing every `ambient:` entry would pass green
+  const ambientSpecs = LEVELS.flatMap((l, li) =>
+    (l.ambient ?? []).map((spec) => ({ li, spec })),
+  );
+  checkOver(
+    "every level's declared ambient species get placed",
+    ambientSpecs,
+    ({ li, spec }) =>
+      ["a", "b", "c"].some((seed) =>
+        beginLevel(seed, li, createPlayer()).monsters.some(
+          (m) => m.defId === spec.monsterId,
+        ),
+      ),
+  );
 
   const px = 8;
   const py = 8;
@@ -3036,7 +3320,7 @@ console.log("\n[49] Ambient wisps: placed, flee, harmless, disperse on touch");
 // bits: offerings reach the niches, and the pit genuinely varies run to run).
 console.log("\n[50] Gallery: niche offerings + varied collapsed pit");
 {
-  const ai = LEVELS.findIndex((l) => l.id === "antechamber");
+  const ai = levelIndexBy("antechamber", (l) => l.id === "antechamber");
   const deadEndOpen = (map: GameMap, i: number) => {
     const w = map.width;
     const passish = (t: TileType) =>
@@ -3116,6 +3400,484 @@ console.log("\n[51] Dawn/dusk lighting beat: warms vs. dims by intensity");
   check(
     "the Antechamber is wired to the dusk beat",
     a?.lightingBeat === "dusk",
+  );
+}
+
+// ─── 52. Mutators still honour every generator guarantee ────────────────────
+// `applyLevelMutators` reshapes the config BEFORE generation (traps, spawns,
+// light, drops), so a trial could in principle break a guarantee that's only
+// ever tested on UNMODIFIED configs — and the playthrough bot never selects
+// mutators, so nothing else would catch it. Run each trial (plus the all-on
+// stack) across levels and re-assert the load-bearing invariants.
+console.log("\n[52] Mutators preserve the generator guarantees");
+{
+  const OPEN = new Set<string>([
+    "floor",
+    "doorOpen",
+    "door",
+    "exit",
+    "trap",
+    "trapSprung",
+    "oil",
+    "forage",
+    "ice",
+    "glowcap",
+    "bramble",
+    "sporeVent",
+    "crackedWall",
+  ]);
+  const dirs = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+  const ids = MUTATORS.map((m) => m.id);
+  const combos: string[][] = [...ids.map((i) => [i]), ids]; // each alone + all on
+  const seeds = ["m1", "m2"];
+  // (level, seed, combo) triples — checkOver proves we actually ran some
+  const cases = combos.flatMap((combo) =>
+    seeds.flatMap((seed) => LEVELS.map((_, li) => ({ combo, seed, li }))),
+  );
+
+  checkOver(
+    `objectives stay reachable under every trial (${combos.length} combos)`,
+    cases,
+    ({ combo, seed, li }) => {
+      const g = beginLevel(seed, li, createPlayer(), combo);
+      const from = { x: g.player.x, y: g.player.y };
+      if (g.map.exit && bfsPath(g.map, from, g.map.exit) === null) return false;
+      for (const m of g.monsters)
+        if (m.isGoalTarget && bfsPath(g.map, from, { x: m.x, y: m.y }) === null)
+          return false;
+      for (const it of g.items)
+        if (it.questTag && bfsPath(g.map, from, { x: it.x, y: it.y }) === null)
+          return false;
+      return true;
+    },
+  );
+
+  checkOver(
+    "no unreachable open pockets under every trial",
+    cases,
+    ({ combo, seed, li }) => {
+      const g = beginLevel(seed, li, createPlayer(), combo);
+      const w = g.map.width;
+      const h = g.map.height;
+      const seen = new Uint8Array(w * h);
+      const start = idx(g.player.x, g.player.y, w);
+      seen[start] = 1;
+      const stack = [start];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        const cx = cur % w;
+        const cy = Math.floor(cur / w);
+        for (const [dx, dy] of dirs) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const ni = ny * w + nx;
+          if (seen[ni] || !OPEN.has(g.map.tiles[ni])) continue;
+          seen[ni] = 1;
+          stack.push(ni);
+        }
+      }
+      for (let i = 0; i < g.map.tiles.length; i++)
+        if (OPEN.has(g.map.tiles[i]) && !seen[i]) return false;
+      return true;
+    },
+  );
+
+  // Treacherous multiplies traps — the "always a trap-free route" guarantee is
+  // the one most at risk, so assert it explicitly under the trap-heavy trials.
+  const trapCases = cases.filter(
+    (c) => c.combo.includes("treacherous") && LEVELS[c.li].trapCount,
+  );
+  // flood of tiles reachable WITHOUT stepping on an armed trap (as in [18])
+  const trapFree = (map: GameMap, from: Pos): Set<number> => {
+    const w = map.width;
+    const h = map.height;
+    const seen = new Set<number>([idx(from.x, from.y, w)]);
+    const q = [idx(from.x, from.y, w)];
+    while (q.length) {
+      const cur = q.shift()!;
+      const cx = cur % w;
+      const cy = Math.floor(cur / w);
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const ni = ny * w + nx;
+        if (seen.has(ni) || map.tiles[ni] === "trap") continue;
+        if (!isWalkable(map, nx, ny)) continue;
+        seen.add(ni);
+        q.push(ni);
+      }
+    }
+    return seen;
+  };
+  checkOver(
+    "a trap-free route to every objective survives Treacherous",
+    trapCases,
+    ({ combo, seed, li }) => {
+      const g = beginLevel(seed, li, createPlayer(), combo);
+      const free = trapFree(g.map, { x: g.player.x, y: g.player.y });
+      const w = g.map.width;
+      const targets: Pos[] = [];
+      if (g.map.exit) targets.push(g.map.exit);
+      for (const m of g.monsters)
+        if (m.isGoalTarget) targets.push({ x: m.x, y: m.y });
+      for (const it of g.items)
+        if (it.questTag) targets.push({ x: it.x, y: it.y });
+      return targets.every((t) => free.has(idx(t.x, t.y, w)));
+    },
+  );
+}
+
+// ─── 53. Load-bearing invariants (found missing by a mutation audit) ────────
+// These three all SURVIVED deliberate sabotage — the suite stayed green with
+// the damage floor removed, poison dealing 0, and the sneak bonus deleted. Each
+// is a rule the design leans on, so each now has a test that fails if it goes.
+console.log("\n[53] Load-bearing invariants: damage floor, DoT, sneak bonus");
+{
+  // (a) The min-1 damage floor. Without it a monster whose armor meets your
+  // weapon power becomes literally unkillable — the fight can never resolve.
+  {
+    const p = createPlayer("wanderer");
+    const tank = { ...MONSTERS.skeleton, armor: 999 };
+    check(
+      "a player always deals ≥1 damage, however armored the target",
+      playerAttackDamage(p, tank) >= 1,
+      `(got ${playerAttackDamage(p, tank)})`,
+    );
+    const armored = createPlayer("warrior");
+    armored.armorReduction = 999;
+    check(
+      "a monster always deals ≥1 damage, however armored the player",
+      monsterAttackDamage(MONSTERS.rat, armored) >= 1,
+      `(got ${monsterAttackDamage(MONSTERS.rat, armored)})`,
+    );
+    // and the floor really is a FLOOR — a real weapon still scales above it
+    const strong = createPlayer("wanderer");
+    strong.weaponPower = 20;
+    check(
+      "damage still scales with weapon power (the floor isn't a cap)",
+      playerAttackDamage(strong, MONSTERS.skeleton) > 1,
+    );
+  }
+
+  // (b) Damage-over-time actually damages. `poison`/`bleed`/`burn` are the
+  // engine's armor-ignoring pressure; a 0-damage tick guts hazards silently.
+  for (const kind of ["poison", "bleed", "burn"] as const) {
+    const g = beginLevel("dot-seed", 0, createPlayer());
+    g.monsters = [];
+    const p = g.player;
+    p.maxHp = 60;
+    p.hp = 60;
+    p.effects[kind] = 4;
+    const before = p.hp;
+    resolveTurn(g, { type: "wait" }, new Rng(1));
+    check(
+      `${kind} actually deals damage on its tick`,
+      p.hp < before,
+      `(hp ${before}→${p.hp})`,
+    );
+  }
+
+  // (c) The sneak bonus. Striking a chaser that hasn't noticed you must hurt
+  // MORE than the same blow once it's alerted — that's the whole payoff of the
+  // light/stealth system.
+  {
+    const arena = (state: "idle" | "chase") => {
+      const g = beginLevel("sneak-inv", 0, createPlayer("wanderer"));
+      const p = g.player;
+      p.maxHp = p.hp = 99;
+      const spot = [
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+        [0, -1],
+      ]
+        .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+        .find((c) => isWalkable(g.map, c.x, c.y))!;
+      g.monsters = [
+        {
+          id: "t",
+          defId: "skeleton",
+          x: spot.x,
+          y: spot.y,
+          hp: 500, // survives the blow so we can read the damage dealt
+          state,
+        },
+      ];
+      resolveTurn(
+        g,
+        { type: "move", dx: spot.x - p.x, dy: spot.y - p.y },
+        new Rng(4),
+      );
+      return 500 - (g.monsters[0]?.hp ?? 0);
+    };
+    const sneak = arena("idle");
+    const alert = arena("chase");
+    check(
+      "striking an unaware chaser hits harder than an alerted one (sneak bonus)",
+      sneak > alert,
+      `(sneak ${sneak} vs alert ${alert})`,
+    );
+  }
+}
+
+// ─── 54. Color legibility — the rendering contract of an ASCII game ────────
+// Everything is a colored glyph on a dark field, so "can you tell these apart
+// at a glance" is a correctness property, not taste. Two bugs shipped from
+// getting it wrong (a spore haze that vanished into the foliage; a chasm that
+// read as off-map black).
+//
+// SCOPE, honestly: color distance alone can NOT decide every case — a trap
+// sits at ~221 from some walls and is perfectly readable because its `^` glyph
+// carries the signal, while the old spore haze at ~200–227 was invisible
+// because a drifting mote has no shape to read. So these are REGRESSION FLOORS
+// (nothing may get worse than today's worst) plus the specific relationships
+// that are genuinely all-color. Eyeballing is still required — see /style.
+console.log("\n[54] Color legibility: contrast floors for glyphs on terrain");
+{
+  const INK = "#0d0d0d"; // the page/background black
+
+  // (a) Background TINTS are pure color — no glyph to help. The chasm's void
+  // tint must not read as the off-map black (it did: distance 39, now 73).
+  check(
+    "the chasm's void tint is distinguishable from off-map black",
+    colorDistance(CHASM_BG, INK) >= 60,
+    `(distance ${colorDistance(CHASM_BG, INK).toFixed(0)}, need ≥60)`,
+  );
+
+  // (b) Status tints recolor the SAME glyph, so color is the only signal —
+  // you must be able to tell poisoned from burning at a glance.
+  const kinds = Object.keys(STATUS) as StatusKind[];
+  const tintPairs = kinds.flatMap((a, i) =>
+    kinds.slice(i + 1).map((b) => ({ a, b })),
+  );
+  checkOver(
+    "every pair of status tints is tellable apart",
+    tintPairs,
+    ({ a, b }) => colorDistance(STATUS[a].tint, STATUS[b].tint) >= 120,
+  );
+
+  // (c) The player and the exit must pop against ANY terrain — they're what you
+  // scan the screen for.
+  const terrain = LEVELS.flatMap((l) =>
+    [l.palette.floor, l.palette.wall].map((c) => ({ lvl: l.id, c })),
+  );
+  for (const [what, hex, min] of [
+    ["the player @", PLAYER_COLOR, 300],
+    ["the exit >", EXIT_COLOR, 300],
+  ] as const)
+    checkOver(
+      `${what} stands out against every level's terrain`,
+      terrain,
+      (t) => colorDistance(hex, t.c) >= min,
+    );
+
+  // (d) Within a level, floor and wall must differ enough to read structure.
+  checkOver(
+    "every level's floor and wall are distinguishable from each other",
+    LEVELS.map((l) => ({ id: l.id, f: l.palette.floor, w: l.palette.wall })),
+    (l) => colorDistance(l.f, l.w) >= 60,
+  );
+
+  // (e) REGRESSION FLOOR for hazard signals against terrain they can really
+  // appear on. The bar is set from MEASUREMENT, not taste: across the 34 real
+  // pairs the weakest today is water on the Frostspine's grey-blue crags (121),
+  // and water owns the whole bottom of the list (121/161/165/183) — everything
+  // else is ≥221. Water survives on glyph + shimmer, but it IS the game's
+  // thinnest read and is worth an art pass (logged in IDEAS). The floor sits
+  // just under today's worst so it catches a NEW invisible hazard without
+  // re-litigating accepted art; tighten it if water ever gets retinted.
+  // Only compare a hazard against terrain it can ACTUALLY appear on — generate
+  // each level and read which tiles are really there. (Comparing every hazard
+  // against every level flagged water on the waterless Pit: a false alarm.)
+  const SIGNAL_OF: Partial<Record<TileType, { what: string; hex: string }>> = {
+    sporeVent: { what: "spore vent", hex: SPORE_VENT_COLOR },
+    trap: { what: "trap", hex: TRAP_COLOR },
+    water: { what: "water", hex: WATER_COLOR },
+    glowcap: { what: "glowcap", hex: GLOWCAP_COLOR },
+  };
+  const signalPairs: { what: string; hex: string; on: string; tc: string }[] =
+    [];
+  LEVELS.forEach((l, li) => {
+    const g = beginLevel("legibility", li, createPlayer());
+    const present = new Set(g.map.tiles);
+    // a spore vent seeps the gas haze, so the haze shares its levels
+    if (present.has("sporeVent")) present.add("gas" as TileType);
+    for (const [tile, sig] of Object.entries(SIGNAL_OF)) {
+      if (!present.has(tile as TileType)) continue;
+      for (const c of [l.palette.floor, l.palette.wall])
+        signalPairs.push({ what: sig.what, hex: sig.hex, on: l.id, tc: c });
+    }
+    if (present.has("sporeVent"))
+      for (const c of [l.palette.floor, l.palette.wall])
+        signalPairs.push({ what: "gas haze", hex: GAS_COLOR, on: l.id, tc: c });
+  });
+  checkOver(
+    `no hazard signal is invisible against terrain (${signalPairs.length} pairs)`,
+    signalPairs,
+    (p) => colorDistance(p.hex, p.tc) >= 110,
+  );
+}
+
+// ─── 55. The flood can never seal the player in (softlock guard) ────────────
+// The flood plan keeps OBJECTIVES reachable, but that only protects a player
+// standing on the dry spine. Step into a side pocket and the rising ring used
+// to flood every neighbour, marooning you on one tile — and since the turn
+// limit is only a score target, nothing ends the run: a permanent softlock.
+// `tickFlood` now reserves a walkable escape route back to dry ground.
+console.log("\n[55] Flood never seals the player in (softlock guard)");
+{
+  const fi = levelIndexBy("with a flood set-piece", (l) => !!l.flood);
+  const cfg = LEVELS[fi].flood!;
+  // can the player still WALK to permanently-dry ground (a non-floodable tile)?
+  const canEscape = (g: GameState) => {
+    const w = g.map.width;
+    const floodable = new Set(g.floodable ?? []);
+    const start = idx(g.player.x, g.player.y, w);
+    const seen = new Set<number>([start]);
+    const q = [start];
+    while (q.length) {
+      const cur = q.shift()!;
+      if (!floodable.has(cur) && g.map.tiles[cur] !== "water") return true;
+      const cx = cur % w;
+      const cy = Math.floor(cur / w);
+      for (const [dx, dy] of [
+        [0, -1],
+        [0, 1],
+        [-1, 0],
+        [1, 0],
+      ]) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        const ni = idx(nx, ny, w);
+        if (seen.has(ni) || !isWalkable(g.map, nx, ny)) continue;
+        seen.add(ni);
+        q.push(ni);
+      }
+    }
+    return false;
+  };
+
+  const openOrthoCountAt = (g: GameState, i: number) => {
+    const w = g.map.width;
+    return [
+      [0, -1],
+      [0, 1],
+      [-1, 0],
+      [1, 0],
+    ].filter(([dx, dy]) =>
+      isWalkable(g.map, (i % w) + dx, Math.floor(i / w) + dy),
+    ).length;
+  };
+
+  const seeds = ["fl1", "fl2", "fl3", "fl4", "fl5", "fl6"];
+  // Park the player OFF the protected spine (a floodable tile far from start) —
+  // exactly the situation that stranded a real run — then flood to the maximum.
+  const cases = seeds.map((seed) => {
+    const g = beginLevel(seed, fi, createPlayer());
+    g.monsters = [];
+    g.player.hp = g.player.maxHp = 1e9;
+    const w = g.map.width;
+    const pocket = (g.floodable ?? [])
+      .filter((i) => openOrthoCountAt(g, i) <= 2) // a nook/corridor, worst case
+      .sort(
+        (a, b) =>
+          manhattan(b % w, Math.floor(b / w), g.player.x, g.player.y) -
+          manhattan(a % w, Math.floor(a / w), g.player.x, g.player.y),
+      )[0];
+    if (pocket != null) {
+      g.player.x = pocket % w;
+      g.player.y = Math.floor(pocket / w);
+    }
+    // run well past the last flood step
+    const turns = cfg.startTurn + cfg.interval * (cfg.maxSteps + 2);
+    let everStuck = false;
+    for (let t = 0; t < turns; t++) {
+      resolveTurn(g, { type: "wait" }, new Rng(t + 1));
+      if (!canEscape(g)) everStuck = true;
+    }
+    return { seed, everStuck, step: g.floodStep ?? 0 };
+  });
+
+  checkOver(
+    "the player is never sealed in by the rising water",
+    cases,
+    (c) => !c.everStuck,
+  );
+  // and the water must still actually rise — a guard that just stops the flood
+  // would pass the check above while gutting the set-piece
+  checkOver(
+    "...and the flood still rises to its full extent",
+    cases,
+    (c) => c.step >= cfg.maxSteps,
+  );
+}
+
+// ─── 56. A secret vault is SECRET — you can't see in before breaking in ─────
+// The enclosure check originally tested only the 4 orthogonal neighbors, but
+// FOV runs at `topology: 8`: one transparent diagonal corner let you see the
+// whole vault — hoard, guardian and all — straight through the "sealed" wall
+// (15+ outside tiles had a view). Spoiling the surprise is the whole point of
+// the feature, so this asserts the seal optically, not just structurally.
+console.log("\n[56] Secret vaults can't be seen into before you break in");
+{
+  const vaultLevels = LEVELS.map((l, i) => ({ l, i })).filter(
+    ({ l }) => !!l.secretVault,
+  );
+  const seeds = ["v1", "v2", "v3", "v4"];
+  const cases = vaultLevels.flatMap(({ l, i }) =>
+    seeds.map((seed) => ({ id: l.id, i, seed })),
+  );
+
+  checkOver(
+    `no tile outside a vault can see into it (${cases.length} level×seed)`,
+    cases,
+    ({ i, seed }) => {
+      const g = beginLevel(seed, i, createPlayer());
+      const vaultItem = g.items.find((it) => it.id.includes("_v"));
+      if (!vaultItem) return true; // vault didn't place on this seed — nothing to leak
+      const w = g.map.width;
+      const vi = idx(vaultItem.x, vaultItem.y, w);
+      // the sealed interior = floor reachable from the loot without crossing the gate
+      const room = new Set<number>([vi]);
+      const q = [vi];
+      while (q.length) {
+        const c = q.shift()!;
+        for (const [dx, dy] of [
+          [0, -1],
+          [0, 1],
+          [-1, 0],
+          [1, 0],
+        ]) {
+          const ni = (Math.floor(c / w) + dy) * w + ((c % w) + dx);
+          if (!room.has(ni) && g.map.tiles[ni] === "floor") {
+            room.add(ni);
+            q.push(ni);
+          }
+        }
+      }
+      // stand everywhere nearby OUTSIDE it and confirm the interior stays dark
+      for (let dy = -8; dy <= 8; dy++) {
+        for (let dx = -8; dx <= 8; dx++) {
+          const x = vaultItem.x + dx;
+          const y = vaultItem.y + dy;
+          const i2 = idx(x, y, w);
+          if (room.has(i2) || !isWalkable(g.map, x, y)) continue;
+          g.player.x = x;
+          g.player.y = y;
+          g.player.lightRadius = 8;
+          recomputeFOV(g);
+          if (g.visible.includes(vi)) return false;
+        }
+      }
+      return true;
+    },
   );
 }
 

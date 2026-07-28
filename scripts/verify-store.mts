@@ -33,6 +33,7 @@ class MemStorage {
 
 // pure helpers / content have no browser deps — safe to import statically
 import { LEVELS } from "@/content/levels";
+import { CONFIG } from "@/content/config";
 import { SHOP_TIERS, ITEMS, sellPrice } from "@/content/items";
 import { idx } from "@/game/core/grid";
 import type { GameState, Pos } from "@/game/core/types";
@@ -465,6 +466,211 @@ console.log("\n[S10] Lore prop: step onto → read modal → dismiss → stays r
     st().submitAction({ type: "move", dx: dir!.dx, dy: dir!.dy });
     check("a read prop does not reopen", st().mode === "playing");
   }
+}
+
+// ─── S11. Save compatibility: stale/corrupt saves retire gracefully ─────────
+// We bump `CONFIG.contentVersion` on every content change and RELY on old saves
+// being rejected rather than loaded into a broken state. That path is what
+// protects players across updates, so exercise it directly: a stale content
+// version, a bumped schema version, and unparseable junk must each read as
+// "no save" (Resume hidden) — never a crash or a half-loaded run.
+console.log(
+  "\n[S11] Save compatibility: stale/corrupt saves retire gracefully",
+);
+{
+  const KEY = CONFIG.saveKey;
+  // start from a real, valid save so we know the baseline works
+  await bootToPlay("compat-seed");
+  st().submitAction({ type: "wait" }); // a committed turn → persist()
+  const valid = localStorage.getItem(KEY);
+  check("(setup) a real run persisted a save", !!valid);
+  st().init();
+  check("a current-version save is offered for Resume", st().hasSave === true);
+
+  const parsed = JSON.parse(valid!);
+  const write = (o: unknown) => localStorage.setItem(KEY, JSON.stringify(o));
+
+  // (a) a save written by an older content version must be retired
+  write({ ...parsed, contentVersion: "0-ancient" });
+  st().init();
+  check(
+    "a STALE contentVersion save is not offered for Resume",
+    st().hasSave === false,
+  );
+  // the real protection: even if Resume is somehow invoked, it must refuse the
+  // stale save and bounce to the splash rather than load a broken run
+  st().resumeGame();
+  check(
+    "...and Resume refuses it, returning to the splash",
+    st().mode === "splash" && st().hasSave === false,
+  );
+
+  // (b) a future/other schema version must be retired
+  write({ ...parsed, version: 999 });
+  st().init();
+  check(
+    "an unknown schema version is not offered for Resume",
+    st().hasSave === false,
+  );
+
+  // (c) structurally broken payloads must not crash the boot
+  for (const [label, blob] of [
+    ["unparseable junk", "{not json"],
+    ["a valid-JSON non-object", "42"],
+    ["a save missing `game`", JSON.stringify({ ...parsed, game: undefined })],
+  ] as const) {
+    localStorage.setItem(KEY, blob);
+    let threw = false;
+    try {
+      st().init();
+    } catch {
+      threw = true;
+    }
+    check(`${label} → boots without throwing`, !threw);
+    check(`${label} → Resume stays hidden`, st().hasSave === false);
+  }
+
+  // (d) and the game is still fully playable after a rejected save
+  localStorage.removeItem(KEY);
+  await bootToPlay("compat-seed2");
+  check(
+    "a fresh run still starts cleanly after a rejected save",
+    st().mode === "playing" && !!st().game,
+  );
+}
+
+// ─── S12. Save FIDELITY: the whole run state survives, not just the scalars ──
+// S9 proves a resume happens; this proves nothing is silently LOST in it. The
+// save stores `game` wholesale as JSON, so the danger isn't a forgotten field —
+// it's a value JSON can't carry (a Set/Map degrades to `{}`, `undefined` and
+// NaN vanish). Nearly every feature adds a GameState field and the docs keep
+// claiming "JSON-safe → roundtrips in the save"; this is what checks that.
+console.log("\n[S12] Save fidelity: mid-run state survives a resume intact");
+{
+  await bootToPlay("fidelity-seed");
+  const g = st().game!;
+  g.player.hp = 1e9; // invincible so the persist turn can't end the run
+  g.player.maxHp = 1e9;
+  g.monsters = [];
+
+  // (a) Structural guard: walk the LIVE state and reject anything JSON can't
+  // carry. This is the future-proof half — it covers fields not yet written.
+  const offenders: string[] = [];
+  const scan = (v: unknown, path: string, depth = 0) => {
+    if (depth > 6 || v === null) return;
+    if (v instanceof Set || v instanceof Map) {
+      offenders.push(`${path} is a ${v.constructor.name} (JSON → {})`);
+      return;
+    }
+    if (typeof v === "number" && !Number.isFinite(v)) {
+      offenders.push(`${path} is ${v} (JSON → null)`);
+      return;
+    }
+    if (typeof v === "function") {
+      offenders.push(`${path} is a function (JSON drops it)`);
+      return;
+    }
+    if (Array.isArray(v)) {
+      v.forEach((x, i) => scan(x, `${path}[${i}]`, depth + 1));
+    } else if (typeof v === "object") {
+      for (const [k, x] of Object.entries(v as Record<string, unknown>))
+        scan(x, `${path}.${k}`, depth + 1);
+    }
+  };
+
+  // populate the state that recent features added, so there's real data to lose
+  const w = g.map.width;
+  const here = idx(g.player.x, g.player.y, w);
+  g.gasTiles = [{ i: here + 2, life: 3 }];
+  g.fireTiles = [{ i: here + 3, life: 2 }];
+  g.decals = { [here + 4]: "blood", [here + 5]: "scorch" };
+  g.crackedWallHits = { [here + 6]: 2 };
+  g.knownTraps = [here + 7];
+  g.questProgress = { moonstone: 2 };
+  g.levelKills = 4;
+  g.mutators = ["dark", "champions"];
+  g.floodStep = 3;
+  g.barrage = [here + 8];
+  if (g.lore[0]) g.lore[0].read = true;
+  if (g.altars[0]) g.altars[0].used = true;
+
+  scan(g, "game");
+  check(
+    "every live GameState value is JSON-safe (no Set/Map/NaN/function)",
+    offenders.length === 0,
+    offenders.slice(0, 3).join("; "),
+  );
+
+  // (b) Semantic roundtrip: persist → quit → resume, then confirm the actual
+  // CONTENT came back (not just that the keys exist).
+  st().submitAction({ type: "wait" }); // a committed turn → persist()
+  const before = st().game!;
+  const snap = {
+    gas: before.gasTiles.length,
+    fire: before.fireTiles.length,
+    decals: Object.keys(before.decals).length,
+    cracked: JSON.stringify(before.crackedWallHits),
+    traps: JSON.stringify(before.knownTraps),
+    quest: JSON.stringify(before.questProgress),
+    kills: before.levelKills,
+    mutators: JSON.stringify(before.mutators),
+    flood: before.floodStep,
+    loreRead: before.lore.filter((l) => l.read).length,
+    altarUsed: before.altars.filter((a) => a.used).length,
+    explored: before.explored.length,
+    turn: before.turnCount,
+    level: before.currentLevel,
+    coins: before.player.coins,
+    bag: JSON.stringify(before.player.bag),
+  };
+
+  await settle();
+  st().quitToTitle();
+  st().resumeGame();
+  const after = st().game!;
+  check("(setup) the run resumed", !!after);
+
+  const fields: [string, unknown, unknown][] = [
+    ["lingering gas clouds", snap.gas, after.gasTiles.length],
+    ["lingering fire tiles", snap.fire, after.fireTiles.length],
+    ["floor decals", snap.decals, Object.keys(after.decals).length],
+    [
+      "cracked-wall bash progress",
+      snap.cracked,
+      JSON.stringify(after.crackedWallHits),
+    ],
+    ["known traps", snap.traps, JSON.stringify(after.knownTraps)],
+    ["quest progress", snap.quest, JSON.stringify(after.questProgress)],
+    ["level kills", snap.kills, after.levelKills],
+    ["active run modifiers", snap.mutators, JSON.stringify(after.mutators)],
+    ["flood progress", snap.flood, after.floodStep],
+    ["read-lore flags", snap.loreRead, after.lore.filter((l) => l.read).length],
+    [
+      "spent-altar flags",
+      snap.altarUsed,
+      after.altars.filter((a) => a.used).length,
+    ],
+    ["explored fog", snap.explored, after.explored.length],
+    ["turn count", snap.turn, after.turnCount],
+    ["current level", snap.level, after.currentLevel],
+    ["coins", snap.coins, after.player.coins],
+    ["inventory bag", snap.bag, JSON.stringify(after.player.bag)],
+  ];
+  for (const [label, was, now] of fields)
+    check(
+      `${label} survive the resume`,
+      was === now,
+      `(was ${was}, got ${now})`,
+    );
+
+  // and the populated state was genuinely non-empty, so the checks above meant something
+  check(
+    "(guard) the fidelity fixtures were actually populated",
+    snap.gas > 0 &&
+      snap.decals > 0 &&
+      snap.explored > 0 &&
+      snap.mutators !== "[]",
+  );
 }
 
 console.log(

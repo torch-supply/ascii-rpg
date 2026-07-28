@@ -1012,16 +1012,18 @@ export class CanvasRenderer {
       glow(gx, gy, "#4fd6c0", cw * 1.9, 0.09 * pulse);
     }
 
-    // ambient wisps — a small drifting pale halo (the lure through the wood)
+    // glowing creatures (a drifting wisp) — a small pulsing halo in their light
     for (const m of state.monsters) {
-      if (MONSTERS[m.defId]?.behavior !== "ambient") continue;
+      const gl = MONSTERS[m.defId]?.glow;
+      if (!gl) continue;
       if (!visible.has(idx(m.x, m.y, w))) continue;
       const sx = (m.x - camX + 0.5) * cw;
       const sy = (m.y - camY + 0.5) * ch;
       const pulse = this.reduceMotion
         ? 0.8
         : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.009 + m.x * 1.7 + m.y));
-      glow(sx, sy, "#9fe8d0", cw * 1.7, 0.12 * pulse);
+      const hex = `#${gl.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`;
+      glow(sx, sy, hex, cw * 1.7, 0.12 * pulse);
     }
 
     // the Sunblade on the ground — a gently pulsing gold radiance
@@ -1169,11 +1171,13 @@ export class CanvasRenderer {
             ? 0.06 // driving rain falls fast
             : atm.kind === "snow"
               ? 0.03
-              : atm.kind === "spores"
-                ? 0.009 // spores waft up slow
-                : rising
-                  ? 0.02
-                  : 0.012;
+              : atm.kind === "ash"
+                ? 0.013 // ash sifts down lazily
+                : atm.kind === "spores"
+                  ? 0.009 // spores waft up slow
+                  : rising
+                    ? 0.02
+                    : 0.012;
         // scale mote count to a sub-region's size so a small patch isn't a blizzard
         const n = cells
           ? Math.min(atm.count, Math.max(6, Math.round(cells.length * 0.4)))

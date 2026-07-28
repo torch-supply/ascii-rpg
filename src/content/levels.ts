@@ -29,7 +29,7 @@ export const LEVELS: LevelConfig[] = [
         size: 0.46, // a larger natural cave now the Pit is bigger
         // SEVERAL glowing fungal hollows scattered through the cave — distinct
         // pockets of light to find, not the whole wing lit up
-        hazards: [{ type: "glowcap", density: 0.15, clumps: 3 }],
+        hazards: [{ type: "glowcap", density: 0.1, clumps: 3 }],
       },
     ],
     // a neighboring cell — a shut door to open, a little relief inside
@@ -64,7 +64,7 @@ export const LEVELS: LevelConfig[] = [
     loreCount: 2, // prisoners' scratchings in the pit
     goal: { type: "reachLocation" },
     narration:
-      "You haul yourself out of the pit into cold night air. No stars — only a black wall of trees ahead, whispering, and the sagging roofs of a hamlet the wood has all but swallowed. The Blackwood. Somewhere past its ruins lies the path the dead don't want you to find.",
+      "You haul yourself out of the pit into cold night air. No stars — only a black wall of trees ahead, whispering, the sagging roofs of a hamlet the wood has all but swallowed, and pale lights drifting between the trunks that nobody lit. The Blackwood. Somewhere past its ruins lies the path the dead don't want you to find.",
     shopTier: 1,
   },
   {
@@ -158,10 +158,10 @@ export const LEVELS: LevelConfig[] = [
     waterCount: 22,
     forageCount: 14,
     loreCount: 2, // the fall of the woodcutters' hamlet
-    ambient: [{ monsterId: "wisp", count: 5 }], // pale lights drifting in the cursed wood
+    ambient: [{ monsterId: "wisp", count: 3 }], // pale lights drifting in the cursed wood
     goal: { type: "collectX", questTag: "moonstone", count: 3 },
     narration:
-      "The three shards flare as one, and a silver thread pulls you downward — toward a reek of rot and black standing water. The Mire. Whatever the dead are guarding, the only path runs through it.",
+      "The three shards flare as one, and a silver thread pulls you downward — toward a reek of rot and black standing water. The Mire. Somewhere out in the reeds a soft light is burning that has nothing to do with fire. Whatever the dead are guarding, the only path runs through it.",
     shopTier: 2,
   },
   {
@@ -185,6 +185,15 @@ export const LEVELS: LevelConfig[] = [
         palette: { wall: "#4f6b3a", floor: "#2a3826", accent: "#8fd0a0" },
         layout: "maze",
         size: 0.38,
+      },
+      // a fungal grove — luminous caps growing out of the rot. Beautiful and
+      // poisonous: the glow draws you in, the bog's spore vents do the rest.
+      {
+        biome: "grove",
+        palette: { wall: "#6d4f7a", floor: "#241f2b", accent: "#c8f06a" },
+        scale: 0.13,
+        threshold: 0.1,
+        hazards: [{ type: "glowcap", density: 0.18, clumps: 3 }],
       },
     ],
     // a half-sunken wayshrine of the old dawn-faith — a lone ruin, offerings in
@@ -222,6 +231,7 @@ export const LEVELS: LevelConfig[] = [
     eliteChance: 0.1,
     altarCount: 1,
     loreCount: 2, // drowned pilgrims, a liar's signpost
+    ambient: [{ monsterId: "marsh_frog", count: 3 }], // frogs plop away in the bog
     goal: { type: "reachLocation" },
     narration:
       "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into a warren of ice-choked caves and black crevasses — the Frostspine Pass — and something enormous is breathing on the wind.",
@@ -257,6 +267,18 @@ export const LEVELS: LevelConfig[] = [
         loot: [{ itemId: "a_chain" }, { itemId: "c_gold" }],
       },
     ],
+    // A BEAST'S DEN sealed behind ice-choked rubble — bash or blast your way in
+    // and the thing that hoarded all this wakes up. Wholly optional and off the
+    // route to Gorm, so it's a risk you choose; the hoard is worth the mauling.
+    secretVault: {
+      gate: "crackedWall",
+      guardian: "cave_bear",
+      loot: [
+        { itemId: "p_gheal" },
+        { itemId: "w_frost" },
+        { itemId: "c_gold" },
+      ],
+    },
     // a sprawling mountain cave network, the pass choked with impassable
     // crevasses (deep chasms you weave around — or glide/freeze across)
     mapWidth: 72,
@@ -284,9 +306,10 @@ export const LEVELS: LevelConfig[] = [
     forageCount: 8,
     eliteChance: 0.12,
     loreCount: 2, // the border-watch's retreat, a frozen climber
+    ambient: [{ monsterId: "snow_hare", count: 2 }], // a hare bolts across the snow
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
-      "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — and their wardens have already seen you.",
+      "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — above ground burned black and still drifting with ash, where the siege starved and nothing has grown since. The Warden who holds that gate has already seen you.",
     shopTier: 4,
   },
   {
@@ -294,27 +317,31 @@ export const LEVELS: LevelConfig[] = [
     title: "The Iron Gate",
     biome: "castle",
     palette: { wall: "#6a5c6e", floor: "#2e2833", accent: "#d24a4a" },
-    // a scorched hollow — oil-soaked floor; one firebomb turns it into an
-    // inferno (an Emberstep region). Borrows the throne biome for its ember look.
+    // an `ashen` wastes region — the war-scorched approach to Blackhall: falling
+    // ash, dim ember glow, oil-soaked ground that a firebomb turns to an inferno.
     subBiomes: [
       {
-        biome: "throne",
-        palette: { wall: "#4a3a34", floor: "#2a221e", accent: "#ff8c3a" },
-        threshold: 0.12,
-        hazards: [{ type: "oil", density: 0.32 }],
+        // an ash-choked, scorched expanse — the siege burned this approach to
+        // the gate to nothing; falling ash, ember glow, pooled pitch (oil) to fire
+        biome: "ashen",
+        palette: { wall: "#3a332e", floor: "#241f1c", accent: "#ff7a2a" },
+        threshold: 0.1, // a real ashen expanse, not just a pocket
+        hazards: [{ type: "oil", density: 0.3 }],
       },
     ],
-    // a grander gate approach — bigger halls, thick with the dead (a cull goal
-    // wants density, so the horde scales with the size)
+    // a grander gate approach — bigger halls, thick with the dead. The Gate
+    // Warden holds the FAR end (killTarget places it at farthest-from-start), so
+    // you must fight across the whole gatehouse + ashen approach to reach it.
     mapWidth: 66,
     mapHeight: 42,
     generator: "rogue", // a defended gatehouse — a grid of connected chambers
-    monsterBudget: 18,
+    // the old budget (18) was high because a CULL goal needs density; now that
+    // you must cross the whole gatehouse to the warden, the garrison is thinner
+    monsterBudget: 13,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "ghoul", weight: 4 },
-      { monsterId: "gargoyle", weight: 2 },
-      { monsterId: "gate_captain", weight: 1 },
+      { monsterId: "gargoyle", weight: 3 },
     ],
     turnLimit: 560,
     itemDropCount: 6,
@@ -332,9 +359,9 @@ export const LEVELS: LevelConfig[] = [
     eliteChance: 0.15,
     altarCount: 1,
     loreCount: 1, // the castle's surrender, in gilt
-    goal: { type: "killCount", count: 7 },
+    goal: { type: "killTarget", monsterId: "gate_captain" },
     narration:
-      "The last of the gate's wardens falls and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
+      "The Gate Warden falls, and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
     shopTier: 5,
   },
   {
@@ -354,7 +381,10 @@ export const LEVELS: LevelConfig[] = [
     mapWidth: 72,
     mapHeight: 46,
     generator: "hall", // a grand cathedral nave + flanking chambers
-    monsterBudget: 15,
+    // the hall is the most OPEN map in the game (~77% floor), so a budget tuned
+    // for a normal map leaves it hollow — this is the "thick with the castle's
+    // restless dead" hall, and the long walk should meet something
+    monsterBudget: 20,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "zombie", weight: 3 },
@@ -362,7 +392,7 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "wraith", weight: 2 },
     ],
     turnLimit: 560,
-    itemDropCount: 6,
+    itemDropCount: 9,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_gheal", weight: 2 },
@@ -374,13 +404,13 @@ export const LEVELS: LevelConfig[] = [
     oilCount: 16,
     crackedWallCount: 6,
     doorCount: 5,
-    forageCount: 4,
+    forageCount: 6, // a little more relief to match the fuller hall
     eliteChance: 0.15,
     altarCount: 3,
-    loreCount: 2, // a servant's diary, a guardsman at his post
+    loreCount: 3, // a servant's diary, a guardsman at his post, a besieger's helm
     goal: { type: "collectX", questTag: "sigil", count: 3 },
     narration:
-      "The three dusk-sigils lock into the crypt door and it swings inward on a breath of grave-air. Down there, the last kings hid the one blade that can still cut the night: the Sunblade.",
+      "The three dusk-sigils lock into the crypt door and it swings inward on a breath of grave-air — and, far below, the sound of running water. The underworks beneath failed long ago, and the water is still coming up. Down there the last kings hid the one blade that can still cut the night: the Sunblade. Take it before the water does.",
     shopTier: 6,
   },
   {
@@ -406,19 +436,39 @@ export const LEVELS: LevelConfig[] = [
         threshold: 0.12, // a generous blob so the fragmented crypt floor still
         hazards: [{ type: "glowcap", density: 0.2, clumps: 2 }], // yields full hollows
       },
+      // the Blackhall UNDERWORKS break through beneath the tombs — green-stained
+      // sewer stone and flooded channels. This is where the water comes from:
+      // the sluice-gates failed, and the crypt has been drowning ever since.
+      {
+        biome: "undercity",
+        palette: { wall: "#4a5a52", floor: "#161d1b", accent: "#7fd0a8" },
+        scale: 0.15,
+        threshold: 0.04,
+        hazards: [{ type: "water", density: 0.14 }],
+      },
     ],
-    // the sunken crypt lives up to its name — it floods as you hunt the Sunblade
-    flood: { startTurn: 20, interval: 10, maxSteps: 7 },
-    mapWidth: 54,
-    mapHeight: 34,
+    // The sunken crypt lives up to its name — it floods as you hunt the Sunblade.
+    // The rising water IS this level — so it's tuned to be PRESENT, not a late
+    // surprise. At the old pacing (start 24 / every 11) a run finished around
+    // turn 43 and saw barely 2 of 7 steps; starting at 14 and rising every 8
+    // for 9 steps spans the whole hunt, so the flood is the pressure you plan
+    // around rather than a coda. Paired with a thinner garrison (below): the
+    // threat here should be the water, not the crowd.
+    flood: { startTurn: 14, interval: 8, maxSteps: 9 },
+    // grown to carry three regions (catacombs / fungal hollow / underworks)
+    // without crowding — it was the tightest map in the game at 54×34
+    mapWidth: 60,
+    mapHeight: 38,
     generator: "digger",
-    monsterBudget: 15,
+    // thinned so the WATER is the antagonist here, not the horde (the crypt
+    // was the busiest level in the game; the flood was getting drowned out)
+    monsterBudget: 12,
     spawnTable: [
       { monsterId: "ghoul", weight: 5 },
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "wraith", weight: 3 },
     ],
-    turnLimit: 380,
+    turnLimit: 470,
     itemDropCount: 3,
     dropTable: [
       { itemId: "c_gold", weight: 6 },
@@ -429,7 +479,7 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.5,
     baseLightRadius: 4,
     trapCount: 8,
-    forageCount: 2,
+    forageCount: 4, // a little relief for the longer hunt (→ ~2 after forageScale)
     oilCount: 10,
     crackedWallCount: 3,
     doorCount: 2,
@@ -438,7 +488,7 @@ export const LEVELS: LevelConfig[] = [
     loreCount: 2, // the Sunblade's rifled tomb, its keeper's vow
     goal: { type: "findItem", questTag: "sunblade" },
     narration:
-      "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. There is no way up but the ramparts — open to a black, thundering sky, and to whatever wheels across it.",
+      "Your hand closes on the Sunblade and warmth floods your arm for the first time in days. Behind you the black water closes over the tombs for good. There is no way but up — out onto the ramparts, open to a thundering sky, and to whatever wheels across it.",
     shopTier: 7,
   },
   {
@@ -483,9 +533,10 @@ export const LEVELS: LevelConfig[] = [
     eliteChance: 0.2,
     altarCount: 1,
     loreCount: 1, // a besieger's helm on the wall-walk
+    ambient: [{ monsterId: "raven", count: 3 }], // carrion ravens wheel over the wall
     goal: { type: "survive", turns: 50 },
     narration:
-      "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead — the antechamber of the throne — and Malachar's Herald waits before it, wreathed in cold fire.",
+      "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead: the antechamber of the throne, a long gallery of stone figures facing the aisle. Malachar's Herald waits at the far end, wreathed in cold fire — and not every one of those statues is stone.",
     shopTier: 8,
   },
   {

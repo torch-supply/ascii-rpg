@@ -42,7 +42,7 @@ export const LORE_POOLS: Record<Biome, LoreEntry[]> = {
     {
       kind: "inscription",
       title: "Nailed to a black trunk",
-      text: "A warden's notice, ink run with rain: BY ORDER — none to enter the Blackwood after dusk. The wood remembers the day the sky went out, and it has not forgiven the living for surviving it.",
+      text: "A warden's notice, ink run with rain: BY ORDER — none to enter the deep wood after dusk. The trees remember the day the sky went out, and they have not forgiven the living for surviving it.",
     },
     {
       kind: "remains",
@@ -54,7 +54,7 @@ export const LORE_POOLS: Record<Biome, LoreEntry[]> = {
     {
       kind: "remains",
       title: "A pilgrim, drowned",
-      text: "Bones tangled in the reeds, a pilgrim's medallion at the throat: the broken Ember, worn as a vow. They came to cross the Mire toward the castle. The Mire kept them.",
+      text: "Bones tangled in the reeds, a pilgrim's medallion at the throat: the broken Ember, worn as a vow. They came to cross the black water toward the castle. The bog kept them.",
     },
     {
       kind: "inscription",
@@ -69,9 +69,14 @@ export const LORE_POOLS: Record<Biome, LoreEntry[]> = {
       text: 'Frozen to a cairn: "…the bridge-troll, Gorm, will not be reasoned with nor bribed. He was set to guard the pass by Malachar himself. We turn back. May the Dawn forgive our retreat."',
     },
     {
+      kind: "inscription",
+      title: "Claw-marks, shoulder-high",
+      text: "Four gouges raked deep into the rock, and beneath them someone has scratched a single word: DON'T. Whatever left these was not starving — it was marking a door.",
+    },
+    {
       kind: "remains",
       title: "A frozen climber",
-      text: "A body sits cross-legged in the ice, perfectly preserved, facing the summit as if resting. In its lap, a map of the Frostspine — and every route to the castle scratched out but one.",
+      text: "A body sits cross-legged in the ice, perfectly preserved, facing the summit as if resting. In its lap, a map of the high passes — and every route to the castle scratched out but one.",
     },
   ],
   castle: [
@@ -130,6 +135,42 @@ export const LORE_POOLS: Record<Biome, LoreEntry[]> = {
       kind: "remains",
       title: "A prospector's lamp",
       text: "A cold lantern beside a pick and a scatter of bones. The prospector chased the glowing fungus deeper and deeper, mistaking its light for a way out. The glow is not the sun. It was never the sun.",
+    },
+  ],
+  grove: [
+    {
+      kind: "remains",
+      title: "A forager, wreathed in caps",
+      text: "Pale fruiting bodies have grown through a body still kneeling, basket in hand. The mushrooms of the Mire were food, once — before the sky went out and the things that grow here started growing wrong.",
+    },
+    {
+      kind: "inscription",
+      title: "Scratched on a leaning boardwalk plank",
+      text: "the pretty ones are the poison. the light is bait. i have watched three men walk toward the glow and not one walked back, and i am so tired, and it is so beautiful.",
+    },
+  ],
+  undercity: [
+    {
+      kind: "inscription",
+      title: "A sluice-gate marker",
+      text: "BLACKHALL UNDERWORKS — SLUICE VII. KEEP CLEAR WHEN THE GATES ARE DRAWN. Below, newer and deeper: nobody draws them now. Nobody is left who knows how.",
+    },
+    {
+      kind: "remains",
+      title: "A drowned sewer-warden",
+      text: "Chained to his post by his own belt — deliberately, so the current couldn't take him. He stayed to shut the gates while the water rose. The crypt above floods because he failed, and the ring of keys is still on his hip, green with rot.",
+    },
+  ],
+  ashen: [
+    {
+      kind: "inscription",
+      title: "Scorched into the gate-stone",
+      text: "They burned their own approach — every field, every barn, so the besiegers would find nothing. It did not matter. Malachar does not need bread. Only the ash remembers there was ever a harvest here.",
+    },
+    {
+      kind: "remains",
+      title: "A siege-engine, slagged",
+      text: "The ribs of a great ram, fused into a run of cooled slag. Whatever fire took it was no ordinary flame — it burned green, the survivors' scratchings say, and it did not go out until there was nothing left to want.",
     },
   ],
 };

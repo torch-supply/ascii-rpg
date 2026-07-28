@@ -13,18 +13,19 @@
 // (if conservative) signal of whether the intended toolkit can clear it, not
 // just "can pure melee." If this bot can clear a level, a human can.
 import { LEVELS } from "@/content/levels";
-import { createPlayer, beginLevel } from "@/game/core/state";
+import { createPlayer, beginLevel, clonePlayer } from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import { idx, isWalkable } from "@/game/core/grid";
 import { giveItem } from "@/game/core/inventory";
 import { CONFIG } from "@/content/config";
 import { MONSTERS } from "@/content/monsters";
-import { ITEMS } from "@/content/items";
+import { ITEMS, SHOP_TIERS } from "@/content/items";
 import type {
   GameState,
   Pos,
   PlayerAction,
+  PlayerState,
   MonsterInstance,
 } from "@/game/core/types";
 
@@ -347,20 +348,51 @@ interface RunResult {
   turns: number;
   endHp: number;
   coins: number; // gold earned this level (bot starts at 0, never spends)
+  /** How much of the level a run actually explored — a DESIGN metric: content
+   * (sub-biomes, lore, secrets) in tiles you never walk is content nobody sees.
+   * CAVEAT: read the ABSOLUTE tile count across levels, not the share — the
+   * share is skewed by how open a map is (the Great Hall is 77% floor, so it
+   * scores a low % while being walked FARTHER than any other level). */
+  exploredPct: number;
+  exploredTiles: number;
   invariant: string | null; // first invariant violation seen, if any
+  /** the player as they finished — so a caller can carry them to the next level
+   * (a real run is ONE character across ten levels, not ten fresh ones) */
+  endPlayer: PlayerState;
 }
 
-// Play one level to a conclusion with a fresh bot-statted player.
+/** Walkable tiles the player revealed: absolute count + share of the level. */
+function exploredStats(g: GameState): { pct: number; tiles: number } {
+  let walkable = 0;
+  for (let y = 0; y < g.map.height; y++)
+    for (let x = 0; x < g.map.width; x++)
+      if (isWalkable(g.map, x, y)) walkable++;
+  let tiles = 0;
+  for (const i of new Set(g.explored))
+    if (isWalkable(g.map, i % g.map.width, Math.floor(i / g.map.width)))
+      tiles++;
+  return { pct: walkable ? Math.round((tiles / walkable) * 100) : 0, tiles };
+}
+
+// Play one level to a conclusion with a fresh bot-statted player. `classId`
+// defaults to the Warrior baseline the difficulty table is calibrated on; [P3]
+// re-runs the sweep as the other classes to prove they're viable too.
 function playLevel(
   levelIndex: number,
   seed: string,
   botSeed: number,
+  classId = "warrior",
+  startPlayer?: PlayerState,
 ): RunResult {
-  const player = createPlayer("warrior"); // a fair, survivable baseline kit
-  // stock the consumables a real player buys at the shop: heals + firebombs, so
-  // the bot can actually engage bosses with the intended toolkit (not just melee)
-  for (let i = 0; i < 3; i++) giveItem(player, "p_heal");
-  for (let i = 0; i < 3; i++) giveItem(player, "p_bomb");
+  // A carried character (full-run mode) arrives with whatever they've earned;
+  // otherwise mint the standard bot loadout for an isolated level measurement.
+  const player = startPlayer ?? createPlayer(classId);
+  if (!startPlayer) {
+    // stock the consumables a real player buys at the shop: heals + firebombs, so
+    // the bot can actually engage bosses with the intended toolkit (not just melee)
+    for (let i = 0; i < 3; i++) giveItem(player, "p_heal");
+    for (let i = 0; i < 3; i++) giveItem(player, "p_bomb");
+  }
   const g = beginLevel(seed, levelIndex, player);
   const rng = new Rng(botSeed);
   const cap = Math.max(LEVELS[levelIndex].turnLimit * 4, 500);
@@ -397,7 +429,10 @@ function playLevel(
         turns: g.turnCount,
         endHp: g.player.hp,
         coins: g.player.coins,
+        exploredPct: exploredStats(g).pct,
+        exploredTiles: exploredStats(g).tiles,
         invariant,
+        endPlayer: g.player,
       };
     if (res.playerDied)
       return {
@@ -405,7 +440,10 @@ function playLevel(
         turns: g.turnCount,
         endHp: 0,
         coins: g.player.coins,
+        exploredPct: exploredStats(g).pct,
+        exploredTiles: exploredStats(g).tiles,
         invariant,
+        endPlayer: g.player,
       };
   }
   return {
@@ -413,7 +451,10 @@ function playLevel(
     turns: g.turnCount,
     endHp: g.player.hp,
     coins: g.player.coins,
+    exploredPct: exploredStats(g).pct,
+    exploredTiles: exploredStats(g).tiles,
     invariant,
+    endPlayer: g.player,
   };
 }
 
@@ -443,6 +484,7 @@ const ENTERABLE_FLOOR = 6; // a boss/siege level must let you last ≥ this many
 let anyInvariant: string | null = null;
 let totalWins = 0;
 let totalRuns = 0;
+let runGold = 0; // summed median per-level gold ≈ a whole run's purse
 const rows: string[] = [];
 const unbeatable: string[] = []; // BOT_MUST_WIN levels the bot never won
 const instantWipe: string[] = []; // boss/siege levels that wipe you near-instantly
@@ -480,14 +522,64 @@ for (let li = 0; li < LEVELS.length; li++) {
     results.filter((r) => r.outcome === "death").map((r) => r.turns),
   );
   const medGold = median(results.map((r) => r.coins)); // gold earned this level
+  runGold += medGold; // accumulate a whole-run purse (see the economy summary)
+  // How much of the map a WINNING run saw — reported as BOTH a share and an
+  // absolute tile count, because the share alone misleads: a very open map (the
+  // Great Hall is 77% floor) scores a low % while actually being walked farther
+  // than anywhere else. Compare `seenT` across levels; use % only within a level.
+  const seenRuns = wins.length ? wins : results;
+  const medSeen = median(seenRuns.map((r) => r.exploredPct));
+  const medSeenTiles = median(seenRuns.map((r) => r.exploredTiles));
   rows.push(
     `  · ${cfg.id.padEnd(16)} ${cfg.goal.type.padEnd(13)} win ${rate.padStart(3)}%  ` +
       `(${wins.length}W/${deaths}D/${stuck}S)  medTurns ${String(medTurns).padStart(4)}  ` +
-      `medEndHP ${String(medHp).padStart(2)}  medGold ${String(medGold).padStart(3)}  medDeath@ ${medDeathTurn}t`,
+      `medEndHP ${String(medHp).padStart(2)}  medGold ${String(medGold).padStart(3)}  ` +
+      `medSeen ${String(medSeen).padStart(3)}%/${String(medSeenTiles).padStart(4)}t  medDeath@ ${medDeathTurn}t`,
   );
 }
 
 console.log(rows.join("\n"));
+
+// ─── Run-level economy ─────────────────────────────────────────────────────
+// Per-level medGold hides the real question: across a WHOLE run, can you afford
+// to just buy everything? Compare the accumulated purse against the cost of
+// clearing out every shop you visit. Ratio ≫ 1 = the "banked $200, bought it
+// all" problem; ≪ 1 = you can never afford anything.
+{
+  const shopCost = LEVELS.reduce((sum, l) => {
+    const tier = l.shopTier;
+    if (tier == null || !SHOP_TIERS[tier]) return sum;
+    // one of each entry (maxQty-capped stacks counted once) = a "buy it all" trip
+    return sum + SHOP_TIERS[tier].reduce((s, e) => s + e.price, 0);
+  }, 0);
+  const ratio = shopCost ? runGold / shopCost : 0;
+  console.log(
+    `\n  Economy — clearing all ${LEVELS.length} levels earns ~${runGold}g; buying one of ` +
+      `everything at every shop costs ~${shopCost}g (${(ratio * 100).toFixed(0)}% affordable).` +
+      `\n  (An UPPER bound: it sums per-level medians as if every level is cleared. ` +
+      `See [P4] for what a real carried run actually banks.)`,
+  );
+  check(
+    "a run cannot simply buy out every shop (economy stays a choice)",
+    ratio < 0.9,
+    `(earns ${runGold}g vs ${shopCost}g of stock — ${(ratio * 100).toFixed(0)}%)`,
+  );
+  check(
+    "...but a run can still afford meaningful purchases",
+    ratio > 0.15,
+    `(only ${(ratio * 100).toFixed(0)}% of stock affordable — too poor?)`,
+  );
+  // A tighter band on the absolute purse. The ratio check above is a wide
+  // sanity rail — a mutation audit showed it happily absorbed a 4× coin-reward
+  // inflation. Income is a deliberately tuned dial (CONFIG.lootScale /
+  // coinPile / coinReward), so guard the tuned VALUE, not just the extremes.
+  // Update this range intentionally whenever the economy is re-tuned.
+  check(
+    "run income stays near its tuned level (120–320g)",
+    runGold >= 120 && runGold <= 320,
+    `(earned ${runGold}g — economy dials moved? re-tune or update this band)`,
+  );
+}
 
 // ─── Assertions ───────────────────────────────────────────────────────────
 check(
@@ -510,6 +602,162 @@ check(
   totalWins / totalRuns >= 0.3,
   `(${((totalWins / totalRuns) * 100).toFixed(0)}% — a floor; the bot is greedy/non-optimal)`,
 );
+
+// ─── P3. Every class is viable, not just the Warrior ───────────────────────
+// The table above is a WARRIOR sweep. Rogue (16 HP, stealth/crit) and Pyromancer
+// (bow + bombs) carry very different kits and survivability, and their abilities
+// are otherwise only unit-tested in isolation — so a class could be quietly
+// unplayable. Re-run a reduced sweep per class and hold each to the same
+// "clears the navigation/attrition levels" bar the Warrior meets.
+console.log("\n[P3] Class viability — every class can play the game");
+{
+  const CLASS_SEEDS = ["alpha", "charlie", "echo"]; // reduced: keeps runtime sane
+  const navLevels = LEVELS.map((l, i) => ({ l, i })).filter(({ l }) =>
+    BOT_MUST_WIN.has(l.goal.type),
+  );
+  for (const classId of ["warrior", "rogue", "pyromancer"]) {
+    let wins = 0;
+    let runs = 0;
+    const endHps: number[] = [];
+    const neverWon: string[] = [];
+    for (const { l, i } of navLevels) {
+      let levelWins = 0;
+      for (const seed of CLASS_SEEDS) {
+        const r = playLevel(i, seed, 11, classId);
+        runs++;
+        if (r.outcome === "win") {
+          wins++;
+          levelWins++;
+          endHps.push(r.endHp);
+        }
+      }
+      if (levelWins === 0) neverWon.push(l.id);
+    }
+    const pct = ((wins / runs) * 100).toFixed(0);
+    console.log(
+      `  · ${classId.padEnd(11)} win ${pct.padStart(3)}% of ${runs} navigation runs  ` +
+        `medEndHP ${median(endHps)}${neverWon.length ? `  (never cleared: ${neverWon.join(", ")})` : ""}`,
+    );
+    check(
+      `${classId} can clear every navigation/attrition level`,
+      neverWon.length === 0,
+      neverWon.length ? `(never cleared: ${neverWon.join(", ")})` : "",
+    );
+  }
+}
+
+// ─── P4. Full-run continuity: ONE character across the whole quest ─────────
+// Every measurement above plays levels in ISOLATION with a fresh, fully-stocked
+// player. A real run is one character carrying gear, damage and coins through
+// all ten levels, spending at shops, and burning lives on the way. That's the
+// only way to see whether the difficulty CURVE and the economy actually sustain
+// a persistent character — and it's the closest thing to "is the game
+// completable." Faithful to the store: death restarts the level from the
+// entry-snapshot and costs a life; a clear carries the live player forward.
+// NOTE `beginLevel` refills HP at every level start, so HP does NOT compound —
+// what a carried run actually runs short of is CONSUMABLES and gear money. The
+// isolated table hides that by gifting every level a fresh 3 heals + 3 bombs.
+console.log("\n[P4] Full-run continuity — one character, carried, with shops");
+{
+  // Spend like a real player: GEAR upgrades first (the power curve that carries
+  // a run), then top up consumables. `giveItem` auto-equips a strict upgrade.
+  const shopAt = (p: PlayerState, tier: number) => {
+    const stock = SHOP_TIERS[tier];
+    if (!stock) return 0;
+    let spent = 0;
+    const buy = (id: string, price: number) => {
+      p.coins -= price;
+      spent += price;
+      giveItem(p, id);
+    };
+    // strict weapon/armor upgrades, best affordable first
+    for (const kind of ["weapon", "armor"] as const) {
+      const better = stock
+        .filter((e) => {
+          const d = ITEMS[e.itemId];
+          if (d?.category !== kind) return false;
+          return kind === "weapon"
+            ? (d.power ?? 0) > p.weaponPower
+            : (d.reduction ?? 0) > p.armorReduction;
+        })
+        .sort((a, b) => b.price - a.price); // best (priciest) affordable one
+      const pick = better.find((e) => p.coins >= e.price);
+      if (pick) buy(pick.itemId, pick.price);
+    }
+    // then keep the consumable belt stocked with whatever's left
+    const held = (id: string) => p.bag.find((b) => b.defId === id)?.count ?? 0;
+    for (const want of ["p_heal", "p_gheal", "p_bomb"]) {
+      const entry = stock.find((e) => e.itemId === want);
+      if (!entry) continue;
+      const cap = entry.maxQty ?? 2;
+      while (held(want) < cap && p.coins >= entry.price) buy(want, entry.price);
+    }
+    return spent;
+  };
+
+  const runOnce = (seed: string, botSeed: number) => {
+    let player = createPlayer("warrior");
+    let lives = CONFIG.startingLives;
+    let earned = 0;
+    let spent = 0;
+    let deaths = 0;
+    let depth = 0; // deepest level index CLEARED (+1 = levels beaten)
+    for (let li = 0; li < LEVELS.length && lives > 0;) {
+      const entry = clonePlayer(player); // the store restarts a level from this
+      const before = player.coins;
+      const r = playLevel(li, `${seed}-${li}`, botSeed + li, "warrior", player);
+      earned += Math.max(0, r.endPlayer.coins - before);
+      if (r.outcome === "win") {
+        depth = li + 1;
+        player = clonePlayer(r.endPlayer);
+        const tier = LEVELS[li].shopTier;
+        if (tier != null) spent += shopAt(player, tier);
+        li++;
+      } else {
+        deaths++;
+        lives--;
+        player = clonePlayer(entry); // retry the same level, as the store does
+      }
+    }
+    return { depth, earned, spent, deaths, coins: player.coins };
+  };
+
+  const runs = [
+    runOnce("run-a", 5),
+    runOnce("run-b", 17),
+    runOnce("run-c", 29),
+  ];
+  const depths = runs.map((r) => r.depth);
+  const best = Math.max(...depths);
+  console.log(
+    `  · reached levels ${depths.join(" / ")} of ${LEVELS.length} ` +
+      `(best ${best})  earned ${runs.map((r) => r.earned).join("/")}g  ` +
+      `spent ${runs.map((r) => r.spent).join("/")}g  deaths ${runs.map((r) => r.deaths).join("/")}`,
+  );
+
+  // A REGRESSION FLOOR, not an ambition. The greedy bot spends all 3 lives on
+  // the first boss it can't out-trade, so depth ~3 is its natural ceiling — the
+  // value here is catching a COLLAPSE (a gear/economy change that stops a
+  // carried character clearing even the opening arc). Raise this bar only
+  // alongside a smarter bot, never by wishing.
+  check(
+    "a carried character still clears the opening arc (3+ levels)",
+    best >= 3,
+    `(best depth ${best}/${LEVELS.length})`,
+  );
+  check(
+    "every full run clears at least the opening stretch",
+    depths.every((d) => d >= 2),
+    `(depths ${depths.join("/")})`,
+  );
+  // The bot spends only on consumables, so this is a floor — but a run that
+  // never affords ANYTHING means the economy starves a real player too.
+  check(
+    "a carried run can actually afford to shop",
+    runs.some((r) => r.spent > 0),
+    `(spent ${runs.map((r) => r.spent).join("/")}g)`,
+  );
+}
 
 // ─── Determinism: same seed + same bot RNG → identical outcome ──────────────
 console.log("\n[P2] Playthrough determinism");

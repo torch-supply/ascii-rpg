@@ -39,6 +39,12 @@ const BIOME_AMBIENT: Record<Biome, BiomeAmbient> = {
   // a dim, neutral rock cave — readable natural walls; the teal comes from the
   // fungi's own (local) light, not the ambient
   cavern: { center: [86, 84, 82], edge: [72, 70, 68] },
+  // scorched dead ground — a dim, warm ashen gloom (a faint ember undertone)
+  ashen: { center: [106, 88, 76], edge: [88, 72, 62] },
+  // fungal grove — a dim violet rot, kept low so the glowcaps' own teal blazes
+  grove: { center: [88, 74, 98], edge: [72, 60, 82] },
+  // flooded undercity — cold, damp green-grey stone; light drowns down here
+  undercity: { center: [76, 94, 88], edge: [62, 78, 74] },
 };
 export function ambientForBiome(biome: Biome): BiomeAmbient {
   return BIOME_AMBIENT[biome] ?? BIOME_AMBIENT.dungeon;
@@ -81,7 +87,6 @@ const ALTAR_LIGHT: [number, number, number] = [150, 95, 225];
 const BOSS_LIGHT: [number, number, number] = [95, 40, 130]; // cold necrotic aura
 const BARRAGE_LIGHT: [number, number, number] = [215, 45, 30]; // dark-fire telegraph
 const GLOWCAP_LIGHT: [number, number, number] = [58, 168, 146]; // bioluminescent teal (soft)
-const WISP_LIGHT: [number, number, number] = [96, 196, 176]; // pale drifting witch-light
 
 const LOW_FUEL = 20; // torch starts guttering at/under this (matches HUD warning)
 const REFLECTIVITY = 0.12; // how much surfaces bounce light (0–1)
@@ -184,13 +189,14 @@ export function computeLightMap(
     if (MONSTERS[m.defId]?.isBoss) lighting.setLight(m.x, m.y, BOSS_LIGHT);
   }
 
-  // ── ambient wisps — each a small drifting pale light (the lure) ──────────────
+  // ── glowing creatures (a drifting wisp) — a small pulsing light source ───────
   for (const m of state.monsters) {
-    if (MONSTERS[m.defId]?.behavior !== "ambient") continue;
+    const glow = MONSTERS[m.defId]?.glow;
+    if (!glow) continue;
     const wp = reduceMotion
       ? 0.85
       : 0.6 + 0.4 * Math.abs(Math.sin(now * 0.009 + m.x * 1.7 + m.y));
-    lighting.setLight(m.x, m.y, scale(WISP_LIGHT, wp));
+    lighting.setLight(m.x, m.y, scale(glow, wp));
   }
 
   // ── lich dark-fire barrage — pulsing red underlight on the telegraphed tiles ─

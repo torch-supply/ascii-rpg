@@ -22,6 +22,9 @@ function fieldBiome(b: Biome | undefined): FieldBiome {
   // here in practice; fall it back to the crypt field art (both dark/underground).
   if (!b || b === "dungeon") return "pit";
   if (b === "cavern") return "crypt";
+  if (b === "ashen") return "throne"; // sub-region only; nearest field art (embers)
+  if (b === "grove") return "marsh"; // sub-region only; nearest field art
+  if (b === "undercity") return "crypt"; // sub-region only; nearest field art
   return b;
 }
 

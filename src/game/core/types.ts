@@ -85,7 +85,10 @@ export type Biome =
   | "castle"
   | "crypt"
   | "throne"
-  | "cavern"; // dark bioluminescent grotto — glowing fungi light it, not a torch
+  | "cavern" // dark bioluminescent grotto — glowing fungi light it, not a torch
+  | "ashen" // scorched dead-ground: falling ash, ember glow, oil/scorch (sub-region only)
+  | "grove" // fungal grove: luminous caps over rot — beautiful and poisonous (sub-region)
+  | "undercity"; // flooded sewers of green-stained stone beneath Blackhall (sub-region)
 export type GeneratorKind =
   | "digger"
   | "uniform"
@@ -165,6 +168,9 @@ export interface MonsterDef {
   name: string;
   glyph: string;
   color: string;
+  /** if set, this creature emits colored light (RGB) + a soft bloom halo — a
+   * glowing wisp, say. Opt-in, so ordinary ambient critters don't glow. */
+  glow?: [number, number, number];
   maxHp: number;
   dmg: number;
   armor: number;
@@ -263,7 +269,14 @@ export interface LevelConfig {
   /** optional hidden vault: a sealed room holding the listed loot, reachable
    * ONLY through a single gate — a cracked wall to blast/bash (default) or a
    * shut door to simply open. Skipped on seeds with no valid spot. */
-  secretVault?: { gate?: "door" | "crackedWall"; loot: { itemId: string }[] };
+  secretVault?: {
+    gate?: "door" | "crackedWall";
+    loot: { itemId: string }[];
+    /** a monster sealed in WITH the hoard — turns the vault from free loot into
+     * a risk/reward lair. It can't path out (the gate isn't walkable until you
+     * break/open it), so a `guardChase` beast simply waits, dormant. */
+    guardian?: string;
+  };
   /** optional FREESTANDING buildings stamped onto open ground: each a visible
    * wall box with a floor interior, one shut door, and loot — reads as an actual
    * structure (a hut in the woods, a shrine in a clearing), unlike `secretVault`

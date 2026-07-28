@@ -15,7 +15,11 @@ export const TERRAIN_GLYPH: Record<TileType, string> = {
   ice: "▒", // frozen water — a walkable bridge (Frostwalk)
   forage: "%", // default; terrainGlyph swaps per biome (berries vs. arcane mote)
   glowcap: "ψ", // glowing fungus cluster
-  bramble: "‡", // a tangled thorn thicket (snags you; fire clears it)
+  // a tangled thorn thicket (snags you; fire clears it). `&` reads as a knot of
+  // briar and is pure ASCII; it deliberately avoids `‡`, which the ALTAR uses —
+  // a hazard and a boon must never share a glyph (caught by /style's collision
+  // report, where only color told them apart).
+  bramble: "&",
   sporeVent: "○", // a fumarole seeping toxic spores
   chasm: " ", // a void — an empty dark gap in the floor
 };
@@ -77,7 +81,7 @@ export const FOG_DIM = 0.34;
 // visible area, off under reduced-motion). "mist" is a few drifting soft blobs;
 // the rest are many small moving motes.
 export type WeatherKind =
-  "mist" | "snow" | "embers" | "dust" | "spores" | "rain";
+  "mist" | "snow" | "embers" | "dust" | "spores" | "rain" | "ash"; // grey flakes drifting lazily down (the scorched ashen wastes)
 export interface AtmosphereDef {
   kind: WeatherKind;
   color: string;
@@ -91,6 +95,9 @@ export const BIOME_ATMOSPHERE: Partial<Record<Biome, AtmosphereDef>> = {
   throne: { kind: "embers", color: "#ff8040", count: 44, alpha: 0.6 },
   castle: { kind: "dust", color: "#b8ad94", count: 34, alpha: 0.15 },
   cavern: { kind: "spores", color: "#8ff0dc", count: 30, alpha: 0.4 }, // drifting glow-spores
+  ashen: { kind: "ash", color: "#9a9088", count: 46, alpha: 0.34 }, // grey ash sifting down
+  grove: { kind: "spores", color: "#d7f06a", count: 34, alpha: 0.34 }, // sickly drifting spores
+  undercity: { kind: "mist", color: "#7fb49a", count: 7, alpha: 0.08 }, // dank sewer vapor
 };
 
 // Level-wide weather (`LevelConfig.weather`) — overrides the base biome's
@@ -138,6 +145,57 @@ export function terrainColor(
     case "chasm":
       return "#12141c"; // near-black void (glyph is blank, so mostly unseen)
   }
+}
+
+/** Parse "#rrggbb" → [r,g,b]; NaNs on malformed input (guarded by test [0]). */
+export function rgbOf(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+/**
+ * Perceptual distance between two colors (0 = identical, ~765 = max), using the
+ * low-cost "redmean" approximation — closer to human vision than raw RGB.
+ *
+ * This is a LEGIBILITY tool, not decoration. The game is ASCII: everything is a
+ * colored glyph on a dark field, so "can you tell these two apart at a glance"
+ * IS the rendering contract. Two separate bugs shipped from getting this wrong
+ * (a spore-haze green that vanished into the foliage; a chasm that read as
+ * off-map black), which is why test [54] asserts minimum distances.
+ */
+export function colorDistance(a: string, b: string): number {
+  const [r1, g1, b1] = rgbOf(a);
+  const [r2, g2, b2] = rgbOf(b);
+  const rmean = (r1 + r2) / 2;
+  const dr = r1 - r2;
+  const dg = g1 - g2;
+  const db = b1 - b2;
+  return Math.sqrt(
+    (2 + rmean / 256) * dr * dr +
+      4 * dg * dg +
+      (2 + (255 - rmean) / 256) * db * db,
+  );
+}
+
+/** WCAG relative luminance (0–1) — how bright a color reads to the eye. */
+export function luminance(hex: string): number {
+  const chan = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const [r, g, b] = rgbOf(hex);
+  return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b);
+}
+
+/** WCAG contrast ratio (1 = identical, 21 = black-on-white). */
+export function contrastRatio(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
 /** Linearly blend two #rrggbb colors; `t`=0 → a, `t`=1 → b. */

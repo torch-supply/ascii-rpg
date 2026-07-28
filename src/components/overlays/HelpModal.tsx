@@ -30,6 +30,7 @@ const LEGEND: [string, string, string][] = [
   ["+", "#b07a3f", "door"],
   ["‡", "#d6a4ff", "shrine"],
   ["¶", "#cbb488", "lore"],
+  ["&", "#5f6f37", "bramble"],
 ];
 
 export default function HelpModal() {

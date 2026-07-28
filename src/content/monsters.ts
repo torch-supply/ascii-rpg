@@ -109,11 +109,52 @@ export const MONSTERS: Record<string, MonsterDef> = {
     name: "Will-o'-Wisp",
     glyph: "✦",
     color: "#9fe8d0", // pale, cold witch-light
+    glow: [96, 196, 176], // a small drifting light source (+ bloom)
     maxHp: 1,
     dmg: 0, // harmless — never attacks
     armor: 0,
     behavior: "ambient", // drifts, flees when you near it, guttering out if caught
     sightRadius: 5, // doubles as its "shy radius": flees within this
+    speed: 1,
+    coinReward: 0,
+  },
+  // ── ambient wildlife (non-hostile: drift, flee, disperse harmlessly) ──
+  raven: {
+    id: "raven",
+    name: "Carrion Raven",
+    glyph: "v",
+    color: "#5a5a64", // sooty black — carrion birds wheeling over the dead
+    maxHp: 1,
+    dmg: 0,
+    armor: 0,
+    behavior: "ambient",
+    sightRadius: 5,
+    speed: 1,
+    coinReward: 0,
+  },
+  marsh_frog: {
+    id: "marsh_frog",
+    name: "Mire Frog",
+    glyph: "f",
+    color: "#6a9a4a", // mossy green — plops away into the bog
+    maxHp: 1,
+    dmg: 0,
+    armor: 0,
+    behavior: "ambient",
+    sightRadius: 4, // less shy — lets you get closer before it bolts
+    speed: 1,
+    coinReward: 0,
+  },
+  snow_hare: {
+    id: "snow_hare",
+    name: "Snow Hare",
+    glyph: "h",
+    color: "#c9bda2", // pale tan — a flash of life bolting across the dead pass
+    maxHp: 1,
+    dmg: 0,
+    armor: 0,
+    behavior: "ambient",
+    sightRadius: 6, // very skittish — bolts from far off
     speed: 1,
     coinReward: 0,
   },
@@ -220,6 +261,30 @@ export const MONSTERS: Record<string, MonsterDef> = {
       table: [
         { itemId: "p_gheal", weight: 2 },
         { itemId: "a_scale", weight: 1 },
+      ],
+    },
+  },
+  cave_bear: {
+    id: "cave_bear",
+    name: "Hoarfrost Bear",
+    glyph: "B",
+    color: "#cdbba4", // shaggy pale pelt, frost-matted
+    maxHp: 28,
+    dmg: 7,
+    armor: 1,
+    // dormant in its den until you break in and draw near — a hibernating
+    // beast, not a patrol. Pairs with `secretVault.guardian`.
+    behavior: "guardChase",
+    sightRadius: 7,
+    speed: 1,
+    coinReward: 8,
+    miniBoss: true, // a real fight — earns an HP bar when it wakes
+    inflicts: { effect: "bleed", chance: 0.4, duration: 5 }, // raking claws
+    loot: {
+      chance: 1,
+      table: [
+        { itemId: "p_gheal", weight: 2 },
+        { itemId: "a_chain", weight: 1 },
       ],
     },
   },

@@ -382,6 +382,9 @@ const BIOME_HAZARDS: Partial<
   mountain: [{ type: "ice", density: 0.25 }], // frozen patch
   cavern: [{ type: "glowcap", density: 0.12 }], // bioluminescent fungi (light)
   forest: [{ type: "bramble", density: 0.14, clumps: 3 }], // thorn thickets (fire clears)
+  ashen: [{ type: "oil", density: 0.22 }], // pooled pitch/ember — catches + spreads fire
+  grove: [{ type: "glowcap", density: 0.16, clumps: 3 }], // luminous fungal beds
+  undercity: [{ type: "water", density: 0.2 }], // flooded channels to weave
 };
 
 /** Scatter the region's hazard kit as small blobs confined to the tagged region
@@ -510,6 +513,7 @@ function placeSecretVault(
   floors: number[],
   occupied: Set<number>,
   items: ItemInstance[],
+  monsters: MonsterInstance[],
   levelIndex: number,
 ) {
   const spec = config.secretVault;
@@ -562,14 +566,21 @@ function placeSecretVault(
       }
       if (!ok) continue;
 
-      // enclosure: the ONLY opening may be the crack — every neighbor of a room
-      // tile (and of the crack) that isn't room/crack must be solid wall
+      // Enclosure: the ONLY opening may be the crack — every neighbour of a
+      // room tile (and of the crack) that isn't room/crack must be solid wall.
+      // DIAGONALS COUNT: FOV runs at `topology: 8`, so a single transparent
+      // corner tile lets you see the whole vault (and its guardian) straight
+      // through the "sealed" wall — measured at 15+ outside tiles with a view.
       const roomSet = new Set(room);
       const nbrs = [
         [0, -1],
         [0, 1],
         [-1, 0],
         [1, 0],
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
       ];
       for (const ri of room) {
         const rx = ri % w;
@@ -629,6 +640,36 @@ function placeSecretVault(
         }
         items.push(inst);
         n++;
+      }
+      // a guardian sealed in with the hoard — placed on the far side of the
+      // room from the gate, so breaking in doesn't drop you straight onto it
+      if (spec.guardian) {
+        const def = monsterDef(spec.guardian);
+        const far = room.reduce((a, b) =>
+          manhattan(
+            b % w,
+            Math.floor(b / w),
+            crackI % w,
+            Math.floor(crackI / w),
+          ) >
+          manhattan(
+            a % w,
+            Math.floor(a / w),
+            crackI % w,
+            Math.floor(crackI / w),
+          )
+            ? b
+            : a,
+        );
+        occupied.add(far);
+        monsters.push({
+          id: `m${levelIndex}_guard`,
+          defId: def.id,
+          x: far % w,
+          y: Math.floor(far / w),
+          hp: def.maxHp,
+          state: "idle", // dormant until you break in and draw near
+        });
       }
       return;
     }
@@ -934,25 +975,47 @@ function pickCell(
   return cands[mapInt(0, cands.length - 1)];
 }
 
+/**
+ * The far end of the map — where a quest item or boss goes so the level is a
+ * real journey.
+ *
+ * Prefers OPEN ground near the far end over the single farthest tile. The
+ * literal maximum-distance cell is almost always the tip of a corridor or a
+ * dead-end stub (measured: the Sunblade landed in a 1-wide corridor on 7 of 8
+ * seeds), which reads as an item plugging a passage, is anticlimactic for the
+ * quest's payoff, and on a FLOODING level is a death trap. So take everything
+ * within `SLACK` of the maximum and pick the most open cell among them —
+ * a destination, not a cul-de-sac. Falls back to the strict farthest if the
+ * map has no open ground out there.
+ */
+const FAR_SLACK = 6; // tiles of distance we'll trade for a better-shaped spot
 function farthestCell(
   floors: number[],
   occupied: Set<number>,
   w: number,
   from: Pos,
+  tiles?: TileType[],
 ): number | null {
-  let best = -1;
   let bestD = -1;
+  const free: { i: number; d: number }[] = [];
   for (const i of floors) {
     if (occupied.has(i)) continue;
-    const x = i % w;
-    const y = Math.floor(i / w);
-    const d = manhattan(x, y, from.x, from.y);
-    if (d > bestD) {
-      bestD = d;
-      best = i;
-    }
+    const d = manhattan(i % w, Math.floor(i / w), from.x, from.y);
+    free.push({ i, d });
+    if (d > bestD) bestD = d;
   }
-  return best === -1 ? null : best;
+  if (free.length === 0) return null;
+  const strictFarthest = free.reduce((a, b) => (b.d > a.d ? b : a)).i;
+  if (!tiles) return strictFarthest;
+  // among the far-end candidates, prefer the most open (then the farthest)
+  const near = free.filter((c) => c.d >= bestD - FAR_SLACK);
+  let best: { i: number; d: number; open: number } | null = null;
+  for (const c of near) {
+    const open = openOrthoCount(tiles, w, c.i);
+    if (!best || open > best.open || (open === best.open && c.d > best.d))
+      best = { i: c.i, d: c.d, open };
+  }
+  return best && best.open >= 3 ? best.i : strictFarthest;
 }
 
 /** Count open tiles reachable from `from`, optionally treating `blockIdx` as
@@ -1374,16 +1437,21 @@ function placeAltars(
  * roundtrips in the save). Walkable — step on one to read it. */
 function placeLore(
   config: LevelConfig,
-  tiles: TileType[],
+  map: GameMap,
   floors: number[],
   occupied: Set<number>,
-  w: number,
   levelIndex: number,
 ): LoreInstance[] {
   const count = config.loreCount ?? 0;
   if (count <= 0) return [];
-  const pool = loreForBiome(config.biome);
-  if (pool.length === 0) return [];
+  const tiles = map.tiles;
+  const w = map.width;
+  // A fragment speaks for WHERE IT LIES: read the biome of the prop's own
+  // region, not the level's. Sub-region-only biomes (grove / undercity / cavern
+  // / ashen) are otherwise unreachable — their pools were dead content, since
+  // no level carries them as a base biome.
+  const biomeAt = (i: number) =>
+    map.regionBiome?.[map.region?.[i] ?? 0] ?? config.biome;
 
   // candidate floor cells, nooks first (off the path), then the rest
   const nooks: number[] = [];
@@ -1403,20 +1471,18 @@ function placeLore(
   const cells = [...nooks, ...rest];
 
   const lore: LoreInstance[] = [];
-  const usedEntries = new Set<number>();
-  const want = Math.min(count, pool.length, cells.length);
+  const usedTitles = new Set<string>(); // distinct fragments per level
   let ci = 0;
-  while (lore.length < want && ci < cells.length) {
+  while (lore.length < count && ci < cells.length) {
     const i = cells[ci++];
-    // pick an unused entry (distinct fragments per level)
-    let e = mapInt(0, pool.length - 1);
-    let guard = 0;
-    while (usedEntries.has(e) && guard++ < pool.length)
-      e = (e + 1) % pool.length;
-    if (usedEntries.has(e)) break;
-    usedEntries.add(e);
+    const pool = loreForBiome(biomeAt(i));
+    // an unused entry from THIS prop's own regional pool; skip the cell if the
+    // pool is exhausted (another cell in a different region may still serve)
+    const fresh = pool.filter((e) => !usedTitles.has(e.title));
+    if (fresh.length === 0) continue;
+    const entry = fresh[mapInt(0, fresh.length - 1)];
+    usedTitles.add(entry.title);
     occupied.add(i);
-    const entry = pool[e];
     lore.push({
       id: `lore${levelIndex}_${lore.length}`,
       x: i % w,
@@ -1692,6 +1758,11 @@ export function generateLevel(
   // Boss for killTarget goals — placed far from the player.
   if (config.goal.type === "killTarget") {
     const def = monsterDef(config.goal.monsterId);
+    // NOTE: no open-ground preference here (unlike quest items). A boss on a
+    // chokepoint is thematic — the Gate Warden *holds the gate* — and it also
+    // matters mechanically: a corridor lets you fight it one-on-one, while an
+    // open room lets its escort flank you. Forcing bosses into open ground
+    // dropped the Iron Gate's bot floor 50%→17%.
     const bossIdx =
       farthestCell(floors, occupied, w, playerStart) ??
       pickCell(floors, occupied, w);
@@ -1774,9 +1845,12 @@ export function generateLevel(
     }
   } else if (config.goal.type === "findItem") {
     const questItemId = itemIdByQuestTag(config.goal.questTag);
-    // Place the quest item far away so the level is a real search.
+    // Place the quest item far away so the level is a real search — on OPEN
+    // ground (see `farthestCell`), never a corridor stub: the strict farthest
+    // tile is nearly always a dead-end, which reads as the item plugging a
+    // passage and, on a flooding level, is a death trap.
     const cell =
-      farthestCell(floors, occupied, w, playerStart) ??
+      farthestCell(floors, occupied, w, playerStart, tiles) ??
       pickCell(floors, occupied, w);
     if (cell !== null) {
       occupied.add(cell);
@@ -1871,10 +1945,10 @@ export function generateLevel(
   const altars = placeAltars(config, floors, occupied, w, levelIndex);
 
   // Environmental-storytelling props (readable lore), tucked into nooks.
-  const lore = placeLore(config, tiles, floors, occupied, w, levelIndex);
+  const lore = placeLore(config, map, floors, occupied, levelIndex);
 
   // Hidden vault: a sealed room reachable only by breaking a cracked wall.
-  placeSecretVault(config, map, floors, occupied, items, levelIndex);
+  placeSecretVault(config, map, floors, occupied, items, monsters, levelIndex);
 
   // Fairness: guarantee every walkable tile is reachable without crossing a
   // trap — traps stay an avoidable risk, never a forced toll on the only path.

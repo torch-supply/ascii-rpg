@@ -40,6 +40,11 @@ export const BIOME_GRADIENT: Record<Biome, string> = {
   // cavern only ever appears as a sub-region, never a whole-level biome, so this
   // title gradient is unused in practice — present to satisfy the exhaustive map.
   cavern: "linear-gradient(180deg,#bff5ec 0%,#4fd8c0 45%,#1f6b60 100%)",
+  // ashen is likewise sub-region-only (unused title gradient) — grey ash → ember → char
+  ashen: "linear-gradient(180deg,#d8ccc0 0%,#b0703c 48%,#3a2e28 100%)",
+  // grove + undercity are sub-region-only too (unused; present for exhaustiveness)
+  grove: "linear-gradient(180deg,#e2f79a 0%,#8fbe5a 45%,#3a2b48 100%)",
+  undercity: "linear-gradient(180deg,#bfe6d2 0%,#4f8f76 45%,#16211d 100%)",
 };
 
 // ── Narrative set-pieces ────────────────────────────────────────────────────

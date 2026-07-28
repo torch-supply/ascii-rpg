@@ -25,7 +25,11 @@ interface Texture {
     freq: number;
     q: number;
     peak: number;
-    every: number; // schedule an overlapping swell every N steps
+    every: number; // continuous mode: an overlapping swell every N steps.
+    // GUST mode: fire on a RANDOMIZED cadence (averaging one per `every` steps),
+    // each a short swell with quiet lulls between — wind that comes and goes,
+    // instead of a metronomic overlap. For open-air "whoosh" biomes.
+    gust?: boolean;
   };
   tick?: { chance: number; freq: number; q: number; dur: number; peak: number };
 }
@@ -119,9 +123,16 @@ const LEVEL_MOODS: Record<Biome, Track> = {
     echo: { time: 0.2, feedback: 0.22, wet: 0.22 }, // short, dry (open woods)
     voice: { attack: 0.004, decay: 0.5 }, // plucked — a sylvan harp
     texture: {
-      bed: { filter: "bandpass", freq: 520, q: 0.8, peak: 0.03, every: 6 },
+      bed: {
+        filter: "bandpass",
+        freq: 520,
+        q: 0.8,
+        peak: 0.03,
+        every: 30,
+        gust: true,
+      },
       tick: { chance: 0.08, freq: 3000, q: 0.7, dur: 0.04, peak: 0.02 },
-    }, // breeze + leaf rustle
+    }, // occasional breeze gusts + leaf rustle
   },
   marsh: {
     root: 98.0,
@@ -154,9 +165,16 @@ const LEVEL_MOODS: Record<Biome, Track> = {
     echo: { time: 0.36, feedback: 0.32, wet: 0.32 }, // open, airy
     voice: { attack: 0.18 }, // airy bowed — a thin mountain wind-instrument
     texture: {
-      bed: { filter: "bandpass", freq: 950, q: 0.9, peak: 0.035, every: 5 },
+      bed: {
+        filter: "bandpass",
+        freq: 950,
+        q: 0.9,
+        peak: 0.035,
+        every: 28,
+        gust: true,
+      },
       tick: { chance: 0.05, freq: 1600, q: 0.6, dur: 0.3, peak: 0.03 },
-    }, // thin wind + gusts
+    }, // thin wind that gusts and lulls
   },
   castle: {
     root: 130.81,
@@ -231,6 +249,59 @@ const LEVEL_MOODS: Record<Biome, Track> = {
     texture: {
       bed: { filter: "lowpass", freq: 160, q: 0.8, peak: 0.05, every: 5 },
       tick: { chance: 0.07, freq: 900, q: 8, dur: 0.18, peak: 0.035 }, // distant drips
+    },
+  },
+  grove: {
+    root: 87.31, // very low (F2) — something vast and slow breathing
+    scale: MINOR_PENT,
+    stepMs: 700, // the slowest track: woozy, narcotic
+    density: 0.3,
+    wave: "sine",
+    peak: 0.06,
+    droneEvery: 6,
+    droneWave: "sine",
+    sparkle: 0.22, // frequent high glints — spores catching the caps' light
+    cutoff: 780, // heavily muffled, like air thick with spores
+    echo: { time: 0.46, feedback: 0.42, wet: 0.38 },
+    voice: { attack: 0.34 }, // slow swells that bleed into each other
+    texture: {
+      bed: { filter: "lowpass", freq: 140, q: 0.9, peak: 0.05, every: 5 },
+      tick: { chance: 0.11, freq: 620, q: 6, dur: 0.2, peak: 0.035 }, // wet pops
+    },
+  },
+  undercity: {
+    root: 82.41, // E2 — deep, submerged
+    scale: NAT_MINOR,
+    stepMs: 620,
+    density: 0.3,
+    wave: "sine",
+    peak: 0.055,
+    droneEvery: 8,
+    droneWave: "sine",
+    sparkle: 0.05, // almost none — nothing glitters in a sewer
+    cutoff: 700, // drowned, muffled by water and stone
+    echo: { time: 0.5, feedback: 0.5, wet: 0.42 }, // long tunnel slapback
+    choir: { peak: 0.016, formants: [380, 820] }, // the drowned, very faint
+    texture: {
+      bed: { filter: "lowpass", freq: 130, q: 0.9, peak: 0.05, every: 6 },
+      tick: { chance: 0.14, freq: 1500, q: 12, dur: 0.16, peak: 0.045 }, // echoing drips
+    },
+  },
+  ashen: {
+    root: 103.83, // low, leaden (G#2)
+    scale: MINOR_PENT,
+    stepMs: 660, // slow — nothing lives here to hurry for
+    density: 0.28, // sparse; long silences
+    wave: "sine",
+    peak: 0.055,
+    droneEvery: 8,
+    droneWave: "sine",
+    sparkle: 0.03, // almost no shimmer — the light is dead
+    cutoff: 820, // dark, muffled by ash
+    echo: { time: 0.22, feedback: 0.24, wet: 0.2 }, // dry, dead air (no ring)
+    texture: {
+      bed: { filter: "lowpass", freq: 150, q: 0.8, peak: 0.045, every: 6 },
+      tick: { chance: 0.1, freq: 2200, q: 1, dur: 0.03, peak: 0.03 }, // settling ember crackle
     },
   },
 };
@@ -470,7 +541,23 @@ function scheduleTexture(
 ) {
   const tx = tr.texture;
   if (!tx) return;
-  if (s % tx.bed.every === 0) {
+  if (tx.bed.gust) {
+    // spaced, irregular gusts (quiet lulls between) — averages one per `every`
+    // steps but the random spacing makes the wind come and go naturally
+    if (Math.random() < 1 / tx.bed.every) {
+      const dur = 3.5 + Math.random() * 2.5; // a slow 3.5–6s breeze swell
+      noiseGrain(
+        ctx,
+        out,
+        at,
+        dur,
+        tx.bed.peak,
+        tx.bed.filter,
+        tx.bed.freq,
+        tx.bed.q,
+      );
+    }
+  } else if (s % tx.bed.every === 0) {
     const dur = ((tx.bed.every * tr.stepMs) / 1000) * 1.7; // overlap → continuous
     noiseGrain(
       ctx,
