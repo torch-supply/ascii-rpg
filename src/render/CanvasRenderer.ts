@@ -174,6 +174,41 @@ function drawFissure(
 const clamp = (v: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, v));
 
+/**
+ * Where the viewport's top-left sits for a given player position — centered on the
+ * player, then clamped so the view never scrolls past the map edge.
+ *
+ * Extracted as a PURE function (rather than living inline in `renderBase`) because
+ * it's the one piece of renderer logic a test can actually assert: an off-by-one in
+ * either clamp is a visible bug — a column of dead space at a map edge, or the
+ * player drifting off-centre — and the renderer is otherwise unreachable from a
+ * headless suite. Covered by `[61]`.
+ *
+ * A viewport LARGER than the map clamps to 0 (the map is drawn flush and the extra
+ * space is simply off-map), which is why the upper bound is `max(0, …)`.
+ */
+export function cameraOrigin(
+  playerX: number,
+  playerY: number,
+  cols: number,
+  rows: number,
+  mapWidth: number,
+  mapHeight: number,
+): { camX: number; camY: number } {
+  return {
+    camX: clamp(
+      playerX - Math.floor(cols / 2),
+      0,
+      Math.max(0, mapWidth - cols),
+    ),
+    camY: clamp(
+      playerY - Math.floor(rows / 2),
+      0,
+      Math.max(0, mapHeight - rows),
+    ),
+  };
+}
+
 type Fx =
   | {
       kind: "projectile";
@@ -583,16 +618,16 @@ export class CanvasRenderer {
     const { cols, rows } = this;
 
     // Camera: center on the player, clamped so we never scroll past the map.
-    this.camX = clamp(
-      player.x - Math.floor(cols / 2),
-      0,
-      Math.max(0, map.width - cols),
+    const cam = cameraOrigin(
+      player.x,
+      player.y,
+      cols,
+      rows,
+      map.width,
+      map.height,
     );
-    this.camY = clamp(
-      player.y - Math.floor(rows / 2),
-      0,
-      Math.max(0, map.height - rows),
-    );
+    this.camX = cam.camX;
+    this.camY = cam.camY;
     const camX = this.camX;
     const camY = this.camY;
 

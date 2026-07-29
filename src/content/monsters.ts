@@ -288,13 +288,25 @@ export const MONSTERS: Record<string, MonsterDef> = {
       ],
     },
   },
+  // The Gate Warden holds the far end of the gatehouse. dmg was 7 and made the Iron
+  // Gate the outlier of the whole run — 13% bot win-rate at 52 seeds against 44-52%
+  // for its peers. dmg 6 lands it at 42%, in line with the Great Hall / Crypt /
+  // Antechamber. Measured alternatives, all rejected: dmg 5 → 71% (easier than the
+  // Frostspine, too far); thinning the gargoyle escort → no win-rate effect at all
+  // (it only softened punishment: median end-HP 5 → 12); and pairing dmg 6 with more
+  // HP to keep it a "step up" from the Frost Troll → 42 HP crashed it back to 15%,
+  // 48 HP to 12%, because a greedy melee bot cannot out-trade a tankier boss.
+  //
+  // So it now reads a shade under the Frost Troll on paper (hp 34/dmg 6 vs 36/dmg 6).
+  // That's deliberate: the escalation here is the LEVEL — a gatehouse you cross under
+  // fire with a gargoyle escort — not a bigger statline.
   gate_captain: {
     id: "gate_captain",
     name: "Gate Warden",
     glyph: "C",
     color: "#d24a4a",
     maxHp: 34,
-    dmg: 7,
+    dmg: 6,
     armor: 1,
     behavior: "guardChase",
     sightRadius: 9,

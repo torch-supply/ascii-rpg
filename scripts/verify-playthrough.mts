@@ -9,18 +9,33 @@
 // The bot is deliberately a FLOOR: greedy, non-optimal, 4-directional — but it
 // is *tactically equipped* (heals + firebombs, the kit a player buys at the
 // shop) and will hurl a bomb at a boss/cluster, kite a menace to reopen bombing
-// distance, and fire an equipped bow. So a boss-level win-rate here is a real
-// (if conservative) signal of whether the intended toolkit can clear it, not
-// just "can pure melee." If this bot can clear a level, a human can.
+// distance, fire an equipped bow, EQUIP upgrades it picks up, and fire its CLASS
+// ABILITY ([q] — Cleave into a crowd, Scorch down the fullest cone, Dash out of
+// one). So a boss-level win-rate here is a real (if conservative) signal of
+// whether the intended toolkit can clear it, not just "can pure melee." If this
+// bot can clear a level, a human can.
+//
+// COVERAGE OF THE ACTION SURFACE. The engine has 9 `PlayerAction` types. The bot
+// EMITS 7 of them; the remaining two (`closeDoor`, `blinkTo`) are driven directly
+// against a real mid-run state by `[P6]`, because a bot heuristic for either
+// would cost more than it buys (see the note there). So all 9 are exercised in a
+// live game — 7 by autonomous choice, 2 by injection.
+//
+// Still not simulated, deliberately: detouring for loot (see the note at the end
+// of `decide` — tried twice, measured, and rejected for destabilizing the
+// harness), altars, and lore props. The store suite covers the altar and lore
+// flows end-to-end instead ([S14]/[S10]).
 import { LEVELS } from "@/content/levels";
 import { createPlayer, beginLevel, clonePlayer } from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
-import { idx, isWalkable } from "@/game/core/grid";
-import { giveItem } from "@/game/core/inventory";
+import { idx, isWalkable, isTransparent } from "@/game/core/grid";
+import { giveItem, equipWeapon, equipArmor } from "@/game/core/inventory";
 import { CONFIG } from "@/content/config";
 import { MONSTERS } from "@/content/monsters";
 import { ITEMS, SHOP_TIERS } from "@/content/items";
+import { classDef } from "@/content/classes";
+import { MUTATORS, applyPlayerMutators } from "@/content/mutators";
 import type {
   GameState,
   Pos,
@@ -247,6 +262,65 @@ function decide(g: GameState): PlayerAction {
     if (dodge) return dodge;
   }
 
+  const adjNow = g.monsters.filter((m) => chebyshev(m.x, m.y, p.x, p.y) === 1);
+
+  // 2a. Equip an upgrade we're carrying. The bot used to fight the entire game in
+  //     its starting kit, so ground gear was picked up and never worn — which made
+  //     the drop economy look worthless and understated what a real player gets
+  //     out of loot. Equipping costs a turn, so never do it toe-to-toe.
+  if (adjNow.length === 0) {
+    for (const b of p.bag) {
+      const def = ITEMS[b.defId];
+      if (!def) continue;
+      if (def.category === "weapon") {
+        const cur = p.weaponId ? ITEMS[p.weaponId] : undefined;
+        // compare like with like — never trade a bow for a melee stick
+        if (
+          (def.power ?? 0) > (cur?.power ?? 0) &&
+          !!def.ranged === !!cur?.ranged
+        )
+          return { type: "equip", defId: b.defId };
+      }
+      if (def.category === "armor" && (def.reduction ?? 0) > p.armorReduction)
+        return { type: "equip", defId: b.defId };
+    }
+  }
+
+  // 2b. Class active ability ([q]) — the headline per-class mechanic. Without it
+  //     `[P3]` certified Rogue and Pyromancer as "viable" while never once firing
+  //     Dash or Scorch, i.e. it graded two thirds of the classes on their basic
+  //     kit alone.
+  const ab = classDef(p.classId).ability;
+  if (ab && p.abilityCooldown <= 0) {
+    if (ab.id === "cleave" && adjNow.length >= 2) return { type: "ability" };
+    if (ab.id === "scorch") {
+      // aim the cone down whichever orthogonal covers the most foes at range 1–4
+      let bestDir: readonly number[] | null = null;
+      let bestN = 0;
+      for (const [dx, dy] of DIRS) {
+        const n = g.monsters.filter((m) => {
+          const rx = m.x - p.x;
+          const ry = m.y - p.y;
+          const along = rx * dx + ry * dy;
+          const spread = Math.abs(dx !== 0 ? ry : rx);
+          return along >= 1 && along <= 4 && spread <= along;
+        }).length;
+        if (n > bestN) {
+          bestN = n;
+          bestDir = [dx, dy];
+        }
+      }
+      if (bestDir && bestN >= 2)
+        return { type: "ability", dx: bestDir[0], dy: bestDir[1] };
+    }
+    if (ab.id === "dash" && adjNow.length >= 2) {
+      // a Rogue caught in a crowd leaps clear rather than trading blows
+      const away = safeStepAwayFrom(g, adjNow[0]);
+      if (away && away.type === "move")
+        return { type: "ability", dx: away.dx, dy: away.dy };
+    }
+  }
+
   // 3. firebomb: hurl at the boss / the densest cluster, from ≥2 away so the
   //    lingering fire doesn't catch us. Conserve bombs — only worth it if the
   //    blast tags a boss/elite or catches 2+ enemies.
@@ -336,6 +410,21 @@ function decide(g: GameState): PlayerAction {
     };
 
   // 9. otherwise path toward the objective (avoid traps, then allow if trapped)
+  //
+  // DELIBERATELY NOT a looter. Making the bot detour for nearby gold/gear was
+  // tried and measured, twice: as a separate pre-move step, and folded into this
+  // goal set. Both improved the metrics you'd want improved (whole-run purse
+  // 207g → 281g, `[P4]` best depth 4 → 9 with real shop spending) — and both
+  // destabilized the harness: a run that never terminated (`stuck`), a 1914-turn
+  // death on the Frostspine, the Antechamber falling 17% → 0%, and `[P5]`'s
+  // all-trials gate failing because the Crypt stopped being clearable. The goal
+  // set is position-dependent (items enter/leave the radius as you move), so the
+  // nearest-goal target can flip turn to turn and livelock.
+  //
+  // Consequence to keep in mind when reading the table: `medGold` measures what
+  // the bot trips over EN ROUTE, so the economy figures are a LOWER bound on what
+  // an attentive player banks. Making this faithful needs a committed loot target
+  // with an explicit detour budget, not a radius filter.
   const goals = objectiveTiles(g);
   const step = bfsStep(g, goals, true) ?? bfsStep(g, goals, false);
   if (step) return { type: "move", dx: step.x - p.x, dy: step.y - p.y };
@@ -383,6 +472,7 @@ function playLevel(
   botSeed: number,
   classId = "warrior",
   startPlayer?: PlayerState,
+  mutators: string[] = [],
 ): RunResult {
   // A carried character (full-run mode) arrives with whatever they've earned;
   // otherwise mint the standard bot loadout for an isolated level measurement.
@@ -392,8 +482,9 @@ function playLevel(
     // the bot can actually engage bosses with the intended toolkit (not just melee)
     for (let i = 0; i < 3; i++) giveItem(player, "p_heal");
     for (let i = 0; i < 3; i++) giveItem(player, "p_bomb");
+    applyPlayerMutators(player, mutators);
   }
-  const g = beginLevel(seed, levelIndex, player);
+  const g = beginLevel(seed, levelIndex, player, mutators);
   const rng = new Rng(botSeed);
   const cap = Math.max(LEVELS[levelIndex].turnLimit * 4, 500);
 
@@ -468,7 +559,24 @@ const median = (xs: number[]) => {
 console.log(
   "\n[P1] Autonomous playthroughs — every level, greedy bot, many seeds",
 );
-const SEEDS = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"];
+// 12 seeds, not 6. Doubling costs +0.6s and halves the per-seed noise (one seed is
+// 8 points instead of 17) — which matters because the floors below are only as sharp
+// as the resolution. It also corrected a systematically optimistic reading: the Iron
+// Gate showed 50% on 6 seeds and 25% on 12, i.e. the extra seeds were all deaths.
+const SEEDS = [
+  "alpha",
+  "bravo",
+  "charlie",
+  "delta",
+  "echo",
+  "foxtrot",
+  "g1",
+  "g2",
+  "g3",
+  "g4",
+  "g5",
+  "g6",
+];
 // Goal types the greedy bot is expected to actually clear (navigation +
 // attrition). Boss fights (killTarget) and the siege (survive) need tactical
 // play beyond a greedy melee floor, so those are held only to an "enterable,
@@ -482,6 +590,7 @@ const BOT_MUST_WIN = new Set([
 const ENTERABLE_FLOOR = 6; // a boss/siege level must let you last ≥ this many turns
 
 let anyInvariant: string | null = null;
+const levelWinPct: Record<string, number> = {}; // per-level rate, for the floors below
 let totalWins = 0;
 let totalRuns = 0;
 let runGold = 0; // summed median per-level gold ≈ a whole run's purse
@@ -514,6 +623,7 @@ for (let li = 0; li < LEVELS.length; li++) {
   }
 
   const rate = ((wins.length / results.length) * 100).toFixed(0);
+  levelWinPct[cfg.id] = (wins.length / results.length) * 100;
   const medTurns = median(wins.map((r) => r.turns));
   const medHp = median(wins.map((r) => r.endHp));
   const deaths = results.filter((r) => r.outcome === "death").length;
@@ -597,6 +707,56 @@ check(
   instantWipe.length === 0,
   instantWipe.length ? `(${instantWipe.join(", ")})` : "",
 );
+// ─── Per-level regression floors ───────────────────────────────────────────
+// The gates above are aggregate: "won ≥1 seed" and a 30% overall rate. A single
+// level could therefore collapse from 100% to 8% and nothing would fail. That is
+// not hypothetical — twice this project had a level quietly fall (the Iron Gate to
+// 17%, the Ramparts 50%→33%) and both were noticed only because a human happened
+// to read the table.
+//
+// VALIDATED AT 52 SEEDS, not at the 12 this file runs. That distinction cost me a
+// bad recommendation: the Iron Gate reads 25% on the default 12 seeds and 13% on 52,
+// and the same config measured 8% / 25% / 33% / 43% across different 12–30 seed sets.
+// A level near the low end is noise-dominated, so calibrate a floor against a big
+// sample even though the committed sweep is small.
+//
+// These floors sit ~2-3 seeds BELOW the measured rate, so they catch a COLLAPSE
+// rather than a wobble (one seed is 8 points at this sample size). Update them
+// deliberately when you re-tune a level — a floor you lower without thinking is
+// how the regression this exists to catch gets waved through.
+const WIN_FLOOR: Record<string, number> = {
+  dungeon_depths: 75, // 100 @52 seeds
+  blackwood: 75, // 100 @52
+  the_mire: 50, // 83 @52
+  frostspine_pass: 50, // 71 @52
+  iron_gate: 17, // 42 @52 after the Gate Warden went dmg 7 → 6
+  great_hall: 17, // 52 @52
+  sunken_crypt: 25, // 44 @52
+  ramparts: 8, // 31 @52 (survive/siege)
+  antechamber: 17, // 50 @52
+  // throne_of_dusk is deliberately absent: every row plays a level in ISOLATION
+  // with a fresh STARTING loadout, so the finale is fought with a rusty dagger and
+  // reads 0% by construction. `[P7]` is its real gate (63% with the intended kit).
+};
+{
+  const below: string[] = [];
+  for (const [id, pct] of Object.entries(levelWinPct)) {
+    const floor = WIN_FLOOR[id];
+    if (floor === undefined) continue;
+    if (pct < floor) below.push(`${id} ${pct.toFixed(0)}% < ${floor}%`);
+  }
+  check(
+    "no level has regressed below its committed win-rate floor",
+    below.length === 0,
+    below.length ? `(${below.join("; ")})` : "",
+  );
+  check(
+    "(setup) every non-finale level has a floor to check",
+    Object.keys(WIN_FLOOR).length === LEVELS.length - 1,
+    `(${Object.keys(WIN_FLOOR).length} floors for ${LEVELS.length} levels)`,
+  );
+}
+
 check(
   `overall greedy-bot win-rate is a sane floor across ${totalRuns} runs`,
   totalWins / totalRuns >= 0.3,
@@ -611,7 +771,10 @@ check(
 // "clears the navigation/attrition levels" bar the Warrior meets.
 console.log("\n[P3] Class viability — every class can play the game");
 {
-  const CLASS_SEEDS = ["alpha", "charlie", "echo"]; // reduced: keeps runtime sane
+  // 6 seeds, not 3. The class sweep is the only evidence Rogue and Pyromancer are
+  // playable at all, and at 3 seeds a single unlucky roll is 33 points — enough to
+  // hide a real regression or invent one. Still reduced vs the 12-seed main table.
+  const CLASS_SEEDS = ["alpha", "charlie", "echo", "g1", "g3", "g5"];
   const navLevels = LEVELS.map((l, i) => ({ l, i })).filter(({ l }) =>
     BOT_MUST_WIN.has(l.goal.type),
   );
@@ -756,6 +919,385 @@ console.log("\n[P4] Full-run continuity — one character, carried, with shops")
     "a carried run can actually afford to shop",
     runs.some((r) => r.spent > 0),
     `(spent ${runs.map((r) => r.spent).join("/")}g)`,
+  );
+}
+
+// ─── P5. Trials (run modifiers) stay playable ──────────────────────────────
+// Every measurement above runs with NO trials on — the bot never opts into them,
+// so the whole mutator system had zero playtest signal. Core test [52] proves a
+// mutated level still GENERATES legally (objectives reachable, no orphaned
+// pockets, a trap-free route survives Treacherous), but "generates" is not
+// "survivable": a trial that made a level unwinnable would ship green.
+//
+// The bar is deliberately a FLOOR, not a balance target. Trials are SUPPOSED to
+// hurt and the greedy bot is a conservative measure, so the only hard gate is the
+// WORST case — every trial at once — leaving each navigation/attrition level
+// clearable on at least one seed, with no invariant violated during real play.
+// Since every trial is strictly a difficulty increase, all-on subsumes the singles.
+//
+// Do NOT read the single-trial rows as a difficulty RANKING. At 5 levels × 4 seeds
+// one run is 5 percentage points, and the bot is largely insensitive to what most
+// trials change: it beelines, paths around traps, and carries 3 heals, so denser
+// monsters and thinner loot barely move its win-rate (forsaken and champions have
+// both scored ABOVE baseline here — that is noise, not a finding). The rows exist
+// to make an unplayable trial obvious, not to tune one.
+//
+// NOTE `glass` is unmeasurable here: it only sets starting lives, and playLevel
+// resolves ONE level that ends on the first death regardless — so its row should
+// mirror the baseline. It's listed for completeness, not coverage.
+console.log("\n[P5] Trials stay playable — run modifiers under the greedy bot");
+{
+  const TRIAL_SEEDS = ["alpha", "charlie", "echo", "foxtrot"];
+  const navLevels = LEVELS.map((l, i) => ({ l, i })).filter(({ l }) =>
+    BOT_MUST_WIN.has(l.goal.type),
+  );
+  const configs: { label: string; ids: string[] }[] = [
+    { label: "(none — baseline)", ids: [] },
+    ...MUTATORS.map((m) => ({ label: m.id, ids: [m.id] })),
+    { label: "ALL ON", ids: MUTATORS.map((m) => m.id) },
+  ];
+
+  let trialInvariant: string | null = null;
+  const unclearable: string[] = [];
+
+  for (const cfg of configs) {
+    let wins = 0;
+    let runs = 0;
+    const endHps: number[] = [];
+    const neverWon: string[] = [];
+    for (const { l, i } of navLevels) {
+      let levelWins = 0;
+      for (const seed of TRIAL_SEEDS) {
+        const r = playLevel(i, seed, 11, "warrior", undefined, cfg.ids);
+        runs++;
+        if (r.invariant && !trialInvariant)
+          trialInvariant = `${cfg.label} @ ${l.id}/${seed}: ${r.invariant}`;
+        if (r.outcome === "win") {
+          wins++;
+          levelWins++;
+          endHps.push(r.endHp);
+        }
+      }
+      if (levelWins === 0) neverWon.push(l.id);
+    }
+    const pct = ((wins / runs) * 100).toFixed(0);
+    console.log(
+      `  · ${cfg.label.padEnd(18)} win ${pct.padStart(3)}% of ${runs}  ` +
+        `medEndHP ${String(median(endHps)).padStart(2)}` +
+        `${neverWon.length ? `  (never cleared: ${neverWon.join(", ")})` : ""}`,
+    );
+    if (cfg.label === "ALL ON") unclearable.push(...neverWon);
+  }
+
+  // Anti-vacuity: the rows above are only meaningful if the trials actually reach
+  // generation. Drop the `mutators` argument in playLevel and every row silently
+  // collapses to the baseline while BOTH gates below stay green — so assert the
+  // mutated world is observably different, per trial, at its own mechanism.
+  const world = (ids: string[]) => {
+    const g = beginLevel("alpha", navLevels[1].i, createPlayer("warrior"), ids);
+    return {
+      monsters: g.monsters.length,
+      elites: g.monsters.filter((m) => m.elite).length,
+      traps: g.map.tiles.filter((t) => t === "trap").length,
+      forage: g.map.tiles.filter((t) => t === "forage").length,
+      light: g.player.lightRadius,
+    };
+  };
+  const b = world([]);
+  check(
+    "swarm actually spawns more monsters",
+    world(["swarm"]).monsters > b.monsters,
+  );
+  check(
+    "treacherous actually places more traps",
+    world(["treacherous"]).traps > b.traps,
+  );
+  check(
+    "champions actually rolls more elites",
+    world(["champions"]).elites > b.elites,
+  );
+  check(
+    "dark actually shrinks the light radius",
+    world(["dark"]).light < b.light,
+  );
+  check(
+    "forsaken actually strips the forage",
+    world(["forsaken"]).forage === 0 && b.forage > 0,
+  );
+
+  check(
+    "every navigation/attrition level stays clearable with ALL trials on",
+    unclearable.length === 0,
+    unclearable.length ? `(never cleared: ${unclearable.join(", ")})` : "",
+  );
+  check(
+    "no invariant violated during real play under trials",
+    trialInvariant === null,
+    trialInvariant ?? "",
+  );
+}
+
+// ─── P6. Integration: the actions the greedy bot never emits ────────────────
+// `closeDoor` and `blinkTo` are covered as MECHANICS in verify-core ([33], [37]),
+// but only in hand-built scenarios. Neither is ever emitted by the bot, so until
+// now neither had run inside a real, mid-flight game — a live generated map with
+// alerted monsters, fog of war, and a populated turn loop.
+//
+// Deliberately NOT done by teaching the greedy bot to use them tactically:
+//   • a `closeDoor` heuristic livelocks — `PASSABLE` treats a shut door as
+//     passable and the bot bumps to reopen it, so closing one on its own route
+//     makes it undo itself, the same failure that killed the loot detour;
+//   • `blinkTo` would mean adding a Phial to the loadout the difficulty table
+//     above is calibrated on, perturbing every row for a niche consumable.
+// Driving them at a real mid-run state gets the integration coverage without
+// touching the balance numbers.
+console.log("\n[P6] Integration: closeDoor + blinkTo inside a live run");
+{
+  // Play a real run for a while so the state is genuinely mid-flight.
+  const midRun = (levelIndex: number, seed: string, turns: number) => {
+    const player = createPlayer("warrior");
+    for (let i = 0; i < 3; i++) giveItem(player, "p_heal");
+    for (let i = 0; i < 3; i++) giveItem(player, "p_bomb");
+    const g = beginLevel(seed, levelIndex, player);
+    const rng = new Rng(11);
+    for (let t = 0; t < turns; t++) {
+      const r = resolveTurn(g, decide(g), rng);
+      if (r.goalComplete || r.playerDied) break;
+    }
+    return g;
+  };
+  const sane = (g: GameState) =>
+    g.player.hp <= g.player.maxHp &&
+    !Number.isNaN(g.player.hp) &&
+    isWalkable(g.map, g.player.x, g.player.y);
+
+  // ── closeDoor: shut a door in a live level and prove it seals ──
+  {
+    const li = LEVELS.findIndex((l) => (l.doorCount ?? 0) > 0);
+    const g = midRun(li, "door-live", 25);
+    const w = g.map.width;
+    let door: number | null = null;
+    for (let i = 0; i < g.map.tiles.length && door === null; i++) {
+      if (g.map.tiles[i] !== "doorOpen") continue;
+      const dx = i % w;
+      const dy = Math.floor(i / w);
+      if (g.monsters.some((m) => m.x === dx && m.y === dy)) continue;
+      const spot = DIRS.map(([ax, ay]) => ({ x: dx + ax, y: dy + ay })).find(
+        (c) =>
+          isWalkable(g.map, c.x, c.y) &&
+          !g.monsters.some((m) => m.x === c.x && m.y === c.y),
+      );
+      if (spot) {
+        g.player.x = spot.x;
+        g.player.y = spot.y;
+        door = i;
+      }
+    }
+    check("(setup) found an open door to shut mid-run", door !== null);
+    if (door !== null) {
+      const dx = door % w;
+      const dy = Math.floor(door / w);
+      const before = g.turnCount;
+      const res = resolveTurn(g, { type: "closeDoor" }, new Rng(5));
+      check(
+        "closing a door mid-run spends the turn",
+        res.tookTurn && g.turnCount > before,
+      );
+      check("the door is now shut", g.map.tiles[door] === "door");
+      check(
+        "a shut door blocks both movement and sight",
+        !isWalkable(g.map, dx, dy) && !isTransparent(g.map, dx, dy),
+      );
+      check("the run is still sane after closing a door", sane(g));
+      // and with no door beside you it must refuse WITHOUT eating a turn
+      const far = g.map.tiles.findIndex(
+        (t, i) =>
+          t === "floor" &&
+          !DIRS.some(
+            ([ax, ay]) => g.map.tiles[i + ax + ay * w] === "doorOpen",
+          ) &&
+          !g.monsters.some((m) => idx(m.x, m.y, w) === i),
+      );
+      if (far >= 0) {
+        g.player.x = far % w;
+        g.player.y = Math.floor(far / w);
+        const t0 = g.turnCount;
+        const none = resolveTurn(g, { type: "closeDoor" }, new Rng(5));
+        check(
+          "closing with no door beside you costs no turn",
+          !none.tookTurn && g.turnCount === t0,
+        );
+      }
+    }
+  }
+
+  // ── blinkTo: teleport out of a live position, spending the phial ──
+  {
+    const g = midRun(0, "blink-live", 20);
+    const w = g.map.width;
+    giveItem(g.player, "p_blink");
+    const had = g.player.bag.find((b) => b.defId === "p_blink")?.count ?? 0;
+    check("(setup) carrying a Phial of Blinking", had >= 1);
+    // a legal destination: in range, walkable, unoccupied, not where we stand
+    let dest: Pos | null = null;
+    for (let i = 0; i < g.map.tiles.length && !dest; i++) {
+      const x = i % w;
+      const y = Math.floor(i / w);
+      if (x === g.player.x && y === g.player.y) continue;
+      if (chebyshev(x, y, g.player.x, g.player.y) > CONFIG.blinkRange) continue;
+      if (!isWalkable(g.map, x, y)) continue;
+      if (g.monsters.some((m) => m.x === x && m.y === y)) continue;
+      dest = { x, y };
+    }
+    check("(setup) found a legal blink destination", dest !== null);
+    if (dest) {
+      const res = resolveTurn(
+        g,
+        { type: "blinkTo", defId: "p_blink", x: dest.x, y: dest.y },
+        new Rng(9),
+      );
+      check("blinking mid-run spends the turn", res.tookTurn);
+      check(
+        "the player actually arrives at the target",
+        g.player.x === dest.x && g.player.y === dest.y,
+      );
+      check(
+        "the phial is consumed",
+        (g.player.bag.find((b) => b.defId === "p_blink")?.count ?? 0) ===
+          had - 1,
+      );
+      check("the run is still sane after blinking", sane(g));
+      // an out-of-range blink must fizzle without spending a turn OR a phial
+      const kept = g.player.bag.find((b) => b.defId === "p_blink")?.count ?? 0;
+      const t0 = g.turnCount;
+      const far = resolveTurn(
+        g,
+        {
+          type: "blinkTo",
+          defId: "p_blink",
+          x: g.player.x + CONFIG.blinkRange + 3,
+          y: g.player.y,
+        },
+        new Rng(9),
+      );
+      check(
+        "an out-of-range blink fizzles — no turn, no phial spent",
+        !far.tookTurn &&
+          g.turnCount === t0 &&
+          (g.player.bag.find((b) => b.defId === "p_blink")?.count ?? 0) ===
+            kept,
+      );
+    }
+  }
+}
+
+// ─── P7. The finale: is Malachar actually beatable? ─────────────────────────
+// The difficulty table shows `throne_of_dusk` at 0% and calls it "not measurable
+// here." That was accurate but it left the game's CLIMAX with no automated
+// beatability evidence at all — every other level has a floor; the fight the whole
+// quest builds toward had none.
+//
+// The 0% turns out not to be a tactics problem. Every row of that table plays a
+// level in ISOLATION with a FRESH starting loadout, so the bot faces the lich
+// holding the rusty dagger it starts the game with: 80 HP ÷ (3 power − 2 armor) =
+// **80 melee hits**, versus 5 with the Sunblade it was supposed to recover from the
+// Crypt one level earlier. The row measured a loadout no real player would arrive
+// with, which is why it read as unwinnable.
+//
+// So: play the finale with the INTENDED endgame kit (Sunblade + heavy armor + the
+// consumables the tier-9 shop sells) and hold it to a real bar.
+console.log("\n[P7] The finale: Malachar with the intended endgame kit");
+{
+  const li = LEVELS.length - 1;
+  check(
+    "(setup) the last level is the boss fight",
+    LEVELS[li].goal.type === "killTarget",
+  );
+
+  // The kit a player plausibly ARRIVES with. 6 firebombs is deliberately
+  // conservative: the shops sell 16 across the run at 20g each, so 6 costs 120g of
+  // a ~215g whole-run purse — affordable, but a real tradeoff against gear.
+  const kit = (weapon: string | null, bombs: number) => {
+    const p = createPlayer("warrior");
+    if (weapon) {
+      giveItem(p, weapon);
+      equipWeapon(p, weapon);
+    }
+    giveItem(p, "a_plate");
+    equipArmor(p, "a_plate");
+    for (let i = 0; i < 4; i++) giveItem(p, "p_heal");
+    for (let i = 0; i < bombs; i++) giveItem(p, "p_bomb");
+    return p;
+  };
+
+  const SEEDS = [
+    "alpha",
+    "bravo",
+    "charlie",
+    "delta",
+    "echo",
+    "foxtrot",
+    "g1",
+    "g2",
+  ];
+  const run = (weapon: string | null, bombs: number) => {
+    let wins = 0;
+    const turns: number[] = [];
+    const endHps: number[] = [];
+    const outcomes: string[] = [];
+    let invariant: string | null = null;
+    for (const seed of SEEDS) {
+      const r = playLevel(li, seed, 11, "warrior", kit(weapon, bombs));
+      if (r.invariant && !invariant) invariant = `${seed}: ${r.invariant}`;
+      outcomes.push(`${r.outcome[0]}@${r.turns}`);
+      if (r.outcome === "win") {
+        wins++;
+        turns.push(r.turns);
+        endHps.push(r.endHp);
+      }
+    }
+    return { wins, turns, endHps, outcomes, invariant };
+  };
+
+  // The 2x2 that isolates what the finale actually demands of the player.
+  const intended = run("w_sun", 6);
+  const noBlade = run(null, 6);
+  const noBombs = run("w_sun", 0);
+  const neither = run(null, 0);
+  const pct = (n: number) =>
+    `${((n / SEEDS.length) * 100).toFixed(0).padStart(3)}%`;
+  console.log(
+    `  · Sunblade + 6 bombs (intended) win ${pct(intended.wins)}  ` +
+      `medTurns ${median(intended.turns)}  medEndHP ${median(intended.endHps)}  ${intended.outcomes.join(" ")}`,
+  );
+  console.log(`  · dagger   + 6 bombs           win ${pct(noBlade.wins)}`);
+  console.log(`  · Sunblade + 0 bombs           win ${pct(noBombs.wins)}`);
+  console.log(
+    `  · dagger   + 0 bombs           win ${pct(neither.wins)}   ` +
+      `<- the loadout the isolated table measures, i.e. why that row reads 0%`,
+  );
+
+  check(
+    "the finale IS winnable with the intended endgame kit",
+    intended.wins > 0,
+    `(${intended.wins}/${SEEDS.length} seeds)`,
+  );
+  check(
+    "no invariant violated during the boss fight",
+    intended.invariant === null,
+    intended.invariant ?? "",
+  );
+  // Both halves of the intended toolkit must be load-bearing — that IS the design
+  // claim ("beatable without the Sunblade only in theory"), now measured.
+  check(
+    "the Sunblade is load-bearing (80 HP / a 3-power dagger = 80 melee hits)",
+    intended.wins > noBlade.wins,
+    `(with ${intended.wins} vs without ${noBlade.wins})`,
+  );
+  check(
+    "firebombs are load-bearing (the lich is dormant — you soften it at range)",
+    intended.wins > noBombs.wins && noBombs.wins === 0,
+    `(with ${intended.wins} vs without ${noBombs.wins})`,
   );
 }
 

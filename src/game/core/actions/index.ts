@@ -35,7 +35,13 @@ import {
 } from "@/game/core/status";
 import type { StatusApplication } from "@/game/core/types";
 import { stepToward } from "@/game/core/map/pathfinding";
-import { monsterDef, ELITE, type EliteMod } from "@/content/monsters";
+import {
+  monsterDef,
+  ELITE,
+  ELITE_KINDS,
+  type EliteMod,
+} from "@/content/monsters";
+import { applyLevelMutators } from "@/content/mutators";
 import { classDef } from "@/content/classes";
 import { ITEMS } from "@/content/items";
 import { LEVELS } from "@/content/levels";
@@ -2085,6 +2091,38 @@ function actMonster(
  * On "survive" levels, trickle in reinforcements (every few turns, up to the
  * level's budget) so holding out is a real fight rather than a waiting game.
  */
+/**
+ * The current level's config with the run's active trials applied.
+ *
+ * Almost every runtime reader deliberately uses the RAW `LEVELS[...]` entry,
+ * because trials only touch fields consumed during generation (see the invariant
+ * on `Mutator.applyLevel`). The **siege is the exception**: it spawns monsters
+ * mid-level, so it's the one runtime site that genuinely needs the mutated
+ * `monsterBudget` and `eliteChance` — without this, Restless Dead couldn't size
+ * the hold and Champions couldn't reach a single reinforcement.
+ */
+function effectiveConfig(state: GameState) {
+  return applyLevelMutators(LEVELS[state.currentLevel], state.mutators ?? []);
+}
+
+/**
+ * How many actual COMBATANTS are on the map — the number the siege cap governs.
+ *
+ * Ambient wildlife (`LevelConfig.ambient`: ravens, wisps, frogs) is placed
+ * OUTSIDE `monsterBudget` on purpose — it's harmless atmosphere that drifts and
+ * flees. It must be excluded here too, or a few decorative birds permanently
+ * occupy siege capacity and throttle the reinforcement waves. On the Ramparts
+ * that was 3 of 22 slots at baseline, and under Restless Dead (21 combatants +
+ * 3 ravens = 24 vs a flat cap of 22) it killed the siege outright: `spawnWave`
+ * bailed on turn one and not a single wave ever arrived.
+ */
+function combatantCount(state: GameState): number {
+  let n = 0;
+  for (const m of state.monsters)
+    if (monsterDef(m.defId).behavior !== "ambient") n++;
+  return n;
+}
+
 /** Spawn up to `count` monsters (from the level's spawn table) on a ring around
  * the player — close enough to close in within a few turns, never on top of you
  * or another monster. Respects a concurrent `cap`. Returns how many spawned.
@@ -2095,8 +2133,8 @@ function spawnWave(
   count: number,
   cap: number,
 ): number {
-  if (state.monsters.length >= cap) return 0;
-  const config = LEVELS[state.currentLevel];
+  if (combatantCount(state) >= cap) return 0;
+  const config = effectiveConfig(state);
   const siege = CONFIG.siege;
   const { map, player } = state;
   const ring: number[] = [];
@@ -2120,7 +2158,7 @@ function spawnWave(
   let spawned = 0;
   for (
     let n = 0;
-    n < count && state.monsters.length < cap && pool.length;
+    n < count && combatantCount(state) < cap && pool.length;
     n++
   ) {
     const spot = pool.splice(rng.int(0, pool.length - 1), 1)[0]; // no two on a tile
@@ -2137,21 +2175,37 @@ function spawnWave(
       }
     }
     const def = monsterDef(chosen);
-    state.monsters.push({
+    const inst: MonsterInstance = {
       id: `rf${state.turnCount}_${state.monsters.length}`,
       defId: chosen,
       x,
       y,
       hp: def.maxHp,
       state: "chase", // they already know where you are
-    });
+    };
+    // Reinforcements roll for champion status exactly like the initial garrison
+    // (mirrors generate.ts, but off the GAMEPLAY rng — this is a live spawn, not
+    // map geometry). Without this a breach wave could never contain a champion
+    // while the garrison it reinforces could, and Champions had no effect at all
+    // on the one level where most enemies arrive as reinforcements.
+    const eliteChance = config.eliteChance ?? 0;
+    if (
+      !def.isBoss &&
+      eliteChance > 0 &&
+      rng.int(1, 100) <= eliteChance * 100
+    ) {
+      const kind = ELITE_KINDS[rng.int(0, ELITE_KINDS.length - 1)];
+      inst.elite = kind;
+      inst.hp = Math.round(def.maxHp * ELITE[kind].hpMult);
+    }
+    state.monsters.push(inst);
     spawned++;
   }
   return spawned;
 }
 
 function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
-  const config = LEVELS[state.currentLevel];
+  const config = effectiveConfig(state);
   if (config.goal.type !== "survive") return;
   const siege = CONFIG.siege;
   if (state.turnCount % siege.waveEvery !== 0) return;
@@ -2160,7 +2214,14 @@ function maybeReinforce(state: GameState, rng: Rng, events: GameEvent[]) {
   const progress = Math.min(1, state.turnCount / config.goal.turns);
   const waveSize = 1 + Math.floor(progress * 2);
 
-  const spawned = spawnWave(state, rng, waveSize, siege.cap);
+  // The cap must sit ABOVE the level's starting population or there's no room
+  // left to escalate into — the whole point of a siege. `siege.cap` is a floor,
+  // not a ceiling: a level (or a trial like Restless Dead, which is why this
+  // reads the MUTATED budget) that starts denser gets proportional headroom.
+  // Without it, Restless Dead put the Ramparts at 21 of 22 and the rising waves
+  // could only trickle in as fast as you killed — a frontloaded brawl, not a siege.
+  const cap = Math.max(siege.cap, config.monsterBudget + siege.headroom);
+  const spawned = spawnWave(state, rng, waveSize, cap);
   if (spawned > 1) msg(events, "The dead swarm the wall!");
   else if (spawned === 1) msg(events, "More of the dead surge onto the wall.");
 }

@@ -24,10 +24,15 @@ npm run dev        # dev server at http://localhost:3000
 npm run build      # static export to out/
 
 # tests (no framework — plain tsx scripts under scripts/)
-npm run test:core  # pure-engine checks: content integrity (every id/color referenced actually exists), mechanics in isolation (determinism, goals, combat, connectivity, status/fire/elites/stealth/ranged/altars/doors/…), every run modifier still honouring the generator's guarantees, and color legibility (an unreadable glyph is a bug, not taste)
-npm run test:play  # autonomous playthroughs: a greedy bot plays every level across many seeds — beatability, no mid-run invariant breaks, a difficulty table (win-rate / turns / end-HP / gold / how much of the map got seen), a run-level economy check, every CLASS held to the same bar, and a full carried run through the whole quest
-npm run test:store # store orchestration: drives the Zustand store headlessly — screen/run flow, shop economy, death/restart, victory, save/resume, that stale or corrupt saves retire gracefully, and that a mid-run save loses nothing on reload
+npm run test:core  # pure-engine checks: content integrity (every id/color referenced actually exists), mechanics in isolation (determinism, goals, combat, connectivity, status/fire/elites/stealth/ranged/altars/doors/…), turn-resolution behavior and generation placement RULES (quest items on open ground, traps only where a bypass exists, forage/lore in nooks, the flood's dry spine), every run modifier still honoring the generator's guarantees, camera/viewport math, and color legibility (an unreadable glyph is a bug, not taste)
+npm run test:play  # autonomous playthroughs: a greedy bot plays every level across 12 seeds — beatability with per-level regression FLOORS (so a level can't quietly collapse), no mid-run invariant breaks, a difficulty table (win-rate / turns / end-HP / gold / how much of the map got seen), a run-level economy check, every CLASS held to the same bar, a full carried run through the whole quest, the run modifiers staying survivable, and whether the FINALE is actually winnable with the kit you'd arrive holding
+npm run test:store # store orchestration: drives the Zustand store headlessly — screen/run flow, shop economy, targeting cursor + ability aim, overlays, death/restart, victory, save/resume, that stale or corrupt saves retire gracefully, and that a mid-run save loses nothing on reload
 npm run test:all   # all three in sequence
+
+# deeper gates, deliberately NOT in test:all (slower; run before a release or after
+# touching the generator / a tuning dial)
+npm run test:soak            # every level × 200 seeds of structural guarantees (-- 1000 for a release)
+node scripts/mutation-audit.mjs  # breaks real game code on purpose and checks the suites redden
 
 npm run lint       # ESLint (Next core-web-vitals + typescript, flat config)
 npm run format     # Prettier --write   (format:check to verify)
@@ -52,7 +57,7 @@ light dwindles, and the turn par tightens.
 - **Character classes** — Warrior / Rogue / Pyromancer, picked on New Game; each changes your opening kit and tactics via passives (damage reduction, bigger sneak + crit chance, extra firebomb power) and a `[q]` active ability
 - **Run modifiers (trials)** — optional seeded challenges toggled at New Game (dimmer light / more monsters / more traps / scarcer supplies / tougher elites / a single life) that reshape the whole run and raise your end-of-run score
 - **Varied, hand-tuned levels** — each has a signature to explore: a glowing fungal cavern (the Pit), a ruined woodland hamlet haunted by drifting wisps (Blackwood), a wetland labyrinth of poison-spore fumaroles and a luminous, poisonous fungal grove (Mire), an ice-choked mountain cave network riddled with bottomless crevasses, hiding a sealed den with something asleep in it (Frostspine), a gatehouse of chambers opening onto ash-choked scorched ground where a Gate Warden holds the far gate (Iron Gate), a colonnaded cathedral (Great Hall), a crypt that floods around you as you hunt the Sunblade (the water welling up from the failed sewers beneath it), storm-lashed ramparts, and a processional **statue gallery** where gargoyle "statues" wake as you pass (the Dusk Antechamber) — built from sub-biome regions, custom generators, freestanding structures, hazard terrain, and a set-piece flood
-- Six goal types (reach a place / collect N / find an item / slay a target / cull N monsters / survive N turns against a siege), each chosen to suit its level's size — big maps use goals that pull you across them
+- Five goal types in play (reach a place / collect N / find an item / slay a target / survive N turns against an escalating siege), each chosen to suit its level's size — big maps use goals that pull you across them, rather than ones you can finish in a corner (a sixth, cull N monsters, is supported but currently unused for exactly that reason)
 - Hidden spike traps (with an awareness sense; every walkable tile is always reachable without stepping on a trap — a trap is an avoidable risk, never a forced toll), impassable water/chasm terrain, and torch fuel
 - **Interactive doors** — bump a closed door to open it, or press `c` to shut one to break line-of-sight and wall off a chaser; most monsters reroute around a closed door, but guards and bosses force it open
 - **Forage** — berries & mushrooms tucked in the wilds (and rarer arcane motes in the depths) top up a little HP when you step on them; plentiful outdoors, sparse-to-none in the barren castle and throne
@@ -70,7 +75,7 @@ light dwindles, and the turn par tightens.
   - **Adaptive** — swells with a heartbeat pulse as danger rises (a boss in view, low HP, the siege, monsters hunting you), and holds its breath when you're creeping past something that hasn't seen you yet: melody and shimmer thin to bare drone until you're spotted
   - **Set-piece harmony** — the throne warms toward major as Malachar falls; the antechamber cools and darkens as you close on its gatekeeper
   - Short in-key **stings** for story beats (reading lore, taking an altar's bargain, clearing a level), a cozy shop theme, a drifting chord progression, and one-shot death/victory themes; global mute (`m` / HUD button), preference persists
-- Monster loot drops, potions (heal, warding, might, firebomb, ruin, seeing, antidote), and a five-tier shop you can **buy and sell** at — the economy is deliberately lean, so you can't afford everything and each visit is a real "what do I need most?" choice; plus juice: floating damage numbers, blast/projectile FX, a boss health bar, and per-level intro cards
+- Monster loot drops, potions (heal, warding, might, firebomb, ruin, seeing, antidote), and a nine-tier shop you can **buy and sell** at — the economy is deliberately lean, so you can't afford everything and each visit is a real "what do I need most?" choice; plus juice: floating damage numbers, blast/projectile FX, a boss health bar, and per-level intro cards
 
 ## Project layout
 

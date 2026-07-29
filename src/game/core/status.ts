@@ -4,6 +4,9 @@
 // monsters, so the same machinery afflicts either side.
 //
 //   • poison / bleed / burn — damage-over-time that ignores armor
+//     (structurally: tick damage is applied directly to hp, so there is no
+//      armor term to bypass — hence no `piercesArmor` flag. A mutation audit
+//      found the old field was never read, i.e. unfalsifiable by any test.)
 //   • chill                 — a brief freeze; the afflicted skips its turns
 //                             (only ever applied to monsters, so only the
 //                              monster phase reads it)
@@ -14,8 +17,6 @@ export interface StatusDef {
   key: StatusKind;
   /** damage inflicted each turn while active (0 = non-damaging) */
   dmgPerTurn: number;
-  /** whether the tick damage bypasses armor (all DoTs do) */
-  piercesArmor: boolean;
   /** message when first afflicted; `who` is "You"/the monster name */
   onApply: (who: string) => string;
   /** message when the effect wears off (player-facing only) */
@@ -31,7 +32,6 @@ export const STATUS: Record<StatusKind, StatusDef> = {
   poison: {
     key: "poison",
     dmgPerTurn: 2,
-    piercesArmor: true,
     onApply: (w) => `${w} ${w === "You" ? "are" : "is"} poisoned!`,
     onFade: "The poison works out of your blood.",
     hudGlyph: "☠",
@@ -41,7 +41,6 @@ export const STATUS: Record<StatusKind, StatusDef> = {
   bleed: {
     key: "bleed",
     dmgPerTurn: 3,
-    piercesArmor: true,
     onApply: (w) => `${w} ${w === "You" ? "are" : "is"} bleeding!`,
     onFade: "Your wounds finally clot.",
     hudGlyph: "≈",
@@ -51,7 +50,6 @@ export const STATUS: Record<StatusKind, StatusDef> = {
   burn: {
     key: "burn",
     dmgPerTurn: 4,
-    piercesArmor: true,
     onApply: (w) => `${w} ${w === "You" ? "catch" : "catches"} fire!`,
     onFade: "The flames on you die down.",
     hudGlyph: "♨",
@@ -61,7 +59,6 @@ export const STATUS: Record<StatusKind, StatusDef> = {
   chill: {
     key: "chill",
     dmgPerTurn: 0,
-    piercesArmor: false,
     onApply: (w) => `${w} ${w === "You" ? "are" : "is"} frozen stiff!`,
     onFade: "The frost releases its grip.",
     hudGlyph: "❄",

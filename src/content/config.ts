@@ -45,7 +45,19 @@ export const CONFIG = {
     waveEvery: 3, // spawn a wave every N turns
     ringMin: 5, // waves appear this..
     ringMax: 10, // ..to this many tiles from the player (they arrive in a few turns)
-    cap: 22, // max concurrent monsters during the hold
+    cap: 19, // max concurrent COMBATANTS during the hold (a FLOOR — see headroom)
+    /** Minimum room to escalate INTO, above the level's own starting population:
+     * the effective cap is `max(cap, monsterBudget + headroom)`.
+     *
+     * `cap` is 19 rather than 22 to PRESERVE the Ramparts' tuned difficulty across
+     * the fix that stopped ambient wildlife counting against the cap: its 3 ravens
+     * used to occupy 3 slots, so the real combat capacity the level was balanced
+     * against was always 22 − 3 = 19. Correcting the accounting without this would
+     * have handed the siege 3 extra live combatants (measured: 50% → 33% bot
+     * win-rate). Headroom 5 keeps that at baseline (14 + 5 = 19) while a denser
+     * level, or the Restless Dead trial (21 + 5 = 26), still gets real room to
+     * escalate into instead of being pinned at the cap with nowhere to grow. */
+    headroom: 5,
   },
   /** Par-for-score: `LevelConfig.turnLimit` is no longer a threat on non-survive
    * levels (there's no countdown or overtime) — it's a PAR TIME. Clearing a level
@@ -111,7 +123,7 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "47",
+  contentVersion: "49",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */

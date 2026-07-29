@@ -341,7 +341,14 @@ export const LEVELS: LevelConfig[] = [
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "ghoul", weight: 4 },
-      { monsterId: "gargoyle", weight: 3 },
+      // Gargoyles are the heaviest regular spawn in the game (dmg 6 / hp 22 against
+      // this level's dmg 4 / hp 10-12) AND the knockback threat. At weight 3 they
+      // were 27% of encounters and made this the harshest level by a wide margin —
+      // 30% win with a median end-HP of 2, deaths late (turn ~89), i.e. attrition
+      // rather than a spike. Weight 1 measured 43% over 30 seeds, in line with the
+      // Great Hall and Antechamber (both 42%). Weight 2 measured identical to 3,
+      // so there is no half-step here.
+      { monsterId: "gargoyle", weight: 1 },
     ],
     turnLimit: 560,
     itemDropCount: 6,
@@ -355,7 +362,7 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 5,
     crackedWallCount: 4,
     doorCount: 3,
-    forageCount: 4, // a few arcane motes to soften the cull grind (→ ~2 after lootScale)
+    forageCount: 6, // a few arcane motes to soften the cull grind (→ ~2 after lootScale)
     eliteChance: 0.15,
     altarCount: 1,
     loreCount: 1, // the castle's surrender, in gilt

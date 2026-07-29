@@ -5,6 +5,7 @@ import { LEVELS } from "@/content/levels";
 import {
   createPlayer,
   beginLevel,
+  clonePlayer,
   recomputeLight,
   recomputeFOV,
 } from "@/game/core/state";
@@ -24,7 +25,7 @@ import {
   playerAttackDamage,
   mitigate,
 } from "@/game/core/combat";
-import { STATUS } from "@/game/core/status";
+import { STATUS, applyStatus } from "@/game/core/status";
 import { applyAltar } from "@/game/core/altar";
 import {
   applyLevelMutators,
@@ -36,8 +37,9 @@ import { MONSTERS, ELITE } from "@/content/monsters";
 import { ITEMS, SHOP_TIERS, sellPrice } from "@/content/items";
 import { CLASS_LIST } from "@/content/classes";
 import { LORE_POOLS } from "@/content/lore";
-import { giveItem, equipWeapon } from "@/game/core/inventory";
+import { giveItem, equipWeapon, equipArmor } from "@/game/core/inventory";
 import { CONFIG } from "@/content/config";
+import { gameplaySeed } from "@/lib/hash";
 import {
   colorDistance,
   CHASM_BG,
@@ -50,6 +52,7 @@ import {
   EXIT_COLOR,
 } from "@/render/tiles";
 import { beatAmbient, ambientForBiome } from "@/render/lighting";
+import { cameraOrigin } from "@/render/CanvasRenderer";
 import type {
   GameMap,
   GameState,
@@ -687,13 +690,21 @@ console.log("\n[11] Hidden traps");
   if (nb) {
     g.map.tiles[idx(nb.x, nb.y, g.map.width)] = "trap";
     g.monsters = [];
+    g.player.armorReduction = 0; // read the raw trap damage, unmitigated
     const hp0 = g.player.hp;
     resolveTurn(
       g,
       { type: "move", dx: Math.sign(nb.x - p.x), dy: Math.sign(nb.y - p.y) },
       new Rng(5),
     );
-    check("stepping on a trap deals damage", g.player.hp < hp0);
+    // ABSOLUTE, not `hp < hp0`: `springTrap` applies its own `Math.max(1, …)`
+    // floor, so the loose version can't tell a 6-damage spike pit from a dial
+    // neutered to 0 — a mutation audit set `trapDamage: 0` and this stayed green.
+    check(
+      "stepping on a trap deals its configured damage",
+      hp0 - g.player.hp === CONFIG.trapDamage,
+      `(lost ${hp0 - g.player.hp}, expected ${CONFIG.trapDamage})`,
+    );
     check(
       "trap becomes sprung (one-shot)",
       tileAt(g.map, nb.x, nb.y) === "trapSprung",
@@ -934,6 +945,125 @@ console.log("\n[16] Survive goal & escalating siege");
       gs.monsters.some(
         (m) => chebyshev(m.x, m.y, gs.player.x, gs.player.y) <= 2,
       ),
+    );
+  }
+
+  // ── The cap must leave room to escalate INTO ──────────────────────────────
+  // Regression: `siege.cap` was a flat 22 while Restless Dead raised the Ramparts
+  // garrison to 21, so the rising waves could only trickle in as fast as the
+  // player killed — the level's signature beat, silently inverted by a trial. The
+  // cap is now a FLOOR: `max(cap, monsterBudget + headroom)`.
+  {
+    const cfg = LEVELS[si];
+    const effCap = (ids: string[]) =>
+      Math.max(
+        CONFIG.siege.cap,
+        applyLevelMutators(cfg, ids).monsterBudget + CONFIG.siege.headroom,
+      );
+    check(
+      "baseline siege cap is unchanged by the headroom rule",
+      effCap([]) === CONFIG.siege.cap,
+    );
+    check(
+      "a denser (mutated) siege still gets room above its own garrison",
+      effCap(["swarm"]) - applyLevelMutators(cfg, ["swarm"]).monsterBudget >=
+        CONFIG.siege.headroom,
+    );
+    // …and end-to-end: under Restless Dead the hold really does grow past the old
+    // flat cap instead of jamming against it.
+    //
+    // Count only COMBATANTS. The Ramparts also carries 3 ambient ravens, and a
+    // raw `monsters.length` peak is already 24 at spawn under this trial — so the
+    // naive version of this check passed while the siege was completely dead.
+    const combatants = (g: GameState) =>
+      g.monsters.filter((m) => MONSTERS[m.defId].behavior !== "ambient").length;
+    const gm = beginLevel("siege-seed", si, createPlayer(), ["swarm"]);
+    gm.player.maxHp = 999999;
+    gm.player.hp = 999999;
+    const rngS = new Rng(7);
+    const startCombat = combatants(gm);
+    let peak = startCombat;
+    for (let t = 0; t < 40; t++) {
+      resolveTurn(gm, { type: "wait" }, rngS);
+      peak = Math.max(peak, combatants(gm));
+    }
+    // Assert GROWTH, not "peak beats the flat cap": this trial's garrison (21)
+    // already exceeds `cap` (19) at spawn, so a bare threshold passes on turn zero
+    // with a totally dead siege — which is exactly how an earlier version of this
+    // check stayed green while reinforcements never arrived at all.
+    check(
+      "Restless Dead siege can still escalate above its own garrison",
+      peak > startCombat,
+      `(start ${startCombat} → peak ${peak}; cap ${CONFIG.siege.cap}, headroom ${CONFIG.siege.headroom})`,
+    );
+
+    // Ambient wildlife must not consume siege capacity. The Ramparts' 3 ravens
+    // used to hold 3 of the 22 slots hostage, and under Restless Dead (21
+    // combatants + 3 ravens vs a flat cap of 22) it killed the siege outright:
+    // spawnWave bailed on turn one and not a single wave ever arrived.
+    //
+    // Discriminator: flood the map with HARMLESS birds until the raw monster
+    // count is past the cap while combatants stay far below it. Counting ambient
+    // (the old behavior) freezes the siege dead; counting combatants lets it keep
+    // escalating. Note the player needs `levitate` as well as huge HP — the
+    // gargoyles here SHOVE, and a chasm fall costs a life regardless of HP, which
+    // silently ended an earlier version of this scenario on turn 8.
+    const gb = beginLevel("siege-seed", si, createPlayer());
+    gb.player.maxHp = 999999;
+    gb.player.hp = 999999;
+    gb.player.effects.levitate = 999999;
+    const ambId = LEVELS[si].ambient![0].monsterId;
+    const w2 = gb.map.width;
+    for (let i = 0; i < gb.map.tiles.length; i++) {
+      if (gb.monsters.length >= CONFIG.siege.cap + 5) break;
+      if (gb.map.tiles[i] !== "floor") continue;
+      const x = i % w2;
+      const y = Math.floor(i / w2);
+      if (x === gb.player.x && y === gb.player.y) continue;
+      if (gb.monsters.some((m) => m.x === x && m.y === y)) continue;
+      gb.monsters.push({
+        id: `pad${i}`,
+        defId: ambId,
+        x,
+        y,
+        hp: MONSTERS[ambId].maxHp,
+        state: "idle",
+      });
+    }
+    const paddedTotal = gb.monsters.length;
+    const startCombat2 = combatants(gb);
+    const rngB = new Rng(7);
+    let peakB = startCombat2;
+    for (let t = 0; t < 30; t++) {
+      resolveTurn(gb, { type: "wait" }, rngB);
+      peakB = Math.max(peakB, combatants(gb));
+    }
+    check(
+      "ambient wildlife doesn't consume siege capacity",
+      paddedTotal > CONFIG.siege.cap &&
+        startCombat2 < CONFIG.siege.cap &&
+        peakB > startCombat2,
+      `(${paddedTotal} total monsters vs cap ${CONFIG.siege.cap}; combatants ${startCombat2} → ${peakB})`,
+    );
+  }
+
+  // ── Reinforcements roll for champion status, like the garrison does ────────
+  // Champions used to have NO effect on this level at all: `spawnWave` never
+  // rolled elites, and the siege is where most of its enemies come from.
+  {
+    const gc = beginLevel("elite-wave", si, createPlayer(), ["champions"]);
+    gc.player.maxHp = 999999;
+    gc.player.hp = 999999;
+    gc.monsters = []; // isolate the waves from the initial garrison
+    const rngE = new Rng(3);
+    let sawElite = false;
+    for (let t = 0; t < 45 && !sawElite; t++) {
+      resolveTurn(gc, { type: "wait" }, rngE);
+      sawElite = gc.monsters.some((m) => m.id.startsWith("rf") && m.elite);
+    }
+    check(
+      "Champions reaches siege reinforcements (a wave can be elite)",
+      sawElite,
     );
   }
 
@@ -1401,9 +1531,13 @@ console.log("\n[21] Elites & stealth");
       "volatile elite explodes on death",
       !g.monsters.some((m) => m.id === "v"),
     );
+    // The `hp0 - CONFIG.eliteExplodeDamage` form alone is self-referential: at a
+    // dial of 0 it reads `hp === hp0` and passes on a blast that never happened.
+    // Keep the exact-wiring check AND require real damage.
     check(
       "its blast catches an adjacent player",
-      g.player.hp === hp0 - CONFIG.eliteExplodeDamage,
+      g.player.hp === hp0 - CONFIG.eliteExplodeDamage && g.player.hp < hp0,
+      `(hp ${hp0}→${g.player.hp}, dial ${CONFIG.eliteExplodeDamage})`,
     );
   }
 
@@ -1652,6 +1786,14 @@ console.log("\n[23] Cracked-wall demolition");
     if (!spot || !dir) throw new Error("no adjacent tile");
     g.map.tiles[idx(spot.x, spot.y, w)] = "crackedWall";
     const T = CONFIG.crackedWallToughness;
+    // The loop below is written in terms of T, so it would pass VACUOUSLY at
+    // T === 1: zero bumps happen and "withstands the first blows" is trivially
+    // true of an untouched wall. Pin the design intent — a shortcut you earn.
+    check(
+      "breaking a cracked wall takes more than one bash",
+      T >= 2,
+      `(T=${T})`,
+    );
     for (let n = 0; n < T - 1; n++)
       resolveTurn(g, { type: "move", dx: dir[0], dy: dir[1] }, new Rng(1));
     check(
@@ -2179,6 +2321,14 @@ console.log("\n[31] Par-for-score bonus");
   const reach = LEVELS.find((l) => l.goal.type !== "survive")!;
   const survive = LEVELS.find((l) => l.goal.type === "survive");
 
+  // Every assertion below is expressed RELATIVE to `CONFIG.parBonusMax`, so with
+  // the dial at 0 they all read `0 === 0` and the whole section passes while the
+  // reward is switched off (found by mutation audit). Anchor it absolutely first.
+  check(
+    "the par bonus is actually worth something",
+    CONFIG.parBonusMax > 0 && levelParBonus(reach, 0) > 0,
+    `(max ${CONFIG.parBonusMax})`,
+  );
   check(
     "an instant clear earns ~the full par bonus",
     levelParBonus(reach, 0) === CONFIG.parBonusMax,
@@ -2847,9 +2997,98 @@ console.log("\n[40] Run modifiers");
     "forsaken removes forage heals and thins item drops",
     forsaken.forageCount === 0 && forsaken.itemDropCount < base.itemDropCount,
   );
+  const treach = applyLevelMutators(base, ["treacherous"]);
+  check(
+    "treacherous doubles the traps",
+    (treach.trapCount ?? 0) === (base.trapCount ?? 0) * 2 &&
+      (treach.trapCount ?? 0) > 0,
+  );
+
+  // Champions' `max(0.3, …)` FLOOR is the whole reason it works on the levels
+  // that declare no eliteChance at all (the Pit, the Blackwood, the Throne) —
+  // a bare `× 2` would leave those three untouched by the trial they paid score
+  // for. Assert both halves: the floor, and the raise on a level that has one.
+  const champ = applyLevelMutators(base, ["champions"]);
+  check(
+    "champions lifts elite chance on a level that declares none",
+    base.eliteChance === undefined && (champ.eliteChance ?? 0) >= 0.3,
+  );
+  const mire = LEVELS.find((l) => l.id === "the_mire")!;
+  const champMire = applyLevelMutators(mire, ["champions"]);
+  check(
+    "champions raises an existing elite chance (and stays capped)",
+    (champMire.eliteChance ?? 0) > (mire.eliteChance ?? 0) &&
+      (champMire.eliteChance ?? 0) <= 0.5,
+  );
+
   check(
     "an unknown mutator id is a no-op",
     applyLevelMutators(base, ["nope"]) === base,
+  );
+
+  // The invariant that makes trials work at all: `applyLevelMutators` runs at
+  // exactly ONE site (`beginLevel`), so a mutation only lands if the field is
+  // consumed during GENERATION. ~30 other sites re-read the raw `LEVELS[...]`
+  // entry (goals, maybeReinforce, levelParBonus, the HUD, the renderer) and
+  // would ignore it. Locking the touched-key set turns "my new trial does
+  // nothing and I can't tell why" into a named failure here.
+  const GEN_TIME_FIELDS = new Set([
+    "baseLightRadius",
+    "monsterBudget",
+    "itemDropCount",
+    "eliteChance",
+    "trapCount",
+    "waterCount",
+    "chasmCount",
+    "oilCount",
+    "sporeVentCount",
+    "crackedWallCount",
+    "doorCount",
+    "forageCount",
+    "altarCount",
+    "loreCount",
+  ]);
+  checkOver(
+    "trials only touch generation-time fields (runtime readers see raw LEVELS)",
+    MUTATORS.filter((m) => m.applyLevel).flatMap((m) =>
+      LEVELS.map((l) => ({ m, l })),
+    ),
+    ({ m, l }) => {
+      const before = l as unknown as Record<string, unknown>;
+      const after = m.applyLevel!(l) as unknown as Record<string, unknown>;
+      for (const k of new Set([
+        ...Object.keys(before),
+        ...Object.keys(after),
+      ])) {
+        if (GEN_TIME_FIELDS.has(k)) continue;
+        if (JSON.stringify(before[k]) !== JSON.stringify(after[k]))
+          return false;
+      }
+      return true;
+    },
+  );
+
+  // Drift guard. A multiplicative trial silently becomes DEAD CONTENT the moment
+  // its base field is 0/absent on some level — the picker still charges score for
+  // it, but that floor plays identically. Levels do lose fields as they're
+  // redesigned (the Iron Gate's cull goal went away mid-development), so pin it:
+  // every trial must measurably change every level.
+  //
+  // Compares the generation-time fields with absent NORMALIZED to 0, because a
+  // bare `eliteChance: (c.eliteChance ?? 0) * 2` writes a literal 0 over an
+  // `undefined` — a different OBJECT that generates an identical level. Raw JSON
+  // equality calls that a change; the player can't. (The key-lock check above is
+  // what licenses looking at only these fields.)
+  const genFingerprint = (c: (typeof LEVELS)[number]) => {
+    const r = c as unknown as Record<string, unknown>;
+    return JSON.stringify([...GEN_TIME_FIELDS].sort().map((k) => r[k] ?? 0));
+  };
+  checkOver(
+    "every trial measurably changes every level's generation",
+    MUTATORS.filter((m) => m.applyLevel).flatMap((m) =>
+      LEVELS.map((l) => ({ m, l })),
+    ),
+    ({ m, l }) => genFingerprint(m.applyLevel!(l)) !== genFingerprint(l),
   );
 
   check("no mutators → ×1 score", mutatorScoreMult([]) === 1);
@@ -3406,9 +3645,11 @@ console.log("\n[51] Dawn/dusk lighting beat: warms vs. dims by intensity");
 // ─── 52. Mutators still honour every generator guarantee ────────────────────
 // `applyLevelMutators` reshapes the config BEFORE generation (traps, spawns,
 // light, drops), so a trial could in principle break a guarantee that's only
-// ever tested on UNMODIFIED configs — and the playthrough bot never selects
-// mutators, so nothing else would catch it. Run each trial (plus the all-on
-// stack) across levels and re-assert the load-bearing invariants.
+// ever tested on UNMODIFIED configs. Run each trial (plus the all-on stack)
+// across levels and re-assert the load-bearing invariants.
+//
+// This proves a mutated level GENERATES legally; `[P5]` in verify-playthrough
+// covers the other half — that it's still actually survivable under real play.
 console.log("\n[52] Mutators preserve the generator guarantees");
 {
   const OPEN = new Set<string>([
@@ -3728,7 +3969,7 @@ console.log("\n[54] Color legibility: contrast floors for glyphs on terrain");
 // ─── 55. The flood can never seal the player in (softlock guard) ────────────
 // The flood plan keeps OBJECTIVES reachable, but that only protects a player
 // standing on the dry spine. Step into a side pocket and the rising ring used
-// to flood every neighbour, marooning you on one tile — and since the turn
+// to flood every neighbor, marooning you on one tile — and since the turn
 // limit is only a score target, nothing ends the run: a permanent softlock.
 // `tickFlood` now reserves a walkable escape route back to dry ground.
 console.log("\n[55] Flood never seals the player in (softlock guard)");
@@ -3877,6 +4118,1152 @@ console.log("\n[56] Secret vaults can't be seen into before you break in");
         }
       }
       return true;
+    },
+  );
+}
+
+// ─── 57. Tuning dials are load-bearing (anti-neutralization) ────────────────
+// Every check here exists because a MUTATION AUDIT neutralized a real dial or
+// formula term and all three suites stayed green. The failure mode they share:
+// a mechanic can be silently switched off while the tests that "cover" it keep
+// passing, because those tests only asserted a DIRECTION (hp went down) or were
+// written relative to the very constant they meant to pin.
+console.log("\n[57] Tuning dials are load-bearing (anti-neutralization)");
+{
+  // (a) The Might potion. Nothing asserted that the buff raises damage, so
+  // dropping `might` from the formula (or zeroing the dial) was invisible.
+  {
+    const p = createPlayer("wanderer");
+    const base = playerAttackDamage(p, MONSTERS.skeleton);
+    p.effects.might = 5;
+    const buffed = playerAttackDamage(p, MONSTERS.skeleton);
+    check(
+      "the Might buff actually raises weapon damage",
+      buffed === base + CONFIG.mightBonus && buffed > base,
+      `(${base} → ${buffed}, dial ${CONFIG.mightBonus})`,
+    );
+  }
+
+  // (b) `collectX` must need EVERY pickup. Completing on the first one shortens
+  // the Blackwood from a 3-shard hunt to a 1-shard errand, and the existing goal
+  // test only walks the full collection, so it never noticed.
+  {
+    const li = levelIndexBy(
+      "with a collectX goal",
+      (l) => l.goal.type === "collectX",
+    );
+    const goal = LEVELS[li].goal as {
+      type: "collectX";
+      questTag: string;
+      count: number;
+    };
+    const g = beginLevel("collect-early", li, createPlayer());
+    check("the collectX level asks for more than one", goal.count > 1);
+    g.questProgress[goal.questTag] = goal.count - 1;
+    check(
+      "collectX is NOT complete one short of the count",
+      !isGoalComplete(g),
+    );
+    g.questProgress[goal.questTag] = goal.count;
+    check("collectX completes on the last pickup", isGoalComplete(g));
+  }
+
+  // (c) `applyStatus` takes the LONGER of the two timers — a fresh weak tick must
+  // never cut a long affliction short.
+  {
+    const fx: Record<string, number> = {};
+    applyStatus(fx, "poison", 5);
+    applyStatus(fx, "poison", 2);
+    check(
+      "re-applying a shorter status keeps the longer timer",
+      fx.poison === 5,
+    );
+    applyStatus(fx, "poison", 9);
+    check("a longer status refresh extends the timer", fx.poison === 9);
+  }
+
+  // (d) The GLOBAL economy dials. CLAUDE.md says to tune `lootScale`/`forageScale`
+  // rather than per-level counts, which makes them the most load-bearing numbers
+  // in the game — yet disabling either changed nothing any suite could see (the
+  // playthrough economy band is far too wide to notice a 1.5× loot swing).
+  // Asserting a fixed expected count is impossible (placement is lossy: the Mire
+  // wants 5 forage nooks and fits 1), so flip the dial and require generation to
+  // RESPOND — which pins the wiring without hard-coding a layout.
+  {
+    const li = levelIndexBy(
+      "with enough forage and drops to scale",
+      (l) => (l.forageCount ?? 0) >= 6 && l.itemDropCount >= 6,
+    );
+    void li;
+    check(
+      "both economy dials are set to THIN, not pass through",
+      CONFIG.lootScale < 1 && CONFIG.forageScale < 1,
+      `(loot ${CONFIG.lootScale}, forage ${CONFIG.forageScale})`,
+    );
+
+    // Assert the SCALED BUDGET as an upper bound on what generation places.
+    // (Flipping `CONFIG` at runtime and re-generating would be the direct test,
+    // but the dial doesn't reach `generate.ts` from inside this suite — the same
+    // separate-module-instance quirk that once made a `LEVELS` mutation here
+    // verify nothing. Static bounds work regardless.)
+    //
+    // Forage is the cleanest signal: `placeForage` is its only source, so placed
+    // tiles can never exceed the scaled count — and on half the levels the bound
+    // is TIGHT (the Pit 3/3, Iron Gate 2/2, Great Hall 3/3), which is what makes
+    // this discriminating rather than slack.
+    checkOver(
+      "forage placement never exceeds the forageScale budget",
+      LEVELS.map((l, i) => ({ l, i })),
+      ({ l, i }) => {
+        const g = beginLevel("econ-bound", i, createPlayer());
+        const placed = g.map.tiles.filter((t) => t === "forage").length;
+        return placed <= Math.round((l.forageCount ?? 0) * CONFIG.forageScale);
+      },
+    );
+
+    // Ground loot: placed items must fit the scaled drop budget plus the loot the
+    // config explicitly stamps (hut/vault caches) and the quest items. The
+    // `gallery` generator is excluded — it stamps its own niche offering caches,
+    // which aren't derivable from the config.
+    const declaredLoot = (l: (typeof LEVELS)[number]) =>
+      (l.structures ?? []).reduce((s, st) => s + (st.loot?.length ?? 0), 0) +
+      (l.secretVault?.loot?.length ?? 0);
+    checkOver(
+      "ground loot never exceeds the lootScale budget + declared caches",
+      LEVELS.map((l, i) => ({ l, i })).filter(
+        ({ l }) => l.generator !== "gallery",
+      ),
+      ({ l, i }) => {
+        const g = beginLevel("econ-bound", i, createPlayer());
+        const quest = g.items.filter((it) => it.questTag).length;
+        const budget =
+          Math.round(l.itemDropCount * CONFIG.lootScale) +
+          declaredLoot(l) +
+          quest;
+        return g.items.length <= budget;
+      },
+    );
+  }
+
+  // (e) Coin piles must be worth more than the min-1 floor. `coinPile: {0, 0}`
+  // survived every suite because `generate.ts` clamps the value to ≥1, so the
+  // economy quietly became 1-gold scraps while nothing failed.
+  {
+    const rich = LEVELS.map((l, i) => ({ l, i })).filter(
+      ({ l }) => (l.coinRichness ?? 1) >= 1,
+    );
+    const values: number[] = [];
+    for (const { i } of rich)
+      for (const seed of ["coin1", "coin2"]) {
+        const g = beginLevel(seed, i, createPlayer());
+        for (const it of g.items)
+          if (ITEMS[it.defId]?.category === "coin" && it.value !== undefined)
+            values.push(it.value);
+      }
+    checkOver(
+      "coin piles are worth more than the 1-gold floor",
+      values,
+      (v) => v > 1,
+    );
+    check(
+      "the coin-pile dial spans a real range",
+      CONFIG.coinPile.min >= 1 && CONFIG.coinPile.max > CONFIG.coinPile.min,
+    );
+  }
+
+  // (e2) Monsters never spawn in your lap. This lived only as an emergent effect
+  // in the playthrough sweep — a level got hard enough that some assertion there
+  // failed — so it silently STOPPED being covered the moment the bot got better
+  // at fighting (equipping upgrades and using its class ability was enough). A
+  // spawn-placement guarantee belongs in core, where bot skill can't mask it.
+  //
+  // Note the metric: `farFromPlayer` in generate.ts uses MANHATTAN, so chebyshev
+  // spawns as close as 3 are legitimate (dx 3, dy 3 = manhattan 6). Ambient
+  // wildlife is excluded by design — it's placed on ordinary floor with no
+  // far-from-player rule, being harmless atmosphere.
+  {
+    // The absolute anchor first — the sweep below is expressed relative to the
+    // dial, so at 0 it would pass while monsters spawned in melee range. (This is
+    // the single most common flaw the audit found in this suite: an assertion
+    // parameterized by the constant it is supposed to pin.)
+    check(
+      "the spawn-distance dial keeps monsters out of melee range at level start",
+      CONFIG.minSpawnDistanceFromPlayer >= 4,
+      `(${CONFIG.minSpawnDistanceFromPlayer})`,
+    );
+    const cases = LEVELS.flatMap((_, i) =>
+      ["s1", "s2", "s3", "s4", "s5", "s6"].map((seed) => ({ i, seed })),
+    );
+    checkOver(
+      "no monster spawns within the min distance of the player (manhattan)",
+      cases,
+      ({ i, seed }) => {
+        const g = beginLevel(seed, i, createPlayer());
+        return g.monsters.every(
+          (m) =>
+            MONSTERS[m.defId].behavior === "ambient" ||
+            manhattan(m.x, m.y, g.player.x, g.player.y) >=
+              CONFIG.minSpawnDistanceFromPlayer,
+        );
+      },
+    );
+  }
+
+  // (f) A torch's fuel comes from the ITEM (both real torches define their own),
+  // so `CONFIG.torchFuel` is only a fallback — pin that the item value is what
+  // reaches the player, and that it's short enough for managed light to matter.
+  {
+    // Use the LANTERN: its 280 differs from the `CONFIG.torchFuel` fallback (150),
+    // whereas the torch's own fuel happens to equal it — so only the lantern can
+    // actually prove the item value is what reaches the player.
+    const p = createPlayer("wanderer");
+    p.torchFuel = 0;
+    giveItem(p, "i_lantern");
+    check(
+      "picking up a lantern grants the ITEM's fuel, not the config fallback",
+      ITEMS.i_lantern.fuel !== undefined &&
+        p.torchFuel === ITEMS.i_lantern.fuel &&
+        ITEMS.i_lantern.fuel !== CONFIG.torchFuel,
+      `(fuel ${p.torchFuel}, item ${ITEMS.i_lantern.fuel}, fallback ${CONFIG.torchFuel})`,
+    );
+    const longestPar = Math.max(...LEVELS.map((l) => l.turnLimit));
+    check(
+      "a torch can actually run out within a long level (light stays managed)",
+      (ITEMS.i_torch.fuel ?? Infinity) < longestPar,
+      `(fuel ${ITEMS.i_torch.fuel} vs longest par ${longestPar})`,
+    );
+  }
+}
+
+// ─── 58. Turn-resolution behavior (second mutation-audit pass) ──────────────
+// A 32-mutation pass over `actions/index.ts` — the 2,365-line file holding monster
+// AI, the tick pipeline, kill rewards and hazard resolution — found 12 behaviors
+// with NO coverage anywhere. The first audit had reached that file only indirectly,
+// through config dials.
+//
+// The worst of them: deleting `state.player.hp -= dmg` from `resolveMonsterAttack`
+// (monsters deal no damage AT ALL) passed all three suites. It hides because every
+// gate is one-directional — harmless monsters only make the bot win MORE, "levels
+// are beatable" still passes, "boss levels last ≥6 turns" passes more easily — and
+// the core tests exercise the damage FORMULA (`monsterAttackDamage`) rather than
+// the resolution path that applies it. Formula coverage is not effect coverage.
+console.log("\n[58] Turn-resolution behavior (mutation-audit closures)");
+{
+  const ORTHO = [
+    [1, 0],
+    [0, 1],
+    [-1, 0],
+    [0, -1],
+  ] as const;
+
+  /** One monster placed orthogonally adjacent to a beefy player, nothing else. */
+  const arena = (
+    defId: string,
+    mstate: "idle" | "chase" = "chase",
+    classId = "wanderer",
+    seed = "arena",
+  ) => {
+    const g = beginLevel(seed, 0, createPlayer(classId));
+    g.monsters = [];
+    const p = g.player;
+    p.maxHp = p.hp = 500;
+    const spot = ORTHO.map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy })).find(
+      (c) => isWalkable(g.map, c.x, c.y),
+    )!;
+    const def = MONSTERS[defId];
+    g.monsters = [
+      {
+        id: "t",
+        defId,
+        x: spot.x,
+        y: spot.y,
+        hp: def.maxHp * 40, // survives many blows so we can read damage
+        state: mstate,
+      },
+    ];
+    recomputeFOV(g);
+    return { g, mon: g.monsters[0], spot };
+  };
+
+  /** Attack whatever is adjacent, re-aiming each turn (it may shuffle). */
+  const strikeAdjacent = (g: GameState, rng: Rng) => {
+    const m = g.monsters[0];
+    if (!m) return false;
+    const dx = m.x - g.player.x;
+    const dy = m.y - g.player.y;
+    if (Math.abs(dx) + Math.abs(dy) !== 1) {
+      resolveTurn(g, { type: "wait" }, rng);
+      return true;
+    }
+    resolveTurn(g, { type: "move", dx, dy }, rng);
+    return true;
+  };
+
+  // (a) THE headline hole: a monster's melee must actually cost you HP.
+  {
+    const { g } = arena("skeleton");
+    const hp0 = g.player.hp;
+    resolveTurn(g, { type: "wait" }, new Rng(3));
+    check(
+      "a monster's melee actually reduces player HP",
+      g.player.hp < hp0,
+      `(hp ${hp0} → ${g.player.hp})`,
+    );
+  }
+
+  // (b) `MonsterDef.inflicts` must actually afflict you (wraith → bleed @ 0.5).
+  {
+    const { g } = arena("wraith");
+    let afflicted = false;
+    for (let t = 0; t < 40 && !afflicted; t++) {
+      resolveTurn(g, { type: "wait" }, new Rng(7 + t));
+      afflicted = (g.player.effects.bleed ?? 0) > 0;
+    }
+    check("a monster's `inflicts` really afflicts the player", afflicted);
+  }
+
+  // (c) Striking an unaware monster must WAKE it — otherwise it stays `idle` and
+  // every subsequent blow re-earns the sneak multiplier, forever.
+  //
+  // The confound to kill first: the monster phase runs in the SAME turn, so an
+  // adjacent, visible monster wakes itself by DETECTION and the assertion passes
+  // whether or not the strike alerted it (this check initially let the mutation
+  // survive for exactly that reason). Dousing the light to 0 makes detection
+  // impossible — `visible` holds only the player's own tile — so `chase` can only
+  // have come from the blow.
+  {
+    const { g, mon, spot } = arena("skeleton", "idle");
+    g.player.hasTorch = false;
+    g.player.lightRadius = 0;
+    recomputeFOV(g);
+    check(
+      "(setup) the target is unseen, so only the blow can wake it",
+      !g.visible.includes(idx(mon.x, mon.y, g.map.width)),
+    );
+    resolveTurn(
+      g,
+      { type: "move", dx: spot.x - g.player.x, dy: spot.y - g.player.y },
+      new Rng(4),
+    );
+    check(
+      "striking an unaware monster wakes it (sneak isn't repeatable)",
+      mon.state === "chase",
+      `(state ${mon.state})`,
+    );
+  }
+
+  // (d) The Rogue's crit must fire and must double the blow.
+  //
+  // Draw from ONE long-lived Rng rather than a fresh `new Rng(smallInt)` per
+  // attack. rot.js's first `getUniform()` after `setSeed(n)` is ≈ n/2048, so for
+  // small integer seeds the first roll is a near-deterministic ramp (0.0000,
+  // 0.0005, 0.0010, …) — 80 fresh small seeds gave 80 IDENTICAL crit outcomes.
+  // Sequential draws from one instance are properly distributed. (Real gameplay
+  // is unaffected: `gameplaySeed()` yields large hashes, which spread fine — see
+  // the seed-spread check in [2].)
+  {
+    const cls = CLASS_LIST.find((c) => (c.critChance ?? 0) > 0)!;
+    const { g, spot } = arena("skeleton", "chase", cls.id, "crit");
+    const dx = spot.x - g.player.x;
+    const dy = spot.y - g.player.y;
+    const rng = new Rng(gameplaySeed("crit-spread"));
+    const seen = new Set<number>();
+    for (let n = 0; n < 120; n++) {
+      const m = g.monsters[0];
+      if (!m) break;
+      const before = m.hp;
+      resolveTurn(g, { type: "move", dx, dy }, rng);
+      const dealt = before - (g.monsters[0]?.hp ?? 0);
+      if (dealt > 0) seen.add(dealt);
+      g.player.hp = g.player.maxHp; // keep the sparring going
+    }
+    const lo = Math.min(...seen);
+    const hi = Math.max(...seen);
+    check(
+      `the ${cls.id}'s crit lands and doubles the blow`,
+      seen.size > 1 && hi >= lo * 2,
+      `(damages seen: ${[...seen].sort((a, b) => a - b).join("/")})`,
+    );
+  }
+
+  // (e) A weapon's `onHit` must afflict what it strikes (Frostbrand → chill).
+  {
+    const { g } = arena("skeleton");
+    g.player.weaponId = "w_frost";
+    let chilled = false;
+    for (let t = 0; t < 40 && !chilled; t++) {
+      if (!strikeAdjacent(g, new Rng(11 + t))) break;
+      chilled = (g.monsters[0]?.effects?.chill ?? 0) > 0;
+    }
+    check(
+      "a weapon's on-hit effect afflicts its target (Frostbrand chills)",
+      chilled,
+    );
+  }
+
+  // (f) Knockback must stop at a solid wall rather than shove a body into it.
+  {
+    const { g, spot } = arena("skeleton");
+    g.player.weaponId = "w_mace"; // knockback 1
+    const dx = spot.x - g.player.x;
+    const dy = spot.y - g.player.y;
+    g.map.tiles[idx(spot.x + dx, spot.y + dy, g.map.width)] = "wall";
+    resolveTurn(g, { type: "move", dx, dy }, new Rng(2));
+    const m = g.monsters[0];
+    check(
+      "knockback stops at a solid wall (never shoves a body inside one)",
+      !!m && m.x === spot.x && m.y === spot.y,
+      m ? `(at ${m.x},${m.y}; target tile was ${spot.x},${spot.y})` : "(gone)",
+    );
+  }
+
+  // (g) A boss never loses interest — the finale is relentless. Assert on
+  // `lostTurns`, which only accumulates via the `!def.isBoss` branch.
+  {
+    const bossId = Object.values(MONSTERS).find(
+      (m) => m.isBoss && m.behavior !== "bossLich",
+    )!.id;
+    const { g, mon } = arena(bossId, "chase");
+    g.player.lightRadius = 1; // break contact: it can only be seen point-blank
+    // park it far away so it cannot re-acquire us within the window
+    const far = g.map.tiles.findIndex(
+      (t, i) =>
+        t === "floor" &&
+        chebyshev(
+          i % g.map.width,
+          Math.floor(i / g.map.width),
+          g.player.x,
+          g.player.y,
+        ) >
+          CONFIG.loseInterestTurns * 3,
+    );
+    check("(setup) found a distant tile to park the boss", far >= 0);
+    if (far >= 0) {
+      mon.x = far % g.map.width;
+      mon.y = Math.floor(far / g.map.width);
+      for (let t = 0; t < CONFIG.loseInterestTurns + 2; t++)
+        resolveTurn(g, { type: "wait" }, new Rng(20 + t));
+      check(
+        "a boss never gives up the chase",
+        mon.state === "chase" && (mon.lostTurns ?? 0) === 0,
+        `(state ${mon.state}, lostTurns ${mon.lostTurns ?? 0})`,
+      );
+    }
+  }
+
+  // (h) Having lost you, a monster hunts your LAST-SEEN tile — it must not home
+  // on your true position (that's the "monsters aren't omniscient" promise).
+  // Set the remembered tile on the far side of the monster from the player, so
+  // "toward memory" and "toward player" are opposite directions.
+  {
+    let ran = false;
+    for (const seed of ["ls1", "ls2", "ls3", "ls4", "ls5", "ls6"]) {
+      const g = beginLevel(seed, 0, createPlayer("wanderer"));
+      g.monsters = [];
+      const p = g.player;
+      p.maxHp = p.hp = 500;
+      p.lightRadius = 1; // contact is broken
+      const w = g.map.width;
+      // A monster tile ≥6 away and CARDINALLY aligned with the player, with two
+      // walkable tiles further along that same ray to serve as the remembered
+      // spot. Cardinal alignment matters: `stepToward` runs A* at topology 4, so
+      // a diagonal ray's "one step outward" isn't a legal single move and the
+      // monster can stand still for reasons that have nothing to do with memory.
+      let placed: { mx: number; my: number; lx: number; ly: number } | null =
+        null;
+      for (let i = 0; i < g.map.tiles.length && !placed; i++) {
+        if (g.map.tiles[i] !== "floor") continue;
+        const mx = i % w;
+        const my = Math.floor(i / w);
+        if (mx !== p.x && my !== p.y) continue; // cardinal ray only
+        if (chebyshev(mx, my, p.x, p.y) < 6) continue;
+        const ux = Math.sign(mx - p.x);
+        const uy = Math.sign(my - p.y);
+        const lx = mx + ux * 2;
+        const ly = my + uy * 2;
+        if (!isWalkable(g.map, mx + ux, my + uy)) continue; // step outward is legal
+        if (!isWalkable(g.map, lx, ly)) continue;
+        placed = { mx, my, lx, ly };
+      }
+      if (!placed) continue;
+      g.monsters = [
+        {
+          id: "t",
+          defId: "skeleton",
+          x: placed.mx,
+          y: placed.my,
+          hp: 9999,
+          state: "chase",
+          lastSeen: { x: placed.lx, y: placed.ly },
+          lostTurns: 0,
+        },
+      ];
+      recomputeFOV(g);
+      const distToPlayerBefore = chebyshev(placed.mx, placed.my, p.x, p.y);
+      const distToMemoryBefore = chebyshev(
+        placed.mx,
+        placed.my,
+        placed.lx,
+        placed.ly,
+      );
+      resolveTurn(g, { type: "wait" }, new Rng(31));
+      const m = g.monsters[0];
+      ran = true;
+      check(
+        "a monster that lost you hunts your last-seen tile, not your true spot",
+        chebyshev(m.x, m.y, placed.lx, placed.ly) < distToMemoryBefore &&
+          chebyshev(m.x, m.y, p.x, p.y) >= distToPlayerBefore,
+        `(→memory ${distToMemoryBefore}→${chebyshev(m.x, m.y, placed.lx, placed.ly)}, ` +
+          `→player ${distToPlayerBefore}→${chebyshev(m.x, m.y, p.x, p.y)})`,
+      );
+      break;
+    }
+    check("(setup) found a geometry to test last-seen pursuit", ran);
+  }
+
+  // (i) `slowChase` shamblers act only every other turn.
+  {
+    const { g, mon } = arena("zombie", "chase");
+    // park it away from the player so it MOVES rather than attacking in place
+    const w = g.map.width;
+    const spot = g.map.tiles.findIndex(
+      (t, i) =>
+        t === "floor" &&
+        chebyshev(i % w, Math.floor(i / w), g.player.x, g.player.y) === 6,
+    );
+    check("(setup) found a tile to park the shambler", spot >= 0);
+    if (spot >= 0) {
+      mon.x = spot % w;
+      mon.y = Math.floor(spot / w);
+      g.player.lightRadius = 12;
+      recomputeFOV(g);
+      let moved = 0;
+      const TURNS = 12;
+      for (let t = 0; t < TURNS; t++) {
+        const px = mon.x;
+        const py = mon.y;
+        resolveTurn(g, { type: "wait" }, new Rng(40 + t));
+        if (mon.x !== px || mon.y !== py) moved++;
+      }
+      check(
+        "a slowChase shambler acts only every other turn",
+        moved > 0 && moved <= TURNS / 2 + 1,
+        `(moved on ${moved} of ${TURNS} turns)`,
+      );
+    }
+  }
+
+  // (j) Emberstep must actually suppress burn damage.
+  {
+    const burnTick = (ember: boolean) => {
+      const g = beginLevel("ember", 0, createPlayer("wanderer"));
+      g.monsters = [];
+      const p = g.player;
+      p.maxHp = p.hp = 200;
+      p.effects.burn = 5;
+      if (ember) p.effects.emberstep = 5;
+      const hp0 = p.hp;
+      resolveTurn(g, { type: "wait" }, new Rng(1));
+      return hp0 - p.hp;
+    };
+    const warded = burnTick(true);
+    const bare = burnTick(false);
+    check(
+      "Emberstep wards off burn damage",
+      warded === 0 && bare > 0,
+      `(with ${warded}, without ${bare})`,
+    );
+  }
+
+  // (k) The lich's telegraphed barrage must detonate ON the player for damage —
+  // and do nothing to a player who stepped clear.
+  {
+    const barrageOn = (underPlayer: boolean) => {
+      const g = beginLevel("barrage", 0, createPlayer("wanderer"));
+      g.monsters = [];
+      const p = g.player;
+      p.maxHp = p.hp = 300;
+      p.armorReduction = 0;
+      const w = g.map.width;
+      const elsewhere = g.map.tiles.findIndex(
+        (t, i) =>
+          t === "floor" && chebyshev(i % w, Math.floor(i / w), p.x, p.y) > 3,
+      );
+      g.barrage = [underPlayer ? idx(p.x, p.y, w) : elsewhere];
+      const hp0 = p.hp;
+      resolveTurn(g, { type: "wait" }, new Rng(1));
+      return { lost: hp0 - p.hp, cleared: g.barrage.length === 0 };
+    };
+    const hit = barrageOn(true);
+    const miss = barrageOn(false);
+    check(
+      "a barrage tile under the player detonates for damage",
+      hit.lost > 0 && hit.cleared,
+      `(lost ${hit.lost})`,
+    );
+    check(
+      "a barrage you stepped clear of costs nothing",
+      miss.lost === 0 && miss.cleared,
+      `(lost ${miss.lost})`,
+    );
+  }
+
+  // (l) `levelKills` must count kills. NOTE this is currently an INERT path —
+  // `killCount` is the only reader and no level uses that goal — but it's
+  // documented as supported for reuse, so keep it honest rather than let it rot.
+  {
+    const { g, spot } = arena("rat");
+    g.player.weaponPower = 999;
+    g.monsters[0].hp = 1;
+    resolveTurn(
+      g,
+      { type: "move", dx: spot.x - g.player.x, dy: spot.y - g.player.y },
+      new Rng(1),
+    );
+    check(
+      "a kill increments levelKills (the killCount goal's only input)",
+      g.levelKills === 1,
+      `(levelKills ${g.levelKills})`,
+    );
+  }
+}
+
+// ─── 59. Generation placement RULES (third mutation-audit pass) ─────────────
+// `generate.ts` is 1,992 lines and had only 4 mutations against it; the soak checks
+// its OUTPUT guarantees (reachability, connectivity) but nothing probed the
+// placement rules themselves. A 23-mutation pass found **14 uncovered**, i.e. a 61%
+// escape rate — the worst-covered file in the project.
+//
+// Every threshold below is CALIBRATED against a measured baseline-vs-mutant pair,
+// not guessed, and the seeds are fixed — so these shares are deterministic values,
+// not samples, and a threshold between the two is a reliable discriminator.
+console.log("\n[59] Generation placement rules (mutation-audit closures)");
+{
+  // Mirrors TRAP_OPEN in generate.ts EXACTLY. Using a looser set silently changes
+  // every number here (my first draft did, and its thresholds didn't transfer).
+  const TRAP_OPEN = ["floor", "doorOpen", "exit", "oil", "forage", "ice"];
+  // each placement pass defines its own neighbor set — mirror them exactly
+  const CRACK_NBR = ["floor", "oil", "doorOpen", "trap", "trapSprung", "exit"];
+  const DOOR_NBR = ["floor", "oil", "exit", "trap", "trapSprung", "doorOpen"];
+  const openOrtho = (t: string[], w: number, i: number) => {
+    const h = t.length / w;
+    const x = i % w;
+    const y = Math.floor(i / w);
+    let n = 0;
+    if (y > 0 && TRAP_OPEN.includes(t[i - w])) n++;
+    if (y < h - 1 && TRAP_OPEN.includes(t[i + w])) n++;
+    if (x > 0 && TRAP_OPEN.includes(t[i - 1])) n++;
+    if (x < w - 1 && TRAP_OPEN.includes(t[i + 1])) n++;
+    return n;
+  };
+  const SEEDS = Array.from({ length: 25 }, (_, i) => `gp${i}`);
+  const SPORE_GAP = 5; // mirrors the private SPORE_VENT_GAP
+
+  let questOpen = 0;
+  let questTotal = 0;
+  let trapMinDist = 99;
+  let trapBypass = 0;
+  let trapTotal = 0;
+  let ventMinGap = 99;
+  let forageNooks = 0;
+  let forageTotal = 0;
+  let forageMinDist = 99;
+  let loreNooks = 0;
+  let loreTotal = 0;
+  let crackedOK = 0;
+  let crackedTotal = 0;
+  let doorsChokepoint = 0;
+  let doorTotal = 0;
+
+  for (let li = 0; li < LEVELS.length; li++) {
+    for (const seed of SEEDS) {
+      const g = beginLevel(seed, li, createPlayer());
+      const w = g.map.width;
+      const t = g.map.tiles as string[];
+      const solid = (k: number) => t[k] === "wall" || t[k] === "crackedWall";
+
+      for (const it of g.items)
+        if (it.questTag) {
+          questTotal++;
+          if (openOrtho(t, w, idx(it.x, it.y, w)) >= 3) questOpen++;
+        }
+      for (const l of g.lore) {
+        loreTotal++;
+        if (openOrtho(t, w, idx(l.x, l.y, w)) <= 2) loreNooks++;
+      }
+
+      const vents: number[] = [];
+      for (let i = 0; i < t.length; i++) {
+        const x = i % w;
+        const y = Math.floor(i / w);
+        if (t[i] === "trap") {
+          trapMinDist = Math.min(
+            trapMinDist,
+            manhattan(x, y, g.player.x, g.player.y),
+          );
+          trapTotal++;
+          if (openOrtho(t, w, i) >= 3) trapBypass++;
+        }
+        if (t[i] === "sporeVent") vents.push(i);
+        if (t[i] === "forage") {
+          forageTotal++;
+          if (openOrtho(t, w, i) <= 2) forageNooks++;
+          forageMinDist = Math.min(
+            forageMinDist,
+            manhattan(x, y, g.player.x, g.player.y),
+          );
+        }
+        if (x < 1 || y < 1 || x >= w - 1) continue;
+        // A cracked wall must bridge two open spaces or it isn't a shortcut. Uses
+        // placeCrackedWalls' OWN predicate — each placement pass defines its own
+        // "open" set, and measuring with TRAP_OPEN instead reports false failures.
+        if (t[i] === "crackedWall") {
+          crackedTotal++;
+          const o = (k: number) => CRACK_NBR.includes(t[k]);
+          if ((o(i - 1) && o(i + 1)) || (o(i - w) && o(i + w))) crackedOK++;
+        }
+        // An interactive door must sit on a 1-wide chokepoint. Only `doorOpen` is
+        // checked: a shut `door` tile is a secret-VAULT GATE, deliberately not a
+        // chokepoint (measured — "all doors are open" would be a false assertion).
+        if (t[i] === "doorOpen") {
+          doorTotal++;
+          const o = (k: number) => DOOR_NBR.includes(t[k]);
+          const horiz = o(i - 1) && o(i + 1) && solid(i - w) && solid(i + w);
+          const vert = o(i - w) && o(i + w) && solid(i - 1) && solid(i + 1);
+          if (horiz || vert) doorsChokepoint++;
+        }
+      }
+      for (let a = 0; a < vents.length; a++)
+        for (let b = a + 1; b < vents.length; b++)
+          ventMinGap = Math.min(
+            ventMinGap,
+            manhattan(
+              vents[a] % w,
+              Math.floor(vents[a] / w),
+              vents[b] % w,
+              Math.floor(vents[b] / w),
+            ),
+          );
+    }
+  }
+
+  const share = (n: number, d: number) => (d === 0 ? 0 : (100 * n) / d);
+  // 86% baseline vs 74% with the open-ground preference (or FAR_SLACK) disabled.
+  // Not 100% by design: `farthestCell` falls back to the strict farthest cell when
+  // the far end has no open ground at all.
+  check(
+    "quest items land on OPEN ground, not corridor stubs",
+    share(questOpen, questTotal) >= 80,
+    `(${share(questOpen, questTotal).toFixed(0)}% of ${questTotal} on ≥3 open neighbors)`,
+  );
+  // A trap must sit where a BYPASS exists (≥3 open orthogonal neighbors) — never in
+  // a 1-wide corridor you're forced through, which turns an avoidable risk into a
+  // toll. 100% baseline vs 82% with the rule removed.
+  //
+  // This lived only as INCIDENTAL coverage in `test:play` (a trap-toll level killed
+  // the bot often enough to trip the beatable gate) and vanished the moment that
+  // sweep went from 6 seeds to 12 — the bot then won somewhere and the gate passed.
+  // Note `ensureTrapsAvoidable` repairs *route* violations after the fact, so the
+  // trap-free-route checks in `[18]`/`[32]` and the soak can't see this either: the
+  // placement rule has to be asserted on its own.
+  check(
+    "traps are placed only where a bypass exists",
+    share(trapBypass, trapTotal) >= 95,
+    `(${share(trapBypass, trapTotal).toFixed(0)}% of ${trapTotal} traps have ≥3 open neighbors)`,
+  );
+  check(
+    "no trap is placed adjacent to the player's start",
+    trapMinDist >= 2,
+    `(closest trap at manhattan ${trapMinDist})`,
+  );
+  check(
+    "spore vents stay isolated so their clouds can't merge",
+    ventMinGap >= SPORE_GAP,
+    `(closest pair ${ventMinGap}, gap ${SPORE_GAP})`,
+  );
+  check(
+    "forage never spawns on the player's doorstep",
+    forageMinDist >= 3,
+    `(closest at manhattan ${forageMinDist})`,
+  );
+  // 100% baseline vs 0% with the nook preference inverted — the sharpest signal here.
+  check(
+    "forage hides in nooks off the beeline",
+    share(forageNooks, forageTotal) >= 80,
+    `(${share(forageNooks, forageTotal).toFixed(0)}% of ${forageTotal})`,
+  );
+  check(
+    "lore props hide in nooks off the beeline",
+    share(loreNooks, loreTotal) >= 80,
+    `(${share(loreNooks, loreTotal).toFixed(0)}% of ${loreTotal})`,
+  );
+  // 99% baseline vs 65% with the rule removed. Not 100%: later passes convert a
+  // neighboring floor tile (to forage/altar/lore), which can retire the bridge.
+  check(
+    "cracked walls bridge two open spaces (a real shortcut)",
+    share(crackedOK, crackedTotal) >= 90,
+    `(${share(crackedOK, crackedTotal).toFixed(0)}% of ${crackedTotal})`,
+  );
+  // 99% baseline vs 13% without the chokepoint requirement.
+  check(
+    "interactive doors sit on 1-wide chokepoints",
+    share(doorsChokepoint, doorTotal) >= 90,
+    `(${share(doorsChokepoint, doorTotal).toFixed(0)}% of ${doorTotal})`,
+  );
+
+  // ── flood plan shape ──
+  {
+    const floodLevels = LEVELS.map((l, i) => ({ l, i })).filter(
+      ({ l }) => l.flood,
+    );
+    let protectedMin = Infinity;
+    let openDoorsFloodable = 0;
+    let spreadMin = Infinity;
+    for (const { i } of floodLevels) {
+      for (const seed of [
+        "fs1",
+        "fs2",
+        "fs3",
+        "fs4",
+        "fs5",
+        "fs6",
+        "fs7",
+        "fs8",
+      ]) {
+        const g = beginLevel(seed, i, createPlayer());
+        const w = g.map.width;
+        const fl = new Set(g.floodable ?? []);
+        let prot = 0;
+        for (let k = 0; k < g.map.tiles.length; k++) {
+          const x = k % w;
+          const y = Math.floor(k / w);
+          if (!isWalkable(g.map, x, y)) continue;
+          if (!fl.has(k)) prot++;
+          if (g.map.tiles[k] === "doorOpen" && fl.has(k)) openDoorsFloodable++;
+        }
+        protectedMin = Math.min(protectedMin, prot);
+        const ds = (g.floodSeeds ?? []).map((k) =>
+          manhattan(k % w, Math.floor(k / w), g.player.x, g.player.y),
+        );
+        if (ds.length > 1)
+          spreadMin = Math.min(spreadMin, Math.max(...ds) - Math.min(...ds));
+      }
+    }
+    // The dry spine is dilated one tile, so it's a WALKABLE CORRIDOR rather than a
+    // 1-tile tightrope. Calibrated: 93 protected tiles at baseline, 78 without the
+    // dilation — re-measure this floor if the Sunken Crypt is resized.
+    check(
+      "the flood's dry spine is dilated, not a single-tile line",
+      protectedMin >= 85,
+      `(min protected walkable ${protectedMin})`,
+    );
+    check(
+      "water flows THROUGH open doors (they're conduits, not dams)",
+      openDoorsFloodable > 0,
+      `(${openDoorsFloodable} floodable open doors)`,
+    );
+    // 11 baseline vs 0 when every seed is taken from the near end.
+    check(
+      "flood seeds span near→far, so water wells up all over",
+      spreadMin >= 5,
+      `(min near/far spread ${spreadMin})`,
+    );
+  }
+
+  // ── a secret vault must be a ROOM, not a slot ──
+  {
+    let smallest = Infinity;
+    for (const { i } of LEVELS.map((l, i) => ({ l, i })).filter(
+      ({ l }) => l.secretVault,
+    )) {
+      for (const seed of ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"]) {
+        const g = beginLevel(seed, i, createPlayer());
+        const w = g.map.width;
+        const reach = new Set<number>();
+        const start = idx(g.player.x, g.player.y, w);
+        reach.add(start);
+        const stack = [start];
+        while (stack.length) {
+          const cur = stack.pop()!;
+          const cx = cur % w;
+          const cy = Math.floor(cur / w);
+          for (const [dx, dy] of [
+            [0, -1],
+            [0, 1],
+            [-1, 0],
+            [1, 0],
+          ]) {
+            const nx = cx + dx;
+            const ny = cy + dy;
+            const ni = ny * w + nx;
+            if (reach.has(ni) || !isWalkable(g.map, nx, ny)) continue;
+            reach.add(ni);
+            stack.push(ni);
+          }
+        }
+        let sealed = 0;
+        for (let k = 0; k < g.map.tiles.length; k++) {
+          const x = k % w;
+          const y = Math.floor(k / w);
+          if (isWalkable(g.map, x, y) && !reach.has(k)) sealed++;
+        }
+        if (sealed > 0) smallest = Math.min(smallest, sealed);
+      }
+    }
+    // 9 tiles at baseline (a 3×3 room) vs 3 when carved only 1 tile deep — a vault
+    // needs room for a hoard AND a guardian placed away from the gate.
+    check(
+      "a secret vault is a room with space for loot and a guardian",
+      smallest >= 6,
+      `(smallest sealed area ${smallest} tiles)`,
+    );
+  }
+}
+
+// ─── 60. Inventory, snapshots & altar costs (fourth audit pass) ─────────────
+// 29 mutations across the last unaudited pure files (`inventory`, `state`, `altar`,
+// `lighting`) plus `gameStore`. These are the survivors that were real holes.
+console.log("\n[60] Inventory, snapshots & altar costs");
+{
+  // (a) Equipping SWAPS — the replaced piece is stowed, never discarded, so
+  // anything you find stays re-equippable and sellable. `[27]` covered the weapon
+  // path; the ARMOR path had no test, and discarding it silently ate your gear.
+  {
+    const p = createPlayer("warrior");
+    const old = p.armorId!;
+    check("(setup) the warrior starts in armor", !!old);
+    equipArmor(p, "a_plate");
+    check(
+      "equipping armor stows the old set instead of discarding it",
+      p.armorId === "a_plate" && p.bag.some((b) => b.defId === old),
+      `(bag: ${p.bag.map((b) => b.defId).join(",")})`,
+    );
+    check(
+      "the newly worn armor left the bag",
+      !p.bag.some((b) => b.defId === "a_plate"),
+    );
+  }
+
+  // (b) `giveItem` auto-equips only an UPGRADE. Auto-equipping anything would
+  // downgrade you off a picked-up rusty dagger late in the run.
+  {
+    const p = createPlayer("warrior");
+    equipWeapon(p, "w_sun"); // best weapon in the game
+    const power = p.weaponPower;
+    giveItem(p, "w_dagger"); // strictly worse
+    check(
+      "picking up a WORSE weapon stows it rather than equipping it",
+      p.weaponId === "w_sun" && p.weaponPower === power,
+      `(wielding ${p.weaponId})`,
+    );
+    check(
+      "the worse weapon is still kept (sellable)",
+      p.bag.some((b) => b.defId === "w_dagger"),
+    );
+  }
+
+  // (c) An ammo bundle yields `value` arrows, not one.
+  {
+    const p = createPlayer("wanderer");
+    const before = p.bag.find((b) => b.defId === "am_arrow")?.count ?? 0;
+    giveItem(p, "am_arrow");
+    const gained =
+      (p.bag.find((b) => b.defId === "am_arrow")?.count ?? 0) - before;
+    check(
+      "an ammo bundle grants its full arrow count",
+      gained === (ITEMS.am_arrow.value ?? 1) && gained > 1,
+      `(gained ${gained}, bundle ${ITEMS.am_arrow.value})`,
+    );
+  }
+
+  // (d) `clonePlayer` must DEEP-copy the bag and effects. Sharing them by reference
+  // means the shop, the save, and the death-restart snapshot all mutate each other.
+  {
+    const p = createPlayer("warrior");
+    giveItem(p, "p_heal");
+    p.effects.ward = 3;
+    const c = clonePlayer(p);
+    c.bag.push({ defId: "p_bomb", count: 1 });
+    c.effects.might = 5;
+    if (c.bag[0]) c.bag[0].count += 99;
+    check(
+      "clonePlayer deep-copies the bag (no aliasing)",
+      p.bag.length !== c.bag.length && p.bag[0].count !== c.bag[0].count,
+    );
+    check(
+      "clonePlayer deep-copies the effects bag",
+      p.effects.might === undefined,
+    );
+  }
+
+  // (e) `beginLevel`'s `entryPlayer` is the DEATH-RESTART snapshot: the store replays
+  // a level from it after you die. If it aliases the live player, your restart
+  // inherits the damage and spent consumables that killed you — the snapshot would
+  // be worthless in exactly the moment it matters.
+  {
+    const g = beginLevel("snap", 0, createPlayer("warrior"));
+    const hp0 = g.entryPlayer.hp;
+    const bag0 = g.entryPlayer.bag.length;
+    g.player.hp = 1;
+    g.player.bag.push({ defId: "p_bomb", count: 1 });
+    g.player.effects.poison = 4;
+    check(
+      "the entry snapshot doesn't alias the live player",
+      g.entryPlayer.hp === hp0 &&
+        g.entryPlayer.bag.length === bag0 &&
+        g.entryPlayer.effects.poison === undefined,
+      `(snapshot hp ${g.entryPlayer.hp} vs live ${g.player.hp})`,
+    );
+  }
+
+  // (f) An altar is a BARGAIN: spent once, and each boon has a real price.
+  {
+    const mk = (kind: "vigor" | "warblood" | "hoard") => {
+      const g = beginLevel("altar-cost", 0, createPlayer("warrior"));
+      g.player.coins = 500;
+      g.player.maxHp = 60;
+      g.player.hp = 60;
+      const a = { id: "a", x: g.player.x, y: g.player.y, kind, used: false };
+      g.altars = [a];
+      return { g, a };
+    };
+    // spent-once
+    {
+      const { g, a } = mk("vigor");
+      applyAltar(g, a);
+      const coinsAfter = g.player.coins;
+      const hpAfter = g.player.maxHp;
+      const second = applyAltar(g, a);
+      check(
+        "a spent altar refuses to pay out again",
+        second === null &&
+          g.player.coins === coinsAfter &&
+          g.player.maxHp === hpAfter,
+      );
+    }
+    // each bargain costs what it says
+    {
+      const { g, a } = mk("vigor");
+      const c0 = g.player.coins;
+      applyAltar(g, a);
+      check(
+        "the vigor altar charges gold",
+        g.player.coins < c0,
+        `(${c0} → ${g.player.coins})`,
+      );
+    }
+    {
+      const { g, a } = mk("warblood");
+      const m0 = g.player.maxHp;
+      applyAltar(g, a);
+      check(
+        "the warblood altar charges maxHP",
+        g.player.maxHp < m0,
+        `(${m0} → ${g.player.maxHp})`,
+      );
+      check(
+        "…and grants the weapon bonus it promises",
+        g.player.weaponBonus > 0,
+      );
+    }
+    {
+      const { g, a } = mk("hoard");
+      const h0 = g.player.hp;
+      applyAltar(g, a);
+      check(
+        "the hoard altar charges blood",
+        g.player.hp < h0,
+        `(${h0} → ${g.player.hp})`,
+      );
+      check(
+        "…and pays out gold + potions",
+        g.player.coins > 500 && g.player.bag.length > 0,
+      );
+    }
+  }
+}
+
+// ─── 61. Camera / viewport math ─────────────────────────────────────────────
+// The renderer had ZERO automated coverage — 1,288 lines reachable only by eye. Most
+// of it genuinely needs a canvas, but the camera is pure arithmetic and an off-by-one
+// in either clamp is a VISIBLE bug: a strip of dead space along a map edge, or the
+// player sliding off-centre. `cameraOrigin` was extracted from `renderBase` so this
+// could be asserted; the renderer now calls it, so these aren't testing a copy.
+console.log("\n[61] Camera / viewport math");
+{
+  const COLS = 40;
+  const ROWS = 20;
+  const W = 100;
+  const H = 60;
+  const at = (x: number, y: number) => cameraOrigin(x, y, COLS, ROWS, W, H);
+
+  // centred in open country
+  {
+    const c = at(50, 30);
+    check(
+      "the camera centres on the player mid-map",
+      c.camX === 50 - COLS / 2 && c.camY === 30 - ROWS / 2,
+      `(${c.camX},${c.camY})`,
+    );
+  }
+  // clamped at the top-left: never negative, or you'd scroll off-map
+  {
+    const c = at(0, 0);
+    check(
+      "the camera clamps at the top-left origin",
+      c.camX === 0 && c.camY === 0,
+    );
+  }
+  // clamped at the bottom-right: the last column/row of the map must be the last
+  // column/row of the view — one too far leaves a dead strip on screen
+  {
+    const c = at(W - 1, H - 1);
+    check(
+      "the camera clamps flush to the bottom-right edge",
+      c.camX === W - COLS && c.camY === H - ROWS,
+      `(${c.camX},${c.camY}; expected ${W - COLS},${H - ROWS})`,
+    );
+  }
+  // the player must always be INSIDE the viewport, everywhere on the map
+  checkOver(
+    "the player is always within the viewport",
+    Array.from({ length: 300 }, (_, n) => ({
+      x: (n * 7) % W,
+      y: (n * 11) % H,
+    })),
+    ({ x, y }) => {
+      const c = at(x, y);
+      return (
+        x >= c.camX && x < c.camX + COLS && y >= c.camY && y < c.camY + ROWS
+      );
+    },
+  );
+  // a viewport bigger than the map pins to the origin rather than going negative
+  {
+    const c = cameraOrigin(2, 2, 80, 40, 30, 20);
+    check(
+      "a viewport larger than the map pins to the origin",
+      c.camX === 0 && c.camY === 0,
+      `(${c.camX},${c.camY})`,
+    );
+  }
+  // and it holds for every real level's dimensions, at all four corners + centre
+  checkOver(
+    "every level's dimensions keep the player on screen at the corners",
+    LEVELS.flatMap((l) =>
+      [
+        [0, 0],
+        [l.mapWidth - 1, 0],
+        [0, l.mapHeight - 1],
+        [l.mapWidth - 1, l.mapHeight - 1],
+        [l.mapWidth >> 1, l.mapHeight >> 1],
+      ].map(([x, y]) => ({ l, x, y })),
+    ),
+    ({ l, x, y }) => {
+      const c = cameraOrigin(x, y, COLS, ROWS, l.mapWidth, l.mapHeight);
+      const inX = c.camX >= 0 && (x >= c.camX || l.mapWidth <= COLS);
+      const inY = c.camY >= 0 && (y >= c.camY || l.mapHeight <= ROWS);
+      return inX && inY;
     },
   );
 }

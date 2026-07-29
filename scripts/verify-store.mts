@@ -34,8 +34,10 @@ class MemStorage {
 // pure helpers / content have no browser deps — safe to import statically
 import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
+import { MUTATORS } from "@/content/mutators";
 import { SHOP_TIERS, ITEMS, sellPrice } from "@/content/items";
 import { idx } from "@/game/core/grid";
+import { giveItem } from "@/game/core/inventory";
 import type { GameState, Pos } from "@/game/core/types";
 
 // the store reads bare `localStorage` inside its functions, so import it only
@@ -200,10 +202,19 @@ console.log("\n[S3] Level-clear flow: clear → narration → shop");
     st().mode === "playing" && st().game!.currentLevel === 0,
   );
 
+  const parBefore = st().game!.player.parBonus ?? 0;
   clearReachLevelInvincible();
   check(
     "clearing the level opens the cleared-narration card",
     st().mode === "narration",
+  );
+  // The par bonus is accrued exactly here, at the moment of the clear — nothing
+  // asserted it, so `handleLevelComplete` could stop paying it entirely and every
+  // suite stayed green (mutation audit). The invincible walk takes well under par.
+  check(
+    "clearing under par accrues the efficiency bonus",
+    (st().game!.player.parBonus ?? 0) > parBefore,
+    `(parBonus ${parBefore} → ${st().game!.player.parBonus})`,
   );
   check(
     "the card is a next-level transition",
@@ -235,7 +246,11 @@ console.log("\n[S4] Shop economy: buy respects coins + maxQty, sell pays out");
     (e) => e.maxQty != null && e.maxQty >= 1,
   )!;
   const g = st().game!;
-  g.player.coins = entry.price * (entry.maxQty ?? 1) + 5; // afford the full stack
+  // Fund FAR past the cap. With only a few coins left over, an over-cap purchase
+  // gets refused by the PURSE check instead of the cap, and the cap assertion below
+  // passes without the cap doing anything (a mutation audit removed the cap and this
+  // section stayed green). Overfunding removes the confound.
+  g.player.coins = entry.price * ((entry.maxQty ?? 1) + 5);
   const coins0 = g.player.coins;
   const held0 = g.player.bag.find((b) => b.defId === entry.itemId)?.count ?? 0;
 
@@ -264,13 +279,30 @@ console.log("\n[S4] Shop economy: buy respects coins + maxQty, sell pays out");
         0) === cappedHeld,
   );
 
-  // broke: a purchase you can't afford is a no-op
+  // Broke: a purchase you can't afford must be a no-op.
+  //
+  // Two confounds had to be removed for this to mean anything, and I introduced the
+  // second one myself while fixing the first:
+  //   1. asserting `bag.length` — the capped entry above is a STACKABLE potion, so a
+  //      successful buy bumps `count` and leaves the length untouched;
+  //   2. reusing `entry` — by now it sits at its purchase CAP, so the cap refuses the
+  //      buy and the purse check never runs at all.
+  // So use an UNCAPPED entry that hasn't been bought, where the purse is the only
+  // possible gate, and assert what a purchase would actually change.
+  const uncapped = SHOP_TIERS[tier].find(
+    (e) => e.maxQty == null && e.itemId === "am_arrow",
+  )!;
+  check("(setup) found an uncapped entry for the purse test", !!uncapped);
   st().game!.player.coins = 0;
-  const brokeHeld = st().game!.player.bag.length;
-  st().buyShopEntry(entry);
+  const arrows0 =
+    st().game!.player.bag.find((b) => b.defId === uncapped.itemId)?.count ?? 0;
+  st().buyShopEntry(uncapped);
+  const arrows1 =
+    st().game!.player.bag.find((b) => b.defId === uncapped.itemId)?.count ?? 0;
   check(
     "a purchase you can't afford changes nothing",
-    st().game!.player.bag.length === brokeHeld,
+    arrows1 === arrows0 && st().game!.player.coins === 0,
+    `(arrows ${arrows0} → ${arrows1}, coins ${st().game!.player.coins})`,
   );
 
   // sell: put a sellable item in the bag and sell it back
@@ -671,6 +703,267 @@ console.log("\n[S12] Save fidelity: mid-run state survives a resume intact");
       snap.explored > 0 &&
       snap.mutators !== "[]",
   );
+}
+
+// ─── S13. Trial picker: class select → toggle trials → run carries them ─────
+// The mutator SYSTEM is well covered ([40]/[52] as config transforms, [P5] in
+// real play, [S12] for the save roundtrip) but the UI PATH that turns a player's
+// picks into a run was not tested at all: `chooseClass` → `mutators` mode →
+// `toggleMutator` → `beginRun`. A picker that dropped the selection on the floor
+// would have shipped with every one of those other tests green.
+console.log("\n[S13] Trial picker: class select → toggle trials → run carries");
+{
+  st().init();
+  st().chooseClass("rogue");
+  check(
+    "choosing a class advances to the trial picker (not straight into play)",
+    st().mode === "mutators",
+  );
+  check(
+    "the trial picker starts with nothing selected",
+    st().selectedMutators.length === 0,
+  );
+
+  const trial = MUTATORS[0].id;
+  st().toggleMutator(trial);
+  check("toggling a trial selects it", st().selectedMutators.includes(trial));
+  st().toggleMutator(trial);
+  check(
+    "toggling the same trial again clears it",
+    !st().selectedMutators.includes(trial),
+  );
+
+  // pick two, including Glass, whose effect is observable on the player
+  st().toggleMutator(trial);
+  st().toggleMutator("glass");
+  st().beginRun();
+  await settle();
+  st().continueNarration();
+
+  const g = st().game!;
+  check("the run starts in play", st().mode === "playing");
+  check(
+    "the chosen trials reach GameState.mutators",
+    g.mutators.includes(trial) && g.mutators.includes("glass"),
+    `(got ${JSON.stringify(g.mutators)})`,
+  );
+  check(
+    "the chosen class survives the trial picker",
+    g.player.classId === "rogue",
+  );
+  check(
+    "Glass really applied — the run starts on a single life",
+    g.player.lives === 1,
+    `(lives ${g.player.lives})`,
+  );
+}
+
+// ─── S14. Altar flow: step onto → offer → accept pays its cost ──────────────
+// The parallel LORE modal flow has had [S10] for a while; the altar — which
+// unlike lore mutates the player (gold/HP for maxHP/weaponBonus/potions) — had
+// no store-level coverage, so `acceptAltar` was never once invoked by a test.
+console.log(
+  "\n[S14] Altar flow: step onto → offer → accept applies the bargain",
+);
+{
+  await bootToPlay("altar-store-seed");
+  const g = st().game!;
+  const w = g.map.width;
+  // Level 0 (the Pit) carries no altars, and `bootToPlay` always starts there, so
+  // plant one on a floor tile beside the player — the flow under test is the
+  // STORE's (step-on → offer mode → accept/decline), not altar placement, which
+  // verify-core already covers.
+  let dir: { dx: number; dy: number } | null = null;
+  for (const [dx, dy] of [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ]) {
+    const nx = g.player.x + dx;
+    const ny = g.player.y + dy;
+    if (g.map.tiles[idx(nx, ny, w)] === "floor") {
+      g.altars.push({
+        id: "test-altar",
+        x: nx,
+        y: ny,
+        kind: "vigor",
+        used: false,
+      });
+      dir = { dx, dy };
+      break;
+    }
+  }
+  check("(setup) planted an altar beside the player", dir !== null);
+  const a = g.altars.find((x) => x.id === "test-altar")!;
+  if (dir) {
+    g.monsters = g.monsters.filter(
+      (m) =>
+        !(m.x === a.x && m.y === a.y) &&
+        !(m.x === g.player.x && m.y === g.player.y),
+    );
+    // pay-able: the bargains cost gold or HP, so make sure we can afford one
+    g.player.coins = 500;
+    g.player.maxHp = 60;
+    g.player.hp = 60;
+
+    st().submitAction({ type: "move", dx: dir.dx, dy: dir.dy });
+    check("stepping onto an altar opens the offer", st().mode === "altar");
+    check(
+      "the active altar is the one stepped on",
+      st().activeAltar?.id === a.id,
+    );
+
+    // Declining must cost nothing and leave the altar available.
+    const coinsBefore = g.player.coins;
+    const maxHpBefore = g.player.maxHp;
+    st().declineAltar();
+    check("declining returns to play", st().mode === "playing");
+    check(
+      "declining costs nothing and leaves the altar unspent",
+      g.player.coins === coinsBefore &&
+        g.player.maxHp === maxHpBefore &&
+        a.used === false,
+    );
+
+    // Accept it: something about the player must change, and it must be spent.
+    g.player.x = a.x - dir!.dx;
+    g.player.y = a.y - dir!.dy;
+    st().submitAction({ type: "move", dx: dir.dx, dy: dir.dy });
+    check("the altar can be re-entered while unspent", st().mode === "altar");
+    const before = JSON.stringify([
+      g.player.coins,
+      g.player.maxHp,
+      g.player.hp,
+      g.player.weaponBonus,
+      g.player.bag.length,
+    ]);
+    st().acceptAltar();
+    const after = JSON.stringify([
+      g.player.coins,
+      g.player.maxHp,
+      g.player.hp,
+      g.player.weaponBonus,
+      g.player.bag.length,
+    ]);
+    check("accepting returns to play", st().mode === "playing");
+    check(
+      "accepting an altar changes the player",
+      before !== after,
+      `(${before} → ${after})`,
+    );
+    check("a taken altar is marked spent", a.used === true);
+
+    // and a spent altar must not re-offer
+    g.player.x = a.x - dir!.dx;
+    g.player.y = a.y - dir!.dy;
+    st().submitAction({ type: "move", dx: dir.dx, dy: dir.dy });
+    check("a spent altar does not re-offer", st().mode === "playing");
+  }
+}
+
+// ─── S15. Targeting cursor, ability routing, overlays, sound ────────────────
+// The store's remaining untested surface. `[P6]` drives `throwAt`/`shootAt`/`blinkTo`
+// as pure ACTIONS, but the UI path that aims them — `beginTargeting` → `moveCursor`
+// → `confirmTarget`/`cancelTarget` — was never exercised, so a cursor that clamped
+// wrongly or a confirm that fired the wrong action would ship green.
+console.log("\n[S15] Targeting cursor, ability aim, overlays, sound");
+{
+  await bootToPlay("targeting-seed");
+  const g = st().game!;
+  g.monsters = []; // keep the cursor deterministic (it snaps to a visible monster)
+  for (let i = 0; i < 3; i++) giveItem(g.player, "p_bomb");
+
+  // ── firebomb cursor ──
+  st().beginTargeting("p_bomb");
+  check("beginTargeting opens the cursor", st().mode === "targeting");
+  check(
+    "the cursor starts on the player when nothing is in range",
+    st().targeting?.x === g.player.x && st().targeting?.y === g.player.y,
+  );
+  check(
+    "the cursor carries the throw range",
+    st().targeting?.range === CONFIG.throwRange,
+  );
+
+  const cx0 = st().targeting!.x;
+  st().moveCursor(1, 0);
+  check("moveCursor moves the cursor", st().targeting!.x === cx0 + 1);
+
+  // the cursor must not wander past the item's range
+  for (let i = 0; i < CONFIG.throwRange + 6; i++) st().moveCursor(1, 0);
+  const dist = Math.max(
+    Math.abs(st().targeting!.x - g.player.x),
+    Math.abs(st().targeting!.y - g.player.y),
+  );
+  check(
+    "the cursor is clamped to the throw range",
+    dist <= CONFIG.throwRange,
+    `(cursor at chebyshev ${dist}, range ${CONFIG.throwRange})`,
+  );
+
+  st().cancelTarget();
+  check("cancelling targeting returns to play", st().mode === "playing");
+  check(
+    "cancelling spends no turn and no bomb",
+    (st().game!.player.bag.find((b) => b.defId === "p_bomb")?.count ?? 0) === 3,
+  );
+
+  // confirming actually throws: the bomb is spent and the turn is taken
+  const turn0 = st().game!.turnCount;
+  st().beginTargeting("p_bomb");
+  st().moveCursor(2, 0);
+  st().confirmTarget();
+  check("confirming a throw returns to play", st().mode === "playing");
+  check(
+    "confirming spends the bomb and the turn",
+    (st().game!.player.bag.find((b) => b.defId === "p_bomb")?.count ?? 0) ===
+      2 && st().game!.turnCount > turn0,
+    `(bombs ${st().game!.player.bag.find((b) => b.defId === "p_bomb")?.count}, turn ${turn0} → ${st().game!.turnCount})`,
+  );
+
+  // ── a directional ability opens an AIM, and a bare confirm just cancels it ──
+  {
+    st().game!.player.abilityCooldown = 0;
+    st().game!.player.classId = "rogue"; // Dash is directional
+    st().triggerAbility();
+    check(
+      "a directional ability opens an aim cursor",
+      st().mode === "targeting",
+    );
+    check(
+      "the aim is tagged as an ability",
+      st().targeting?.kind === "ability",
+    );
+    const t1 = st().game!.turnCount;
+    st().confirmTarget(); // a tile-confirm is meaningless for a direction
+    check(
+      "confirming a directional aim cancels rather than firing blind",
+      st().mode === "playing" && st().game!.turnCount === t1,
+    );
+  }
+
+  // ── overlays: pause / inventory / help all round-trip back to play ──
+  for (const m of ["paused", "inventory", "help"] as const) {
+    st().setMode(m);
+    check(`the ${m} overlay opens`, st().mode === m);
+    st().setMode("playing");
+    check(`the ${m} overlay closes back to play`, st().mode === "playing");
+  }
+
+  // ── sound toggle persists (it's a localStorage-backed preference) ──
+  {
+    const before = st().soundOn;
+    st().toggleSound();
+    check("toggling sound flips the flag", st().soundOn === !before);
+    st().init(); // a fresh boot must remember the choice
+    check(
+      "the sound preference survives a reboot",
+      st().soundOn === !before,
+      `(was ${before}, now ${st().soundOn})`,
+    );
+    st().toggleSound(); // leave it as we found it
+  }
 }
 
 console.log(

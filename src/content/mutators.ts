@@ -12,7 +12,24 @@ export interface Mutator {
   blurb: string;
   /** added into the run's combined score multiplier (1.0 + Σ) */
   scoreMult: number;
-  /** transform applied to every level's config (light, spawns, traps, …) */
+  /**
+   * Transform applied to every level's config (light, spawns, traps, …).
+   *
+   * LOAD-BEARING: this runs at exactly ONE site — `beginLevel` — so a trial may
+   * only touch fields consumed during GENERATION (`baseLightRadius`,
+   * `monsterBudget`, `itemDropCount`, `eliteChance`, and the hazard/POI counts).
+   * Most other consumers re-read the RAW `LEVELS[...]` entry and would silently
+   * ignore a mutation: `goals.ts` (`goal`), `levelParBonus` (`turnLimit`),
+   * `awardCoins` (`coinRichness`), `tickFlood` (`flood`), the HUD and the
+   * renderer. Mutating one of those here is a no-op you would never see fail —
+   * test [40] locks the touched-key set so a trial reaching for one reddens.
+   *
+   * The ONE mutator-aware runtime reader is the siege (`maybeReinforce` /
+   * `spawnWave` via `effectiveConfig`), because it spawns monsters mid-level and
+   * so must honor the mutated `monsterBudget` and `eliteChance`. If you need
+   * another runtime field to respond to trials, route that site through
+   * `effectiveConfig` too — don't just add the field to the whitelist.
+   */
   applyLevel?: (c: LevelConfig) => LevelConfig;
   /** one-time tweak to the starting player (e.g. fewer lives) */
   applyPlayer?: (p: PlayerState) => void;
@@ -54,6 +71,11 @@ export const MUTATORS: Mutator[] = [
     applyLevel: (c) => ({
       ...c,
       forageCount: 0, // no wild growth / arcane motes to recover HP from
+      // Fewer finds. NOTE this composes with the global `CONFIG.lootScale`
+      // (applied later, in generate.ts), so the count actually generated is
+      // 0.6 × 0.67 ≈ 0.40 of the authored value — leaner than the 0.6 here
+      // reads. Intended (the economy pass wanted trials to bite), but the two
+      // dials multiply: retune `lootScale` and this moves with it.
       itemDropCount: Math.max(1, Math.round(c.itemDropCount * 0.6)), // fewer finds
     }),
   },
