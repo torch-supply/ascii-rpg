@@ -139,7 +139,13 @@ export type AltarKind = "vigor" | "warblood" | "hoard";
 
 // Lasting cosmetic stains on the floor: scorch where fire burned out, blood
 // where a monster fell. Rendered as a per-cell background tint.
-export type DecalKind = "scorch" | "blood";
+/** A lasting floor stain. `scorch` is dark char left where a fire burned out;
+ * `blood` marks a kill; `ash` is pale settled soot, used to pre-stain burned-ground
+ * regions. Ash exists because `scorch` is near-black (#120d08) and simply cannot
+ * read on the ashen palette's near-black floor (#241f1c — a perceptual distance of
+ * 56, well under the 110 "unreadable" bar test [54] enforces). Charring
+ * already-charred earth is the wrong image anyway; settled soot is the right one. */
+export type DecalKind = "scorch" | "blood" | "ash";
 
 export interface AltarInstance {
   id: string;

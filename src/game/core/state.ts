@@ -106,7 +106,7 @@ export function beginLevel(
     fireTiles: [],
     gasTiles: [],
     crackedWallHits: {},
-    decals: {},
+    decals: { ...(data.decals ?? {}) }, // pre-seeded stains (ashen scorch); runtime adds more
     floodable: data.floodable,
     floodSeeds: data.floodSeeds,
     floodStep: 0,

@@ -1,5 +1,6 @@
 import * as ROT from "rot-js";
 import type {
+  DecalKind,
   AltarInstance,
   GameMap,
   GeneratorKind,
@@ -29,6 +30,9 @@ export interface LevelData {
   playerStart: Pos;
   floodable?: number[];
   floodSeeds?: number[];
+  /** Scorch/blood stains present the moment the level opens (currently only the
+   * ashen wastes pre-seed themselves). Runtime decals accumulate on top. */
+  decals?: Record<number, DecalKind>;
 }
 
 function itemIdByQuestTag(tag: string): string {
@@ -814,6 +818,37 @@ function placeStructures(
  * time. Everything else reachable is floodable; seeds (the tiles farthest from
  * the player) are the low corners that rise first.
  */
+/**
+ * Pre-seed scorch stains across any burned-ground region, so the ashen wastes read
+ * as *scorched* rather than merely palette-dark. Without this the only difference
+ * between ash and ordinary stone is hue, which the eye stops registering after a few
+ * seconds; actual stains on the floor say "something burned here".
+ *
+ * Deterministic — drawn from the map-gen stream, so it's a pure function of
+ * (seed, level) like every other placement, and the same seed always scorches the
+ * same tiles. Density is per-tile so it scales with however big the region is.
+ *
+ * Only floor-ish tiles get stained: a stain on water reads as a bug, and the decal
+ * layer is clipped to the visible FOV anyway.
+ *
+ * Uses the `ash` decal, NOT `scorch`: scorch is near-black and vanishes against the
+ * ashen floor (distance 56, under the 110 legibility bar). Pale settled soot reads,
+ * and is the truer image for ground that already burned.
+ */
+const ASHEN_SCORCH_CHANCE = 22; // percent of eligible tiles in a burned region
+function scatterRegionDecals(map: GameMap): Record<number, DecalKind> {
+  const out: Record<number, DecalKind> = {};
+  if (!map.region || !map.regionBiome) return out;
+  const STAINABLE: TileType[] = ["floor", "oil", "trap", "trapSprung"];
+  for (let i = 0; i < map.tiles.length; i++) {
+    const rid = map.region[i];
+    if (map.regionBiome[rid] !== "ashen") continue;
+    if (!STAINABLE.includes(map.tiles[i])) continue;
+    if (mapInt(1, 100) <= ASHEN_SCORCH_CHANCE) out[i] = "ash";
+  }
+  return out;
+}
+
 function computeFloodPlan(
   map: GameMap,
   from: Pos,
@@ -1988,5 +2023,6 @@ export function generateLevel(
     playerStart,
     floodable,
     floodSeeds,
+    decals: scatterRegionDecals(map),
   };
 }

@@ -42,6 +42,7 @@ import {
   type EliteMod,
 } from "@/content/monsters";
 import { applyLevelMutators } from "@/content/mutators";
+import { ventState } from "@/game/core/gas";
 import { classDef } from "@/content/classes";
 import { ITEMS } from "@/content/items";
 import { LEVELS } from "@/content/levels";
@@ -1012,21 +1013,37 @@ function tickGas(state: GameState, events: GameEvent[]) {
 
   // (2) vents re-emit — refresh the haze on the vent + a ring (breath = wider)
   const breath = state.turnCount % CONFIG.gas.breathPeriod === 0;
-  const emit = (i: number) => {
+  const emit = (i: number, life: number) => {
     if (!isWalkable(state.map, i % w, Math.floor(i / w))) return;
     const ex = state.gasTiles.find((g) => g.i === i);
-    if (ex) ex.life = Math.max(ex.life, CONFIG.gas.ventLife);
-    else state.gasTiles.push({ i, life: CONFIG.gas.ventLife });
+    if (ex) ex.life = Math.max(ex.life, life);
+    else state.gasTiles.push({ i, life });
   };
-  const ring = breath ? DIRS8 : DIRS;
+  // The CORE (vent + orthogonals) is refreshed every turn — that's the lingering
+  // haze. The diagonal BREATH ring flares only on a breath turn and with a shorter
+  // life, so the pocket visibly swells and settles instead of latching at full
+  // extent. (It used to share `ventLife`, which refreshed the ring exactly as it
+  // expired and froze the cloud permanently — see the note on `gas.breathLife`.)
   for (const v of vents) {
-    emit(v);
+    // Duty cycle + per-vent phase live in `ventState` (core/gas.ts) because the
+    // RENDERER needs the same arithmetic to telegraph the turn before a vent blows.
+    if (ventState(state.turnCount, v) !== "seeping") continue;
     const vx = v % w;
     const vy = Math.floor(v / w);
-    for (const [dx, dy] of ring) {
+    emit(v, CONFIG.gas.ventLife);
+    for (const [dx, dy] of DIRS) {
       const nx = vx + dx;
       const ny = vy + dy;
-      if (inBounds(state.map, nx, ny)) emit(idx(nx, ny, w));
+      if (inBounds(state.map, nx, ny))
+        emit(idx(nx, ny, w), CONFIG.gas.ventLife);
+    }
+    if (!breath) continue;
+    for (const [dx, dy] of DIRS8) {
+      if (dx === 0 || dy === 0) continue; // orthogonals are the core, done above
+      const nx = vx + dx;
+      const ny = vy + dy;
+      if (inBounds(state.map, nx, ny))
+        emit(idx(nx, ny, w), CONFIG.gas.breathLife);
     }
   }
 }

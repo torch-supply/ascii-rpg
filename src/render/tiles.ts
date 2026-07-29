@@ -1,4 +1,4 @@
-import type { Biome, Palette, TileType } from "@/game/core/types";
+import type { Biome, DecalKind, Palette, TileType } from "@/game/core/types";
 import { forageStyle } from "@/content/config";
 
 export const TERRAIN_GLYPH: Record<TileType, string> = {
@@ -59,6 +59,49 @@ export const BRAMBLE_COLOR = "#5f6f37"; // dead thorny green-brown
 // matched to the poison status tint) so the vent + its haze read as a HAZARD,
 // not more foliage.
 export const SPORE_VENT_COLOR = "#a6f03a"; // bubbling toxic vent source
+/** A vent one turn from blowing: it swells (`◉`) and brightens toward white-hot. The
+ * SHAPE carries most of the signal — a colour-only tell is exactly the mistake the
+ * spore haze made once, since a small glyph has little area for colour to work with. */
+/**
+ * How each floor stain is painted. Single source of truth: `drawDecal` renders from
+ * it, `/style` enumerates it, and test `[59]` checks the ash tone is legible against
+ * the burned floor it lands on. Previously these lived inline in the renderer, so the
+ * gallery had to hand-copy them (and could quietly disagree).
+ *
+ * `ash` is pale and low-alpha on purpose — a dusting that LIFTS off dark ground,
+ * where near-black `scorch` cannot read. Its tone matches the ash drifting down in
+ * `BIOME_ATMOSPHERE.ashen` so sky and floor agree.
+ */
+export const DECAL_STYLE: Record<
+  DecalKind,
+  {
+    color: string;
+    alpha: number;
+    reach: number;
+    drops: number;
+    /** extra overlapping pool lobes — an irregular puddle instead of a clean
+     * ellipse. The single squashed gradient reads as a smooth blob on its own; a
+     * couple of offset lobes give it a silhouette that looks settled rather than
+     * stamped. Droplets alone can't do this: they're far smaller than the pool, so
+     * they read as specks beside a blob rather than changing its shape. */
+    lobes: number;
+  }
+> = {
+  blood: { color: "#8f1e1e", alpha: 0.32, reach: 0.42, drops: 2, lobes: 0 },
+  scorch: { color: "#120d08", alpha: 0.5, reach: 0.5, drops: 0, lobes: 0 },
+  // Ash is the faintest of the three by a wide margin: it blankets a whole region
+  // rather than marking one event, so it has to sit under the terrain glyphs instead
+  // of competing with them. Lobed + low-alpha reads as settled soot.
+  //
+  // NOTE the on-screen weight is denser than this number looks: the pool, its lobes
+  // (alpha ×0.8/×0.5) and the droplets (×0.9) are separate gradients that COMPOSITE
+  // where they overlap, so the middle of a stain stacks several passes. Everything
+  // scales off this one value, so nudge it here rather than the multipliers.
+  ash: { color: "#9a9088", alpha: 0.07, reach: 0.46, drops: 2, lobes: 2 },
+};
+
+export const SPORE_VENT_PRIMING_GLYPH = "◉";
+export const SPORE_VENT_PRIMING_COLOR = "#e8ff8c";
 export const GAS_COLOR = "#b6f24a"; // drifting poison haze (overlay)
 /** Chasm cells get a cool background tint (a cold void), so the empty gap reads
  * as a distinct dark patch instead of the pure-black off-map/unseen area — and
@@ -70,8 +113,14 @@ export const DOOR_OPEN_COLOR = "#6e5330"; // open door — dim, out of the way
  * enough to notice on a lit tile, easy to miss in the gloom. */
 export const CRACKED_WALL_TINT = "#d8b878";
 export const CRACKED_WALL_MIX = 0.3;
-/** how much darker than the wall the crack fissure is painted (0 = black) */
-export const CRACKED_WALL_CRACK_DIM = 0.25;
+/** How much darker than the wall the crack fissure is painted (0 = black).
+ *
+ * Low on purpose: the fissure's job is to cut visibly THROUGH the wall glyph, and at
+ * 0.25 it was only a faint shadow — especially on the dim castle walls, and worse
+ * once fog halves everything again. Going thinner on the stroke (which reads better
+ * as fractured stone) costs visibility, so the contrast has to come from depth
+ * instead of width. Guarded by test `[54]`. */
+export const CRACKED_WALL_CRACK_DIM = 0.14;
 
 /** How much to darken remembered-but-not-visible (fog) tiles. */
 export const FOG_DIM = 0.34;

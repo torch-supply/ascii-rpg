@@ -117,13 +117,30 @@ export const CONFIG = {
     ventLife: 3,
     /** every Nth turn the vent "breathes" — the haze swells one ring further */
     breathPeriod: 3,
+    /** Life of the diagonal BREATH ring — deliberately shorter than `ventLife` so the
+     * swell visibly lapses again. When the two were equal (both 3) the ring was
+     * refreshed on precisely the turn it would have expired, so the haze swelled once
+     * on turn 3 and then sat frozen at full extent forever: a "pulsing pocket" that
+     * never pulsed. The glyph alternation is a renderer clock effect, so it still
+     * LOOKED alive, which is what hid it. */
+    breathLife: 1,
+    /** A vent SEEPS for `ventActive` turns out of every `ventPeriod`, then falls
+     * quiet — so the haze clears completely and later returns, rather than sitting
+     * on the map as permanent poison terrain. A standing cloud is something you
+     * route around once and forget; an intermittent one is a timing decision (wait
+     * for it to clear, or push through and take the poison). It stays fair because
+     * the `○` vent tile is always visible, so the threat is telegraphed even while
+     * the air is clear. Each vent runs on its OWN phase (offset by its tile index)
+     * so a level's vents don't pulse in unison, which reads as mechanical. */
+    ventPeriod: 12,
+    ventActive: 4,
     /** how long the poison lasts when you breathe the haze */
     poisonDuration: 4,
   },
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "49",
+  contentVersion: "53",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */

@@ -51,6 +51,15 @@ export function ambientForBiome(biome: Biome): BiomeAmbient {
 }
 
 /**
+ * Every biome, at runtime — DERIVED, so it can't fall out of step with the
+ * `Biome` union. `BIOME_AMBIENT` is a complete `Record<Biome, …>`, so TypeScript
+ * already forces an entry for any biome you add; reading its keys means a new
+ * biome shows up here (and anywhere consuming this, like `/style`) for free.
+ * The alternative — a hand-written list — silently omits whatever you forget.
+ */
+export const BIOMES = Object.keys(BIOME_AMBIENT) as Biome[];
+
+/**
  * The dawn/dusk set-piece ambient shift (pure — no DOM, so it's unit-testable).
  * `g` is the eased 0→1 intensity (boss-HP or approach-distance × a pulse):
  *  • `"dawn"` warms + brightens every channel toward a rekindled sunrise;

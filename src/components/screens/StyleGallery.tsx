@@ -11,21 +11,27 @@
 // — so make the eyeball pass instant and systematic instead of a playthrough.
 // Contrast numbers are shown inline so a weak pairing is obvious, not guessed.
 // ─────────────────────────────────────────────────────────────────────────
-import type { Biome, TileType } from "@/game/core/types";
+import type { TileType } from "@/game/core/types";
 import { LEVELS } from "@/content/levels";
 import { ELITE, MONSTERS } from "@/content/monsters";
 import { CLASS_LIST } from "@/content/classes";
 import { ITEMS } from "@/content/items";
 import { STATUS } from "@/game/core/status";
-import { ambientForBiome } from "@/render/lighting";
+import { ambientForBiome, BIOMES } from "@/render/lighting";
 import {
   BIOME_ATMOSPHERE,
   WEATHER_ATMOSPHERE,
   CHASM_BG,
   colorDistance,
+  luminance,
+  rgbOf,
   dim,
   FOG_DIM,
   GAS_COLOR,
+  DECAL_STYLE,
+  SPORE_VENT_COLOR,
+  SPORE_VENT_PRIMING_GLYPH,
+  SPORE_VENT_PRIMING_COLOR,
   PLAYER_COLOR,
   terrainColor,
   terrainGlyph,
@@ -33,26 +39,26 @@ import {
 } from "@/render/tiles";
 
 const INK = "#0d0d0d";
-// mirrors drawDecal() in CanvasRenderer (kept in sync by eye — decals are
-// painted straight to the overlay canvas, not driven by a shared table)
-const DECALS: [string, string][] = [
-  ["blood", "#8f1e1e"],
-  ["scorch", "#120d08"],
-];
+// DERIVED from the renderer's own decal table, so it can't disagree with what the
+// game paints (it used to be a hand-copied literal).
+const DECALS = Object.entries(DECAL_STYLE);
+
+/** The darkest floor in the game, including sub-biome palettes — the worst case for a
+ * decal's legibility, and the backdrop the decal swatches use. Derived rather than
+ * hard-coded: the ashen wastes are darkest today, but that shouldn't be baked in. */
+const DARKEST_FLOOR = [
+  ...LEVELS.map((l) => l.palette.floor),
+  ...LEVELS.flatMap((l) => (l.subBiomes ?? []).map((sb) => sb.palette?.floor)),
+]
+  .filter((c): c is string => !!c)
+  .reduce((a, b) => (luminance(b) < luminance(a) ? b : a));
+
+/** `#rrggbb` + alpha → rgba(), so a swatch can show a decal at its REAL opacity. */
+function withAlpha(hex: string, alpha: number): string {
+  const [r, g, b] = rgbOf(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 const TILES = Object.keys(TERRAIN_GLYPH) as TileType[];
-const BIOMES: Biome[] = [
-  "dungeon",
-  "forest",
-  "marsh",
-  "mountain",
-  "castle",
-  "crypt",
-  "throne",
-  "cavern",
-  "ashen",
-  "grove",
-  "undercity",
-];
 
 /** A contrast reading, colored by how comfortable it is. */
 function Dist({ a, b }: { a: string; b: string }) {
@@ -99,6 +105,11 @@ export default function StyleGallery() {
         padding: 28,
         fontFamily: "ui-monospace, monospace",
         fontSize: 14,
+        // `layout.tsx` puts Tailwind's `select-none` on <body> so dragging during
+        // play never highlights the HUD. This page is a REFERENCE, though — you want
+        // to copy a hex value or a glyph out of it — so opt selection back in here.
+        userSelect: "text",
+        WebkitUserSelect: "text",
       }}
     >
       <h1 style={{ fontSize: 26, letterSpacing: "0.2em", color: "#ffb347" }}>
@@ -196,37 +207,58 @@ export default function StyleGallery() {
         must still read as “there, but done”. Contrast is vs. dungeon floor.
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-        {(
-          [
-            ["@", PLAYER_COLOR, "you"],
-            ["‡", "#d6a4ff", "altar — unspent"],
-            ["‡", "#6a6a6a", "altar — spent"],
-            ["¶", "#cbb488", "lore — inscription"],
-            ["¶", "#b0a890", "lore — remains"],
-            ["¶", "#6a6a66", "lore — already read"],
-            ["▴", "#ff9d3c", "fire — burning"],
-            ["*", "#ff5a3c", "fire — guttering out"],
-            ["∴", GAS_COLOR, "poison haze"],
-            ["✷", "#ff6a4a", "lich barrage telegraph"],
-          ] as const
-        ).map(([glyph, color, label], i) => (
-          <div
-            key={i}
-            style={{
-              border: "1px solid #1c1c22",
-              padding: "8px 12px",
-              textAlign: "center",
-              minWidth: 116,
-              background: label.includes("barrage")
-                ? "#3d0b09"
-                : LEVELS[0].palette.floor,
-            }}
-          >
-            <div style={{ fontSize: 28, color, lineHeight: 1.2 }}>{glyph}</div>
-            <div style={{ fontSize: 12, color: "#9aa" }}>{label}</div>
-            <Dist a={color} b={LEVELS[0].palette.floor} />
-          </div>
-        ))}
+        {
+          // HAND-MAINTAINED — these are drawn OVER the cell grid by CanvasRenderer
+          // (search `state.altars`, `state.lore`, `state.fireTiles`, `state.gasTiles`,
+          // `state.barrage`), so they aren't `TileType`s and there's no table to
+          // enumerate. Every colour below was checked against those draw calls; if you
+          // retint a POI, change it here too. The 4th slot is the BACKGROUND the glyph
+          // really sits on, which matters for the contrast reading: the barrage is
+          // painted over a dark-red cell, not over floor.
+          (
+            [
+              ["@", PLAYER_COLOR, "you"],
+              ["‡", "#d6a4ff", "altar — unspent"],
+              ["‡", "#6a6a6a", "altar — spent"],
+              ["¶", "#cbb488", "lore — inscription"],
+              ["¶", "#b0a890", "lore — remains"],
+              ["¶", "#6a6a66", "lore — already read"],
+              ["▴", "#ff9d3c", "fire — burning"],
+              ["*", "#ff5a3c", "fire — guttering out"],
+              // fire and gas each ALTERNATE two glyphs frame to frame (the flicker /
+              // drift), so both shapes have to read — not just the one you'd screenshot
+              ["∴", GAS_COLOR, "poison haze"],
+              ["°", GAS_COLOR, "poison haze — alt frame"],
+              ["✷", "#ff6a4a", "lich barrage telegraph", "#7a1512"],
+              // a spore vent's WARNING state: one turn before it seeps it swells and
+              // brightens. Shown here beside the idle vent because the whole point is
+              // that the two are tellable apart at a glance mid-play.
+              [TERRAIN_GLYPH.sporeVent, SPORE_VENT_COLOR, "spore vent — idle"],
+              [
+                SPORE_VENT_PRIMING_GLYPH,
+                SPORE_VENT_PRIMING_COLOR,
+                "spore vent — about to blow",
+              ],
+            ] as const
+          ).map(([glyph, color, label, bg], i) => (
+            <div
+              key={i}
+              style={{
+                border: "1px solid #1c1c22",
+                padding: "8px 12px",
+                textAlign: "center",
+                minWidth: 116,
+                background: bg ?? LEVELS[0].palette.floor,
+              }}
+            >
+              <div style={{ fontSize: 28, color, lineHeight: 1.2 }}>
+                {glyph}
+              </div>
+              <div style={{ fontSize: 12, color: "#9aa" }}>{label}</div>
+              <Dist a={color} b={bg ?? LEVELS[0].palette.floor} />
+            </div>
+          ))
+        }
       </div>
 
       {/* ── fog dimming: does a color survive being REMEMBERED? ───────── */}
@@ -431,18 +463,44 @@ export default function StyleGallery() {
       <h2 style={{ fontSize: 17, color: "#ffb347", marginTop: 34 }}>
         Items · status tints
       </h2>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, fontSize: 16 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
         {Object.values(ITEMS).map((it) => (
-          <span key={it.id} style={{ color: it.color }} title={it.id}>
-            {it.glyph}{" "}
-            <span style={{ color: "#778", fontSize: 11 }}>{it.name}</span>
+          <span
+            key={it.id}
+            title={it.id}
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+          >
+            {/* sized to match the monster rows above — item names were the
+                smallest text on the page at 11px, which defeats the point of a
+                legibility reference */}
+            <span style={{ color: it.color, fontSize: 28 }}>{it.glyph}</span>
+            <span style={{ color: "#9aa", fontSize: 13 }}>{it.name}</span>
           </span>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 16, marginTop: 10 }}>
+      {/* Same shape as the item rows above — this sits under the same heading, so a
+          different glyph size read as an accident. Pairs `hudGlyph` with `hudColor`
+          (the HUD chip as actually drawn); `tint` is the separate map-glyph colour
+          shown in the entity-tint section. They happen to be identical for all four
+          effects today, so this is about the code saying what it means. */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 14,
+          marginTop: 12,
+        }}
+      >
         {Object.values(STATUS).map((s) => (
-          <span key={s.key} style={{ color: s.tint, fontSize: 16 }}>
-            {s.hudGlyph} {s.key}
+          <span
+            key={s.key}
+            title={`hud ${s.hudColor} · map tint ${s.tint}`}
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <span style={{ color: s.hudColor, fontSize: 28 }}>
+              {s.hudGlyph}
+            </span>
+            <span style={{ color: "#9aa", fontSize: 13 }}>{s.key}</span>
           </span>
         ))}
       </div>
@@ -501,12 +559,21 @@ export default function StyleGallery() {
       <h2 style={{ fontSize: 17, color: "#ffb347", marginTop: 34 }}>
         Floor decals (painted on the overlay, over terrain)
       </h2>
-      <div style={{ display: "flex", gap: 16 }}>
-        {DECALS.map(([name, hex]) => (
+      <p style={{ fontSize: 13, color: "#778", maxWidth: 860 }}>
+        Shown at each decal&apos;s REAL alpha, over the darkest floor in the
+        game ({DARKEST_FLOOR}) — the worst case for reading one. The swatch used
+        to draw the bare colour at full opacity on a mid-tone floor, which made
+        the faintest decal look like the boldest: ash is painted at{" "}
+        {DECAL_STYLE.ash.alpha} but appeared solid here. Shape is still
+        approximate (a plain disc); in game the pool is squashed and rotated
+        with lobes and droplets, which a DOM swatch can&apos;t reproduce.
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+        {DECALS.map(([name, v]) => (
           <div
             key={name}
             style={{
-              background: LEVELS[0].palette.floor,
+              background: DARKEST_FLOOR,
               padding: "10px 18px",
               border: "1px solid #1c1c22",
             }}
@@ -516,10 +583,14 @@ export default function StyleGallery() {
                 width: 46,
                 height: 46,
                 borderRadius: "50%",
-                background: `radial-gradient(circle, ${hex} 0%, transparent 70%)`,
+                background: `radial-gradient(circle, ${withAlpha(v.color, v.alpha)} 0%, transparent 70%)`,
               }}
             />
             <div style={{ fontSize: 13, color: "#889" }}>{name}</div>
+            <div style={{ fontSize: 11, color: "#667" }}>
+              α{v.alpha} · lobes {v.lobes} · drops {v.drops}
+            </div>
+            <Dist a={v.color} b={DARKEST_FLOOR} />
           </div>
         ))}
       </div>

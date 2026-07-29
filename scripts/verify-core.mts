@@ -26,6 +26,7 @@ import {
   mitigate,
 } from "@/game/core/combat";
 import { STATUS, applyStatus } from "@/game/core/status";
+import { ventState } from "@/game/core/gas";
 import { applyAltar } from "@/game/core/altar";
 import {
   applyLevelMutators,
@@ -42,6 +43,13 @@ import { CONFIG } from "@/content/config";
 import { gameplaySeed } from "@/lib/hash";
 import {
   colorDistance,
+  DECAL_STYLE,
+  CRACKED_WALL_CRACK_DIM,
+  dim,
+  terrainColor,
+  SPORE_VENT_PRIMING_GLYPH,
+  SPORE_VENT_PRIMING_COLOR,
+  TERRAIN_GLYPH,
   CHASM_BG,
   GAS_COLOR,
   SPORE_VENT_COLOR,
@@ -3404,11 +3412,109 @@ console.log("\n[47] Spore vent: seeps a bounded poison haze");
     return { g, w };
   };
 
+  // A vent SEEPS ON A DUTY CYCLE and each one is phase-offset by its own tile index,
+  // so it may simply be quiet on turn 1. Run up to a full period and assert it seeps
+  // at SOME point — a fixed "haze exists on turn 1" assertion passes or fails on where
+  // the fixture happens to sit, which is a coin flip disguised as a test.
   const { g } = setup();
-  resolveTurn(g, { type: "wait" }, new Rng(1)); // turn 1: the haze wells up
-  check("a vent emits a poison haze", g.gasTiles.length > 0);
-  resolveTurn(g, { type: "wait" }, new Rng(2)); // turn 2: standing in it now bites
+  let firstHaze = -1;
+  for (let t = 0; t < CONFIG.gas.ventPeriod && firstHaze < 0; t++) {
+    resolveTurn(g, { type: "wait" }, new Rng(1 + t));
+    if (g.gasTiles.length > 0) firstHaze = g.turnCount;
+  }
+  check(
+    "a vent seeps a poison haze within one duty cycle",
+    firstHaze > 0,
+    `(first haze on turn ${firstHaze} of ${CONFIG.gas.ventPeriod})`,
+  );
+  resolveTurn(g, { type: "wait" }, new Rng(2)); // standing in it now bites
   check("standing in the haze poisons you", (g.player.effects.poison ?? 0) > 0);
+
+  // The vent TELEGRAPHS: exactly one turn before it seeps it enters `priming` and the
+  // renderer swells/brightens it, so an attentive player can step out of the
+  // footprint. Same contract as the lich barrage marking its tiles a turn early.
+  // `ventState` is shared by `tickGas` and the renderer precisely so the warning
+  // cannot drift out of step with the thing it warns about — which is what this
+  // checks: every priming turn must be followed by an actually-seeping one.
+  {
+    const offenders: number[] = [];
+    for (let t = 0; t < CONFIG.gas.ventPeriod * 6; t++)
+      if (ventState(t, 0) === "priming" && ventState(t + 1, 0) !== "seeping")
+        offenders.push(t);
+    check(
+      "a vent's warning turn is always immediately before it seeps",
+      offenders.length === 0,
+      offenders.length
+        ? `(priming with no seep next: ${offenders.join(",")})`
+        : "",
+    );
+    // there must BE a warning in each cycle, or the telegraph is decorative
+    const cycle = Array.from({ length: CONFIG.gas.ventPeriod }, (_, t) =>
+      ventState(t, 0),
+    );
+    check(
+      "every duty cycle contains exactly one warning turn",
+      cycle.filter((x) => x === "priming").length === 1,
+      `(cycle: ${cycle.map((x) => x[0]).join("")})`,
+    );
+    // and it has to be VISIBLE — a colour-only tell on a small glyph is the mistake
+    // the spore haze already made once, so the shape changes too
+    check(
+      "the warning state is visually distinct from an idle vent",
+      SPORE_VENT_PRIMING_GLYPH !== TERRAIN_GLYPH.sporeVent &&
+        colorDistance(SPORE_VENT_PRIMING_COLOR, SPORE_VENT_COLOR) > 110,
+      `(glyph ${TERRAIN_GLYPH.sporeVent}→${SPORE_VENT_PRIMING_GLYPH}, distance ${colorDistance(SPORE_VENT_PRIMING_COLOR, SPORE_VENT_COLOR).toFixed(0)})`,
+    );
+  }
+
+  // …and it must fall QUIET again: the haze clears completely, then returns. A
+  // permanently-hazy pocket is static terrain you route around once and forget; the
+  // whole point of the cycle is the timing decision (wait for clear air, or push
+  // through and take the poison). Assert both halves over two full periods.
+  {
+    const { g: g2 } = setup();
+    g2.player.x = px + 3; // stand clear so poison ticks don't end the run
+    const seen: number[] = [];
+    for (let t = 0; t < CONFIG.gas.ventPeriod * 2 + CONFIG.gas.ventLife; t++) {
+      resolveTurn(g2, { type: "wait" }, new Rng(60 + t));
+      seen.push(g2.gasTiles.length);
+    }
+    check(
+      "the vent falls quiet — the haze clears completely and later returns",
+      seen.some((n) => n === 0) && seen.some((n) => n > 0),
+      `(extent over ${seen.length} turns: min ${Math.min(...seen)}, max ${Math.max(...seen)})`,
+    );
+    check(
+      "the duty cycle leaves a real window of clear air",
+      seen.filter((n) => n === 0).length >= CONFIG.gas.ventLife,
+      `(${seen.filter((n) => n === 0).length} clear turns of ${seen.length})`,
+    );
+  }
+
+  // The haze must PULSE, not latch. "Bounded" alone is satisfied by a frozen cloud,
+  // which is exactly how a real bug hid here: `breathLife` used to equal `ventLife`,
+  // so the diagonal breath ring was refreshed on precisely the turn it should have
+  // expired — the pocket swelled once and then sat at full extent forever. The glyph
+  // alternation is a renderer clock effect, so it still looked alive on screen.
+  {
+    const extents: number[] = [];
+    for (let t = 0; t < CONFIG.gas.breathPeriod * 3 + 1; t++) {
+      resolveTurn(g, { type: "wait" }, new Rng(30 + t));
+      extents.push(g.gasTiles.length);
+    }
+    const lo = Math.min(...extents);
+    const hi = Math.max(...extents);
+    check(
+      "the haze breathes — it swells and settles rather than latching",
+      hi > lo,
+      `(gas tiles ranged ${lo}..${hi} over ${extents.length} turns)`,
+    );
+    check(
+      "the breath ring is shorter-lived than the core, or it can never lapse",
+      CONFIG.gas.breathLife < CONFIG.gas.ventLife,
+      `(breathLife ${CONFIG.gas.breathLife} vs ventLife ${CONFIG.gas.ventLife})`,
+    );
+  }
 
   // run many turns — the cloud must stay bounded (never engulf the whole room)
   for (let t = 0; t < 20; t++) resolveTurn(g, { type: "wait" }, new Rng(t + 2));
@@ -3883,6 +3989,22 @@ console.log("\n[53] Load-bearing invariants: damage floor, DoT, sneak bonus");
 console.log("\n[54] Color legibility: contrast floors for glyphs on terrain");
 {
   const INK = "#0d0d0d"; // the page/background black
+
+  // A cracked wall is a SHORTCUT you have to spot, so the fissure has to cut visibly
+  // through the wall glyph on every palette. It's drawn as the wall's own colour,
+  // darkened — and the strokes are deliberately hairline, because more fine
+  // splinters read as fractured stone better than fewer heavy ones. That means the
+  // visibility has to come from DEPTH rather than width, so pin the depth: at the old
+  // 0.25 factor this sat ~260 on the dimmest walls and players reported the crack as
+  // too subtle to notice.
+  checkOver(
+    "a crack fissure reads against every level's cracked-wall colour",
+    LEVELS.map((l) => ({ l })),
+    ({ l }) => {
+      const wall = terrainColor("crackedWall", l.palette, l.biome);
+      return colorDistance(dim(wall, CRACKED_WALL_CRACK_DIM), wall) > 280;
+    },
+  );
 
   // (a) Background TINTS are pure color — no glyph to help. The chasm's void
   // tint must not read as the off-map black (it did: distance 39, now 73).
@@ -4910,6 +5032,108 @@ console.log("\n[59] Generation placement rules (mutation-audit closures)");
     share(doorsChokepoint, doorTotal) >= 90,
     `(${share(doorsChokepoint, doorTotal).toFixed(0)}% of ${doorTotal})`,
   );
+
+  // ── pre-seeded scorch in the ashen wastes ──
+  // The burned region used to differ from ordinary stone only in HUE, which the eye
+  // stops registering within seconds. Actual stains on the floor say "something
+  // burned here". Scattered from the map-gen stream, so it's a pure function of
+  // (seed, level) like every other placement.
+  {
+    const STAINABLE = ["floor", "oil", "trap", "trapSprung"];
+    const ashenLevels: number[] = [];
+    for (let li = 0; li < LEVELS.length; li++)
+      if ((LEVELS[li].subBiomes ?? []).some((sb) => sb.biome === "ashen"))
+        ashenLevels.push(li);
+    check("(setup) some level has an ashen region", ashenLevels.length > 0);
+
+    checkOver(
+      "an ashen region opens already scorched",
+      ashenLevels.flatMap((li) =>
+        ["ash1", "ash2", "ash3", "ash4"].map((seed) => ({ li, seed })),
+      ),
+      ({ li, seed }) =>
+        Object.keys(beginLevel(seed, li, createPlayer()).decals).length > 0,
+    );
+
+    // every stain must be scorch, inside the ashen region, on stainable ground — a
+    // stain on water or inside a wall reads as a rendering bug
+    checkOver(
+      "pre-seeded stains are ash, in-region, and on stainable ground",
+      ashenLevels.flatMap((li) =>
+        ["ash1", "ash2", "ash3", "ash4"].map((seed) => ({ li, seed })),
+      ),
+      ({ li, seed }) => {
+        const g = beginLevel(seed, li, createPlayer());
+        const m = g.map;
+        return Object.entries(g.decals).every(([k, kind]) => {
+          const i = Number(k);
+          if (kind !== "ash") return false;
+          if (!m.region || !m.regionBiome) return false;
+          if (m.regionBiome[m.region[i]] !== "ashen") return false;
+          return STAINABLE.includes(m.tiles[i]);
+        });
+      },
+    );
+
+    // deterministic, and it must leave room for the runtime decals stamped by kills
+    // and burnouts rather than starting at the cap
+    {
+      const li = ashenLevels[0];
+      const keys = (seed: string) =>
+        Object.keys(beginLevel(seed, li, createPlayer()).decals)
+          .sort()
+          .join(",");
+      check(
+        "the scorch scatter is deterministic per seed",
+        keys("ash1") === keys("ash1"),
+      );
+      check(
+        "a different seed scorches different tiles",
+        keys("ash1") !== keys("ash2"),
+      );
+      const n = Object.keys(
+        beginLevel("ash1", li, createPlayer()).decals,
+      ).length;
+      check(
+        "pre-seeded stains leave headroom under the decal cap",
+        n > 0 && n < CONFIG.maxDecals / 2,
+        `(${n} of a ${CONFIG.maxDecals} cap)`,
+      );
+    }
+
+    // The stain has to be VISIBLE on the ground it lands on. This is the entire
+    // reason `ash` exists as a kind: `scorch` (#120d08) sits at distance 56 from the
+    // ashen floor (#241f1c) — under the 110 bar `[54]` treats as unreadable — so the
+    // pre-seed was there but invisible in play. Guard the replacement so nobody
+    // "simplifies" it back to scorch.
+    {
+      const li = ashenLevels[0];
+      const g = beginLevel("ash1", li, createPlayer());
+      const rid = (g.map.regionBiome ?? []).findIndex((b) => b === "ashen");
+      const floor =
+        (g.map.regionPalette ?? [])[rid]?.floor ?? LEVELS[li].palette.floor;
+      check(
+        "the ash stain is legible against the burned floor it lands on",
+        colorDistance(DECAL_STYLE.ash.color, floor) > 110,
+        `(ash ${DECAL_STYLE.ash.color} vs floor ${floor}: ${colorDistance(DECAL_STYLE.ash.color, floor).toFixed(0)})`,
+      );
+      check(
+        "…and plain scorch would NOT have been (why `ash` exists)",
+        colorDistance(DECAL_STYLE.scorch.color, floor) < 110,
+        `(scorch vs floor: ${colorDistance(DECAL_STYLE.scorch.color, floor).toFixed(0)})`,
+      );
+    }
+
+    // a level with no burned ground must not be pre-stained
+    checkOver(
+      "levels without an ashen region open clean",
+      LEVELS.map((_, li) => li)
+        .filter((li) => !ashenLevels.includes(li))
+        .map((li) => ({ li })),
+      ({ li }) =>
+        Object.keys(beginLevel("ash1", li, createPlayer()).decals).length === 0,
+    );
+  }
 
   // ── flood plan shape ──
   {

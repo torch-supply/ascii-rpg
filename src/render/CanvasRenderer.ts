@@ -3,6 +3,7 @@ import { LEVELS } from "@/content/levels";
 import { ELITE, MONSTERS } from "@/content/monsters";
 import type { GameEvent } from "@/game/core/events";
 import { idx } from "@/game/core/grid";
+import { ventState } from "@/game/core/gas";
 import { STATUS } from "@/game/core/status";
 import type {
   Biome,
@@ -29,6 +30,9 @@ import {
   CRACKED_WALL_CRACK_DIM,
   dim,
   GAS_COLOR,
+  DECAL_STYLE,
+  SPORE_VENT_PRIMING_GLYPH,
+  SPORE_VENT_PRIMING_COLOR,
   FOG_DIM,
   PLAYER_COLOR,
   PLAYER_GLYPH,
@@ -84,10 +88,7 @@ function drawDecal(
   cw: number,
   ch: number,
 ) {
-  const conf =
-    kind === "blood"
-      ? { color: "#8f1e1e", alpha: 0.32, reach: 0.42, drops: 2 }
-      : { color: "#120d08", alpha: 0.5, reach: 0.5, drops: 0 };
+  const conf = DECAL_STYLE[kind];
   const cx = ox + cw * 0.5 + (frac(seed + 1) - 0.5) * cw * 0.16;
   const cy = oy + ch * 0.5 + (frac(seed + 2) - 0.5) * ch * 0.16;
   const r = cw * conf.reach * (0.85 + 0.3 * frac(seed + 5));
@@ -107,6 +108,30 @@ function drawDecal(
   ctx.fill();
   ctx.restore();
 
+  // extra overlapping lobes: an irregular, settled puddle rather than one clean
+  // ellipse. Each is a smaller offset copy of the main pool, so the silhouette gets
+  // bays and headlands instead of a perfect rim.
+  for (let l = 0; l < conf.lobes; l++) {
+    const a = frac(seed + 40 + l) * Math.PI * 2;
+    const off = r * (0.3 + 0.3 * frac(seed + 50 + l));
+    const lr = r * (0.45 + 0.3 * frac(seed + 60 + l));
+    const lx = cx + Math.cos(a) * off;
+    const ly = cy + Math.sin(a) * off;
+    ctx.save();
+    ctx.translate(lx, ly);
+    ctx.rotate(frac(seed + 70 + l) * Math.PI);
+    ctx.scale(1, 0.55 + 0.35 * frac(seed + 80 + l));
+    const lg = ctx.createRadialGradient(0, 0, 0, 0, 0, lr);
+    lg.addColorStop(0, rgba(conf.color, conf.alpha * 0.8));
+    lg.addColorStop(0.7, rgba(conf.color, conf.alpha * 0.5));
+    lg.addColorStop(1, rgba(conf.color, 0));
+    ctx.fillStyle = lg;
+    ctx.beginPath();
+    ctx.arc(0, 0, lr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // scattered droplets around the pool (blood)
   for (let d = 0; d < conf.drops; d++) {
     const a = frac(seed + 10 + d) * Math.PI * 2;
@@ -124,9 +149,25 @@ function drawDecal(
   }
 }
 
-/** Paint a deterministic jagged fissure (in the already-set strokeStyle)
- * centered on the cell's glyph, at a per-tile angle with 1–2 branches — so it
- * clearly cuts through the wall. `seed` fixes the shape so it never flickers. */
+/**
+ * Paint a deterministic fracture (in the already-set strokeStyle) over a cell.
+ *
+ * Built as a TEMPLATE in unit space — a long main crack through the origin plus a few
+ * branches splintering off it — which is then rotated, scaled and offset as a single
+ * assembly. That's the shape of a real fracture: one running split with subsidiary
+ * ones peeling away from a common point. The origin itself is never drawn; it's just
+ * where the branches meet.
+ *
+ * Everything derives from `seed` (the tile index), so a given wall always cracks the
+ * same way and never flickers between frames.
+ *
+ * Two details that matter for the look:
+ *  • every line is a POLYLINE with small perpendicular jitter, not a straight
+ *    segment — a crack wanders, and straight branch stubs read as drawn-on marks;
+ *  • the transform is applied to the POINTS rather than via `ctx.scale`, because
+ *    scaling the canvas would scale the stroke too and the hairline weight is
+ *    load-bearing (fine splinters read as fractured stone; heavy ones read as ink).
+ */
 function drawFissure(
   ctx: CanvasRenderingContext2D,
   ox: number,
@@ -136,39 +177,78 @@ function drawFissure(
   seed: number,
 ) {
   const rnd = (n: number) => frac(seed * 3.1 + n * 7.7);
-  ctx.lineWidth = Math.max(1.4, cw * 0.14);
-
-  // A main fracture through (near) the glyph's center at a seeded angle,
-  // spanning most of the glyph, with a jagged kink at the middle.
-  const cx = ox + cw * 0.5 + (rnd(1) - 0.5) * cw * 0.14;
-  const cy = oy + ch * 0.5 + (rnd(2) - 0.5) * ch * 0.14;
-  const ang = rnd(3) * Math.PI; // 0–180°, so it reads as a diagonal/vertical split
-  const half = cw * (0.34 + 0.08 * rnd(4));
-  const dx = Math.cos(ang);
-  const dy = Math.sin(ang);
-  const px = -dy;
-  const py = dx;
-  const jag = (rnd(5) - 0.5) * cw * 0.3; // perpendicular offset of the mid kink
-  const ax = cx - dx * half;
-  const ay = cy - dy * half;
-  const bx = cx + dx * half;
-  const by = cy + dy * half;
+  ctx.save();
+  // Clip to this cell. The template is deliberately drawn LARGER than one cell so the
+  // lines run out to the boundary and read as a fracture continuing into the
+  // surrounding stone (as in the reference sketch, where the cracks leave the frame).
+  // Without the clip that overspill lands on neighbouring tiles — measured at up to
+  // 10% of a cell, i.e. stray marks on the floor next door.
   ctx.beginPath();
-  ctx.moveTo(ax, ay);
-  ctx.lineTo(cx + px * jag, cy + py * jag);
-  ctx.lineTo(bx, by);
-  ctx.stroke();
+  ctx.rect(ox, oy, cw, ch);
+  ctx.clip();
+  ctx.lineWidth = Math.max(1.1, cw * 0.11);
+  ctx.lineCap = "round";
 
-  // 1–2 branch cracks splintering off the center
-  const branches = 1 + (rnd(6) > 0.5 ? 1 : 0);
-  for (let k = 0; k < branches; k++) {
-    const ba = ang + (k === 0 ? 1 : -1) * (0.5 + rnd(10 + k) * 0.7);
-    const bl = half * (0.5 + rnd(20 + k) * 0.5);
+  // one seeded transform for the whole assembly: orientation, a little squash, and a
+  // nudge off dead-centre so cracks don't all radiate from the same pixel
+  const ang = rnd(3) * Math.PI; // 0-180°, so it reads as a split not a direction
+  const scx = 0.88 + 0.24 * rnd(4);
+  const scy = 0.88 + 0.24 * rnd(5);
+  const offX = (rnd(1) - 0.5) * 0.16;
+  const offY = (rnd(2) - 0.5) * 0.16;
+  const cosA = Math.cos(ang);
+  const sinA = Math.sin(ang);
+  /** unit space (origin = the crack's meeting point) → canvas pixels */
+  const P = (ux: number, uy: number): [number, number] => {
+    const x = ux * scx + offX;
+    const y = uy * scy + offY;
+    return [
+      ox + cw * (0.5 + (x * cosA - y * sinA)),
+      oy + ch * (0.5 + (x * sinA + y * cosA)),
+    ];
+  };
+  const stroke = (pts: [number, number][]) => {
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(ba) * bl, cy + Math.sin(ba) * bl);
+    const [x0, y0] = P(pts[0][0], pts[0][1]);
+    ctx.moveTo(x0, y0);
+    for (let k = 1; k < pts.length; k++) {
+      const [x, y] = P(pts[k][0], pts[k][1]);
+      ctx.lineTo(x, y);
+    }
     ctx.stroke();
+  };
+
+  // the main split: runs nearly the full cell, wandering as it goes
+  const wob = (n: number) => (rnd(n) - 0.5) * 0.13;
+  stroke([
+    [-0.62, wob(6)],
+    [-0.28, wob(7)],
+    [0.04, wob(8)],
+    [0.33, wob(9)],
+    [0.62, wob(10)],
+  ]);
+
+  // 2-3 branches peeling off the meeting point, each kinked and of its own length
+  const branches = 2 + (rnd(11) > 0.45 ? 1 : 0);
+  for (let k = 0; k < branches; k++) {
+    const side = k % 2 === 0 ? 1 : -1;
+    const ba = side * (0.5 + rnd(20 + k) * 0.8 + k * 0.13); // fan them apart
+    const len = 0.3 + rnd(30 + k) * 0.3;
+    const c = Math.cos(ba);
+    const sn = Math.sin(ba);
+    // walk outward in three steps, drifting a little each time
+    const seg = (f: number, d: number): [number, number] => [
+      c * len * f - sn * d,
+      sn * len * f + c * d,
+    ];
+    stroke([
+      [0, 0],
+      seg(0.45, (rnd(40 + k) - 0.5) * 0.09),
+      seg(0.78, (rnd(50 + k) - 0.5) * 0.1),
+      seg(1, (rnd(60 + k) - 0.5) * 0.07),
+    ]);
   }
+  ctx.restore();
 }
 
 const clamp = (v: number, lo: number, hi: number) =>
@@ -732,6 +812,12 @@ export class CanvasRenderer {
           glyph = "^";
           color = "#e0904a";
         }
+        // a spore vent one turn from blowing swells + brightens, so an attentive
+        // player can step out of the footprint before the haze lands
+        if (t === "sporeVent" && ventState(state.turnCount, i) === "priming") {
+          glyph = SPORE_VENT_PRIMING_GLYPH;
+          color = SPORE_VENT_PRIMING_COLOR;
+        }
         color = isVis ? this.litVis(color, i, effR) : dim(color, FOG_DIM);
         // living terrain: water shimmers, marsh reeds sway (per-tile phase)
         if (isVis && !this.reduceMotion) {
@@ -741,7 +827,13 @@ export class CanvasRenderer {
             color = dim(color, 0.9 + 0.1 * Math.sin(now * 0.0035 + i * 0.6));
         }
         // a chasm is a blank glyph — a faint cool bg tint marks the void so it
-        // reads as a hole, not the pure-black off-map dark (dimmer in memory)
+        // reads as a hole, not the pure-black off-map dark (dimmer in memory).
+        //
+        // Deliberately the ONLY tile with a bg tint. A solid fill is a hard-edged
+        // rectangle on the cell grid, so it reads as a UI highlight rather than as
+        // texture — tried on cracked walls to make them look distressed and it looked
+        // like a selected cell. A chasm gets away with it because a chasm IS a
+        // featureless block of nothing; a wall is supposed to have surface.
         const bg =
           t === "chasm" ? (isVis ? CHASM_BG : dim(CHASM_BG, FOG_DIM)) : null;
         this.display.draw(sx, sy, glyph, color, bg);
