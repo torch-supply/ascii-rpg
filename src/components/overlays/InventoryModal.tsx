@@ -108,6 +108,10 @@ export default function InventoryModal() {
                 <div className="flex flex-col gap-[7px]">
                   {p.bag.map((b, i) => {
                     const def = ITEMS[b.defId];
+                    // The SAME stable slot the bag panel shows — never the row
+                    // index, or the sheet and the panel would disagree about
+                    // which key does what. Items past the 9 hotkeys show "—".
+                    const slot = p.slotMap[b.defId];
                     const kind =
                       def.category === "potion"
                         ? "use"
@@ -120,7 +124,9 @@ export default function InventoryModal() {
                         className="flex items-center justify-between gap-2.5 border border-[#2c2c36] bg-[rgba(18,18,22,0.5)] px-3 py-[7px]"
                       >
                         <span>
-                          <span className="text-magic">[{i + 1}]</span>{" "}
+                          <span className={slot ? "text-magic" : "text-edge"}>
+                            [{slot ?? "—"}]
+                          </span>{" "}
                           <span style={{ color: def.color }}>{def.glyph}</span>{" "}
                           <span className="text-fg">{def.name}</span>
                           {b.count > 1 && (

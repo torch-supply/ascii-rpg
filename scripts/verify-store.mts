@@ -38,6 +38,7 @@ import { MUTATORS } from "@/content/mutators";
 import { SHOP_TIERS, ITEMS, sellPrice } from "@/content/items";
 import { idx } from "@/game/core/grid";
 import { giveItem } from "@/game/core/inventory";
+import { bagEntryForSlot, hotbar } from "@/game/core/hotbar";
 import type { GameState, Pos } from "@/game/core/types";
 
 // the store reads bare `localStorage` inside its functions, so import it only
@@ -963,6 +964,140 @@ console.log("\n[S15] Targeting cursor, ability aim, overlays, sound");
       `(was ${before}, now ${st().soundOn})`,
     );
     st().toggleSound(); // leave it as we found it
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [S16] Bag hotkeys act DURING PLAY, against stable slots
+//
+// Core [62] pins the slot bookkeeping; this pins the thing the player actually
+// does with it. Two paths reach `useBagSlot` — the number key routed through
+// `handleCommand`, and a click on the always-up panel — and both must resolve by
+// SLOT. The number keys were previously inert unless the inventory sheet was
+// open, so "press 3 to throw a bomb" is new behavior and needs its own gate.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\n[S16] Bag hotkeys during play");
+{
+  await bootToPlay("hotbar-seed");
+  const g = st().game!;
+  g.monsters = []; // no monster phase noise while we count turns
+  g.player.bag = [];
+  g.player.slotMap = {};
+  giveItem(g.player, "p_heal");
+  giveItem(g.player, "p_antidote");
+  g.player.hp = g.player.maxHp - 8; // so the heal has somewhere to go
+
+  const healSlot = g.player.slotMap["p_heal"];
+  check(
+    "the starting kit lands on real, keyed slots",
+    healSlot === 1 && g.player.slotMap["p_antidote"] === 2,
+    `(${JSON.stringify(g.player.slotMap)})`,
+  );
+
+  // ── the number key, during play, through the real input routing ──
+  {
+    const hp0 = st().game!.player.hp;
+    const turn0 = st().game!.turnCount;
+    st().handleCommand({ kind: "bagSlot", n: healSlot });
+    await settle();
+    check(
+      "a number key quaffs its potion during play (no inventory screen needed)",
+      st().game!.player.hp > hp0,
+      `(hp ${hp0} → ${st().game!.player.hp})`,
+    );
+    check(
+      "…and it spends the turn",
+      st().game!.turnCount > turn0,
+      `(turn ${turn0} → ${st().game!.turnCount})`,
+    );
+    check(
+      "…and the potion leaves the bag",
+      !st().game!.player.bag.some((b) => b.defId === "p_heal"),
+      `(bag: ${st()
+        .game!.player.bag.map((b) => b.defId)
+        .join(",")})`,
+    );
+    check(
+      "the play mode is unchanged — no screen opened",
+      st().mode === "playing",
+      `(mode ${st().mode})`,
+    );
+  }
+
+  // ── the spent slot is INERT: no turn, no wrong item ──
+  // This is the whole point of stable slots. Under the old index-keyed scheme
+  // the antidote would have slid into slot 1 the instant the heal ran out, so
+  // this press would drink it.
+  {
+    const p0 = st().game!.player;
+    const turn0 = st().game!.turnCount;
+    const antidotes0 = p0.bag.find((b) => b.defId === "p_antidote")?.count ?? 0;
+    st().handleCommand({ kind: "bagSlot", n: healSlot });
+    await settle();
+    check(
+      "pressing a spent slot does NOT reach the item that would have shifted up",
+      (st().game!.player.bag.find((b) => b.defId === "p_antidote")?.count ??
+        0) === antidotes0 && antidotes0 === 1,
+      `(antidotes ${antidotes0} → ${st().game!.player.bag.find((b) => b.defId === "p_antidote")?.count})`,
+    );
+    check(
+      "…and spends no turn",
+      st().game!.turnCount === turn0,
+      `(turn ${turn0} → ${st().game!.turnCount})`,
+    );
+  }
+
+  // ── the panel's rows and the sheet's numbers are the same numbers ──
+  {
+    const p = st().game!.player;
+    const rows = hotbar(p);
+    check(
+      "the panel renders the spent slot as a hole, keeping slot 2 at index 1",
+      rows.length === 2 && rows[0] === null && rows[1]?.defId === "p_antidote",
+      `(${JSON.stringify(rows.map((r) => r?.defId ?? null))})`,
+    );
+    check(
+      "every bag row's sheet number matches the slot the panel would click",
+      // the length guard is the anti-vacuity half: `[].every()` is true, so an
+      // empty bag would report a green check having compared nothing
+      p.bag.length > 0 &&
+        p.bag.every((b) => {
+          const slot = p.slotMap[b.defId];
+          return slot === undefined || bagEntryForSlot(p, slot) === b;
+        }),
+      `(bag ${p.bag.length} rows, ${JSON.stringify(p.slotMap)})`,
+    );
+  }
+
+  // ── a click on the panel goes through the identical path ──
+  {
+    const turn0 = st().game!.turnCount;
+    const slot = st().game!.player.slotMap["p_antidote"];
+    st().useBagSlot(slot); // what BagPanel's onClick calls
+    await settle();
+    check(
+      "clicking a panel row uses that slot's item and spends a turn",
+      !st().game!.player.bag.some((b) => b.defId === "p_antidote") &&
+        st().game!.turnCount > turn0,
+      `(turn ${turn0} → ${st().game!.turnCount})`,
+    );
+  }
+
+  // ── slots survive quit → resume (they are run-long, not session-long) ──
+  {
+    const g2 = st().game!;
+    giveItem(g2.player, "p_bomb");
+    giveItem(g2.player, "p_ward");
+    const before = JSON.stringify(g2.player.slotMap);
+    st().persist();
+    st().init();
+    st().resumeGame();
+    await settle();
+    check(
+      "the hotbar assignment survives a save/resume roundtrip",
+      JSON.stringify(st().game!.player.slotMap) === before,
+      `(${before} → ${JSON.stringify(st().game!.player.slotMap)})`,
+    );
   }
 }
 

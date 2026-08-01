@@ -6,12 +6,13 @@ import { classDef, DEFAULT_CLASS_ID } from "@/content/classes";
 import { generateLevel } from "./map/generate";
 import { computeVisible } from "./map/fov";
 import { applyLevelMutators } from "@/content/mutators";
+import { syncBagSlots } from "./hotbar";
 
 export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
   const cls = classDef(classId);
   const weapon = ITEMS[cls.weaponId];
   const armor = ITEMS[cls.armorId];
-  return {
+  const p: PlayerState = {
     x: 0,
     y: 0,
     maxHp: cls.maxHp,
@@ -25,6 +26,7 @@ export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
     armorReduction: armor.reduction ?? 0,
     coins: 0,
     bag: cls.bag.map((b) => ({ ...b })),
+    slotMap: {},
     kills: 0,
     totalTurns: 0,
     goldEarned: 0,
@@ -37,10 +39,17 @@ export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
     effects: {},
     abilityCooldown: 0,
   };
+  syncBagSlots(p); // the class kit is a literal, so it needs its slots assigned
+  return p;
 }
 
 export function clonePlayer(p: PlayerState): PlayerState {
-  return { ...p, bag: p.bag.map((b) => ({ ...b })), effects: { ...p.effects } };
+  return {
+    ...p,
+    bag: p.bag.map((b) => ({ ...b })),
+    effects: { ...p.effects },
+    slotMap: { ...p.slotMap },
+  };
 }
 
 /** Light radius = base (from level) + torch bonus while a torch is lit. */
@@ -89,6 +98,9 @@ export function beginLevel(
   p.effects = {}; // a fresh start sheds any lingering ward/poison/etc.
   p.baseLightRadius = config.baseLightRadius;
   recomputeLight(p);
+  // Safety net: catches a bag built by any path that bypassed `addToBag` (a
+  // hand-built test fixture, the dev jump, a save written before slots existed).
+  syncBagSlots(p);
 
   const state: GameState = {
     masterSeed,

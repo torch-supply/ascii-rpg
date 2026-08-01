@@ -24,6 +24,7 @@ import {
   EliteBars,
   LevelIntro,
 } from "@/components/hud/Hud";
+import BagPanel from "@/components/hud/BagPanel";
 import Splash from "@/components/screens/Splash";
 import ClassSelect from "@/components/screens/ClassSelect";
 import MutatorSelect from "@/components/screens/MutatorSelect";
@@ -201,25 +202,31 @@ export default function GameRoot() {
       {showCanvas && (
         <div className="flex h-full w-full flex-col overflow-hidden">
           <HudBar />
-          {/* the map fills only this region, so it always fits the viewport */}
-          <div className="relative min-h-0 flex-1 overflow-hidden">
-            <GameCanvas />
-            {mode !== "targeting" && <BossBar />}
-            {mode !== "targeting" && <EliteBars />}
-            <LevelIntro />
-            {mode === "targeting" && (
-              <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
-                <span className="border border-gold/50 bg-panel/90 px-3 py-1 text-xs text-gold">
-                  {targetingKind === "ability"
-                    ? `${abilityName} — press a direction · Esc to cancel`
-                    : targetingKind === "ranged"
-                      ? "Take aim — move cursor · Enter to loose an arrow · Esc to cancel"
-                      : targetingKind === "blink"
-                        ? "Choose where to blink — move cursor · Enter to teleport · Esc to cancel"
-                        : "Aim the firebomb — move cursor · Enter to throw · Esc to cancel"}
-                </span>
-              </div>
-            )}
+          {/* The map fills only this region, so it always fits the viewport.
+              The bag strip is a SIBLING rather than an overlay: it must take
+              real width so the canvas's ResizeObserver narrows the viewport
+              instead of the panel covering live map. */}
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <div className="relative min-h-0 flex-1 overflow-hidden">
+              <GameCanvas />
+              {mode !== "targeting" && <BossBar />}
+              {mode !== "targeting" && <EliteBars />}
+              <LevelIntro />
+              {mode === "targeting" && (
+                <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
+                  <span className="border border-gold/50 bg-panel/90 px-3 py-1 text-xs text-gold">
+                    {targetingKind === "ability"
+                      ? `${abilityName} — press a direction · Esc to cancel`
+                      : targetingKind === "ranged"
+                        ? "Take aim — move cursor · Enter to loose an arrow · Esc to cancel"
+                        : targetingKind === "blink"
+                          ? "Choose where to blink — move cursor · Enter to teleport · Esc to cancel"
+                          : "Aim the firebomb — move cursor · Enter to throw · Esc to cancel"}
+                  </span>
+                </div>
+              )}
+            </div>
+            <BagPanel />
           </div>
           <HudFooter />
         </div>

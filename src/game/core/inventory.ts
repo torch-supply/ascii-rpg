@@ -2,6 +2,7 @@ import type { PlayerState } from "./types";
 import { ITEMS } from "@/content/items";
 import { CONFIG } from "@/content/config";
 import { recomputeLight } from "./state";
+import { syncBagSlots } from "./hotbar";
 
 // Shared inventory/equipment helpers used by both map pickups (actions) and
 // shop purchases (store). One place for "what happens when the player acquires
@@ -44,10 +45,12 @@ export function addToBag(p: PlayerState, defId: string, count = 1) {
     const entry = p.bag.find((b) => b.defId === defId);
     if (entry) {
       entry.count += count;
+      syncBagSlots(p); // no-op unless the entry predates its claim
       return;
     }
   }
   p.bag.push({ defId, count });
+  syncBagSlots(p);
 }
 
 /**

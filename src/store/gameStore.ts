@@ -15,6 +15,7 @@ import { applyAltar } from "@/game/core/altar";
 import { beginLevel, createPlayer, clonePlayer } from "@/game/core/state";
 import { levelParBonus } from "@/game/core/goals";
 import { giveItem } from "@/game/core/inventory";
+import { bagEntryForSlot, syncBagSlots } from "@/game/core/hotbar";
 import { LEVELS } from "@/content/levels";
 import { CONFIG } from "@/content/config";
 import { ITEMS, SHOP_TIERS, sellPrice, type ShopEntry } from "@/content/items";
@@ -609,6 +610,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         { defId: "p_might", count: 1 },
         { defId: "p_detect", count: 2 },
       ];
+      syncBagSlots(player); // a literal bag, so it needs its slots assigned
       player.hasTorch = true;
       player.torchId = "i_lantern";
       player.torchFuel = ITEMS["i_lantern"].fuel ?? 200;
@@ -646,8 +648,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
     useBagSlot: (n: number) => {
       const { game, mode } = get();
       if (!game) return;
-      const entry = game.player.bag[n - 1];
-      if (!entry) return;
+      // By stable slot, NOT by bag index: the bag compacts when a stack empties,
+      // so an index-keyed hotkey silently repoints mid-fight (quaff your last
+      // Healing Potion and `[1]` becomes whatever was `[2]`).
+      const entry = bagEntryForSlot(game.player, n);
+      if (!entry) return; // a spent slot is inert — it costs no turn
       const def = ITEMS[entry.defId];
       if (mode === "inventory") set({ mode: "playing" });
       if (def.category === "potion") {
@@ -840,9 +845,10 @@ export const gameStore = createStore<GameStore>((set, get) => {
         return;
       }
       if (cmd.kind === "bagSlot") {
-        // Bag hotkeys only act with the inventory screen open — prevents
-        // fat-fingering a potion/equip mid-move during play.
-        if (mode === "inventory") get().useBagSlot(cmd.n);
+        // Live during play as well as on the inventory sheet: the always-up bag
+        // panel shows which item each number holds, and slots are stable, so a
+        // number key is a considered press rather than a fat-finger risk.
+        if (mode === "playing" || mode === "inventory") get().useBagSlot(cmd.n);
         else if (mode === "classSelect") {
           const cls = CLASS_LIST[cmd.n - 1];
           if (cls) get().chooseClass(cls.id);

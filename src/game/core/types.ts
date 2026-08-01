@@ -412,6 +412,15 @@ export interface PlayerState {
   armorReduction: number;
   coins: number;
   bag: BagEntry[];
+  /**
+   * Stable hotbar assignment: item id -> slot number (1..HOTBAR_SLOTS). Keyed by
+   * DEF ID rather than stored on the `BagEntry` so a claim outlives the stack —
+   * run out of firebombs, rebuy them at the shop, and they return to the same
+   * key. Bag order is append-and-compact (`removeOneFromBag` splices), so an
+   * index-derived number silently renumbers the moment a stack empties, which
+   * is exactly when you're least likely to be reading the panel. JSON-safe.
+   */
+  slotMap: Record<string, number>;
   // ── run-cumulative stats (carry across levels via clonePlayer) ──
   kills: number;
   totalTurns: number;

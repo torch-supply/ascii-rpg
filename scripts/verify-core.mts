@@ -38,7 +38,19 @@ import { MONSTERS, ELITE } from "@/content/monsters";
 import { ITEMS, SHOP_TIERS, sellPrice } from "@/content/items";
 import { CLASS_LIST } from "@/content/classes";
 import { LORE_POOLS } from "@/content/lore";
-import { giveItem, equipWeapon, equipArmor } from "@/game/core/inventory";
+import {
+  giveItem,
+  equipWeapon,
+  equipArmor,
+  addToBag,
+  removeOneFromBag,
+} from "@/game/core/inventory";
+import {
+  HOTBAR_SLOTS,
+  bagEntryForSlot,
+  hotbar,
+  syncBagSlots,
+} from "@/game/core/hotbar";
 import { CONFIG } from "@/content/config";
 import { gameplaySeed } from "@/lib/hash";
 import {
@@ -5490,6 +5502,241 @@ console.log("\n[61] Camera / viewport math");
       return inX && inY;
     },
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [62] Hotbar slots are STABLE
+//
+// The premise of the always-up bag panel: a number key must mean the same item
+// for the whole run. Bag order is append-and-compact (`removeOneFromBag`
+// splices), so anything derived from the array INDEX silently repoints the
+// moment a stack empties — which is precisely when you're staring at your HP
+// bar and not at the panel. These pin the property, not the plumbing.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\n[62] Hotbar slots are stable");
+{
+  // Absolute anchor for every slot-number assertion below: the dial is sane and
+  // the keys it promises actually exist on a keyboard. Without this, zeroing
+  // HOTBAR_SLOTS would make "no slot was assigned" trivially true everywhere.
+  check(
+    "HOTBAR_SLOTS covers the 1-9 keys keymap.ts binds",
+    HOTBAR_SLOTS === 9,
+    `(got ${HOTBAR_SLOTS})`,
+  );
+
+  // ── allocation is lowest-free, in acquisition order ──
+  {
+    const p = createPlayer("wanderer");
+    p.bag = [];
+    p.slotMap = {};
+    addToBag(p, "p_heal");
+    addToBag(p, "p_bomb");
+    addToBag(p, "p_ward");
+    check(
+      "slots are handed out lowest-free in acquisition order",
+      p.slotMap["p_heal"] === 1 &&
+        p.slotMap["p_bomb"] === 2 &&
+        p.slotMap["p_ward"] === 3,
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+  }
+
+  // ── THE property: a claim outlives its stack ──
+  {
+    const p = createPlayer("wanderer");
+    p.bag = [];
+    p.slotMap = {};
+    addToBag(p, "p_heal");
+    addToBag(p, "p_bomb", 2);
+    addToBag(p, "p_ward");
+    const bombSlot = p.slotMap["p_bomb"];
+    // burn the whole firebomb stack — the entry leaves the bag entirely
+    removeOneFromBag(p, "p_bomb");
+    removeOneFromBag(p, "p_bomb");
+    check(
+      "exhausting a stack removes its bag entry",
+      !p.bag.some((b) => b.defId === "p_bomb"),
+      `(bag: ${p.bag.map((b) => b.defId).join(",")})`,
+    );
+    check(
+      "…but the other items keep the numbers they had",
+      p.slotMap["p_heal"] === 1 && p.slotMap["p_ward"] === 3,
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+    // the regression this whole feature exists to prevent: pressing the spent
+    // key must hit NOTHING, never the item that slid up into its place
+    check(
+      "the spent slot resolves to nothing, not to a neighbour",
+      bagEntryForSlot(p, bombSlot) === undefined,
+      `(slot ${bombSlot} -> ${bagEntryForSlot(p, bombSlot)?.defId})`,
+    );
+    // Rebuy at the shop — it must come back to the SAME key. Slot 1 is emptied
+    // first on purpose: an implementation that released claims on exhaustion
+    // would hand the rebought bombs slot 1 (lowest free), so this distinguishes
+    // stickiness from mere coincidence. Without it the check passes either way.
+    removeOneFromBag(p, "p_heal");
+    addToBag(p, "p_bomb", 3);
+    check(
+      "re-acquiring an item returns it to its original slot, not the lowest free",
+      p.slotMap["p_bomb"] === bombSlot && bombSlot === 2,
+      `(slot ${p.slotMap["p_bomb"]}, was ${bombSlot})`,
+    );
+  }
+
+  // ── a freed number is not poached while its owner is still carried ──
+  {
+    const p = createPlayer("wanderer");
+    p.bag = [];
+    p.slotMap = {};
+    addToBag(p, "p_heal");
+    addToBag(p, "p_bomb");
+    removeOneFromBag(p, "p_heal"); // slot 1 now spent but still claimed
+    addToBag(p, "p_antidote");
+    check(
+      "a new item takes a fresh number rather than a spent-but-claimed one",
+      p.slotMap["p_antidote"] === 3 && p.slotMap["p_heal"] === 1,
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+  }
+
+  // ── eviction: only under pressure, and only from an item you no longer hold ──
+  {
+    const p = createPlayer("wanderer");
+    p.bag = [];
+    p.slotMap = {};
+    // claim every slot, all still carried
+    const ids = [
+      "p_heal",
+      "p_gheal",
+      "p_bomb",
+      "p_ward",
+      "p_might",
+      "p_detect",
+      "p_antidote",
+      "p_blink",
+      "p_ruin",
+    ];
+    for (const id of ids) addToBag(p, id);
+    check(
+      "a full hotbar claims exactly the 9 keyed slots",
+      new Set(Object.values(p.slotMap)).size === 9 &&
+        Math.min(...Object.values(p.slotMap)) === 1 &&
+        Math.max(...Object.values(p.slotMap)) === 9,
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+    // a 10th item, with every slot claimed BY A CARRIED ITEM, gets none
+    addToBag(p, "w_short");
+    check(
+      "overflow past the keys gets no slot (sheet-only) rather than stealing one",
+      p.slotMap["w_short"] === undefined &&
+        ids.every((id) => p.slotMap[id] !== undefined),
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+    // …and it doesn't stay sheet-only forever: the moment a key frees up, the
+    // carried-but-unslotted item claims it rather than waiting for a new pickup.
+    removeOneFromBag(p, "p_might");
+    const freed = p.slotMap["p_might"];
+    syncBagSlots(p);
+    check(
+      "a carried but unslotted item claims the first key that frees up",
+      p.slotMap["w_short"] === freed && p.slotMap["p_might"] === undefined,
+      `(freed ${freed}, ${JSON.stringify(p.slotMap)})`,
+    );
+  }
+
+  // ── eviction: only under pressure, and only from an item you no longer hold ──
+  {
+    const p = createPlayer("wanderer");
+    p.bag = [];
+    p.slotMap = {};
+    const ids = [
+      "p_heal",
+      "p_gheal",
+      "p_bomb",
+      "p_ward",
+      "p_might",
+      "p_detect",
+      "p_antidote",
+      "p_blink",
+      "p_ruin",
+    ];
+    for (const id of ids) addToBag(p, id);
+    removeOneFromBag(p, "p_might"); // its claim is now stale, nothing else wants one
+    const freed = p.slotMap["p_might"];
+    check(
+      "a stale claim survives while nothing needs the key",
+      freed === 5 && p.slotMap["p_might"] === freed,
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+    addToBag(p, "w_axe"); // needs a slot; the only reclaimable one is `freed`
+    check(
+      "under pressure, eviction takes the slot of an item no longer carried",
+      p.slotMap["w_axe"] === freed && p.slotMap["p_might"] === undefined,
+      `(freed ${freed}, ${JSON.stringify(p.slotMap)})`,
+    );
+    check(
+      "…and never one belonging to an item still in the bag",
+      ids
+        .filter((id) => id !== "p_might")
+        .every((id) => p.slotMap[id] !== undefined),
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+  }
+
+  // ── the panel's view: holes are rendered, not compacted away ──
+  {
+    const p = createPlayer("wanderer");
+    p.bag = [];
+    p.slotMap = {};
+    addToBag(p, "p_heal");
+    addToBag(p, "p_bomb");
+    addToBag(p, "p_ward");
+    removeOneFromBag(p, "p_bomb");
+    const rows = hotbar(p);
+    check(
+      "hotbar() keeps a spent slot as a hole so the numbering stays readable",
+      rows.length === 3 &&
+        rows[0]?.defId === "p_heal" &&
+        rows[1] === null &&
+        rows[2]?.defId === "p_ward",
+      `(${JSON.stringify(rows.map((r) => r?.defId ?? null))})`,
+    );
+  }
+
+  // ── the snapshot lesson from [60]: entryPlayer must not alias the hotbar ──
+  {
+    const p = createPlayer("wanderer");
+    const c = clonePlayer(p);
+    c.slotMap["p_bomb"] = 7;
+    check(
+      "clonePlayer copies slotMap rather than aliasing it",
+      p.slotMap["p_bomb"] === undefined,
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+  }
+
+  // ── every class starts with a usable hotbar (the kit is a literal) ──
+  checkOver(
+    "every class's starting kit comes with its slots assigned",
+    CLASS_LIST.map((c) => createPlayer(c.id)),
+    (p) =>
+      p.bag.every((b) => {
+        const n = p.slotMap[b.defId];
+        return n !== undefined && n >= 1 && n <= HOTBAR_SLOTS;
+      }),
+  );
+
+  // ── JSON-safety: slotMap has to survive the save like everything else ──
+  {
+    const p = createPlayer("pyromancer");
+    const round = JSON.parse(JSON.stringify(p.slotMap));
+    check(
+      "slotMap roundtrips through JSON intact",
+      Object.keys(p.slotMap).length > 0 &&
+        JSON.stringify(round) === JSON.stringify(p.slotMap),
+      `(${JSON.stringify(p.slotMap)})`,
+    );
+  }
 }
 
 console.log(
