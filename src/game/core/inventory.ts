@@ -39,17 +39,20 @@ export function equipArmor(p: PlayerState, defId: string) {
   p.armorReduction = def.reduction ?? 0;
 }
 
+/**
+ * Stow `count` copies, merging into the existing stack if there is one.
+ *
+ * EVERY item merges, gear included. A `BagEntry` is `{defId, count}` with no
+ * per-instance state, so two entries of the same id are indistinguishable — the
+ * split carries no information and only surfaces as bugs: three identical
+ * "Leather Armor" rows in the sheet, all three printing the same `[7]` (one
+ * slot claim, keyed by def id, rendered once per duplicate row). The shop's sell
+ * list already summed by def id, so the bag was the odd surface out.
+ */
 export function addToBag(p: PlayerState, defId: string, count = 1) {
-  const def = ITEMS[defId];
-  if (def.stackable) {
-    const entry = p.bag.find((b) => b.defId === defId);
-    if (entry) {
-      entry.count += count;
-      syncBagSlots(p); // no-op unless the entry predates its claim
-      return;
-    }
-  }
-  p.bag.push({ defId, count });
+  const entry = p.bag.find((b) => b.defId === defId);
+  if (entry) entry.count += count;
+  else p.bag.push({ defId, count });
   syncBagSlots(p);
 }
 

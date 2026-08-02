@@ -659,10 +659,10 @@ const MUTATIONS = [
     "      if (true) equipWeapon(p, defId);",
   ],
   [
-    "stackable items no longer stack",
+    "acquiring a duplicate pushes a second entry instead of stacking",
     F.inv,
-    "  if (def.stackable) {",
-    "  if (false) {",
+    "  if (entry) entry.count += count;\n  else p.bag.push({ defId, count });",
+    "  p.bag.push({ defId, count });",
   ],
   [
     "an ammo bundle yields a single arrow",

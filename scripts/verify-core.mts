@@ -36,6 +36,7 @@ import {
 } from "@/content/mutators";
 import { MONSTERS, ELITE } from "@/content/monsters";
 import { ITEMS, SHOP_TIERS, sellPrice } from "@/content/items";
+import type { ShopEntry } from "@/content/items";
 import { CLASS_LIST } from "@/content/classes";
 import { LORE_POOLS } from "@/content/lore";
 import {
@@ -5524,6 +5525,41 @@ console.log("\n[62] Hotbar slots are stable");
     `(got ${HOTBAR_SLOTS})`,
   );
 
+  // ── one entry per item id, gear included ──
+  // A BagEntry is {defId, count} with no per-instance state, so a second entry
+  // for the same id carries no information and only shows up as bugs: duplicate
+  // sheet rows all printing the SAME slot number (one claim, keyed by def id).
+  // Gear is the case that regressed — it used to be excluded from stacking.
+  {
+    const p = createPlayer("wanderer");
+    p.bag = [];
+    p.slotMap = {};
+    giveItem(p, "a_plate"); // better than the starting armor → worn, not bagged
+    giveItem(p, "a_leather");
+    giveItem(p, "a_leather");
+    giveItem(p, "a_leather");
+    const rows = p.bag.filter((b) => b.defId === "a_leather");
+    check(
+      "picking up the same armor three times makes ONE stack of 3",
+      rows.length === 1 && rows[0]?.count === 3,
+      `(${rows.length} row(s): ${JSON.stringify(rows)})`,
+    );
+    check(
+      "…holding exactly one slot, so no two rows can print the same number",
+      new Set(p.bag.map((b) => p.slotMap[b.defId])).size === p.bag.length,
+      `(bag ${p.bag.map((b) => b.defId).join(",")}, ${JSON.stringify(p.slotMap)})`,
+    );
+    // equipping pulls a single copy off the stack rather than the whole pile
+    equipArmor(p, "a_leather");
+    check(
+      "equipping from a stack takes one copy and stows the old armor",
+      (p.bag.find((b) => b.defId === "a_leather")?.count ?? 0) === 2 &&
+        p.armorId === "a_leather" &&
+        p.bag.some((b) => b.defId === "a_plate"),
+      `(${JSON.stringify(p.bag)})`,
+    );
+  }
+
   // ── allocation is lowest-free, in acquisition order ──
   {
     const p = createPlayer("wanderer");
@@ -5737,6 +5773,58 @@ console.log("\n[62] Hotbar slots are stable");
       `(${JSON.stringify(p.slotMap)})`,
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [63] The shop can't be farmed
+//
+// Every sellable thing must be worth LESS at the counter than it cost, or the
+// shop becomes a money printer and the deliberately lean economy — the thing
+// that makes "what can I afford?" a real question — stops meaning anything.
+// This escaped for a long time on arrows: `ItemDef.value` means "arrows per
+// BUNDLE" for ammo, so a purchase was 8g for twelve, while `sellBagItem` paid
+// per single arrow (2g) — buy one bundle, sell it back for 24g, repeat forever
+// (arrows carry no `maxQty`). Nothing caught it because the balance harness
+// never sells, and the per-item prices all look sane in isolation. The bug only
+// exists in the RATIO, so that's what this checks.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\n[63] The shop can't be farmed");
+{
+  // cheapest listing per item across all tiers = the best rate a player can get
+  const cheapest = new Map<string, ShopEntry>();
+  for (const tier of Object.values(SHOP_TIERS))
+    for (const e of tier)
+      if (!cheapest.has(e.itemId) || e.price < cheapest.get(e.itemId)!.price)
+        cheapest.set(e.itemId, e);
+
+  checkOver(
+    "no shop item can be bought and sold back at a profit",
+    [...cheapest.entries()],
+    ([id, entry]) => {
+      const def = ITEMS[id];
+      // ammo arrives as a bundle of `value`; everything else is one per purchase
+      const qty = def.category === "ammo" ? (def.value ?? 1) : 1;
+      return sellPrice(def) * qty < entry.price;
+    },
+    5,
+  );
+
+  // The absolute anchor the ratio check needs: with nothing sellable at all the
+  // rule above is vacuously true, so pin that selling is still a real feature.
+  checkOver(
+    "…while ordinary gear and potions remain sellable for something",
+    Object.values(ITEMS).filter(
+      (d) => d.category === "weapon" || d.category === "potion",
+    ),
+    (d) => sellPrice(d) > 0,
+  );
+
+  // Ammo specifically: bundle-priced, so it must not be sellable per unit.
+  check(
+    "bundle-priced ammo is not sellable one arrow at a time",
+    sellPrice(ITEMS["am_arrow"]) === 0,
+    `(pays ${sellPrice(ITEMS["am_arrow"])}/arrow for a ${ITEMS["am_arrow"].value}-arrow bundle)`,
+  );
 }
 
 console.log(

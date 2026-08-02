@@ -10,7 +10,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "/",
     color: "#b0b0b0",
     category: "weapon",
-    stackable: false,
     power: 3,
   },
   w_short: {
@@ -19,7 +18,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "/",
     color: "#e0e0e0",
     category: "weapon",
-    stackable: false,
     power: 5,
   },
   w_mace: {
@@ -28,7 +26,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "/",
     color: "#c9c9d2",
     category: "weapon",
-    stackable: false,
     power: 6,
     knockback: 1,
   },
@@ -38,7 +35,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "/",
     color: "#f0d0a0",
     category: "weapon",
-    stackable: false,
     power: 8,
   },
   w_frost: {
@@ -47,7 +43,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "/",
     color: "#a9e0ff",
     category: "weapon",
-    stackable: false,
     power: 7,
     onHit: { effect: "chill", chance: 0.5, duration: 3 },
   },
@@ -57,7 +52,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: ")",
     color: "#c9a06a",
     category: "weapon",
-    stackable: false,
     power: 6,
     ranged: { range: 6, ammoId: "am_arrow" },
   },
@@ -67,7 +61,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "/",
     color: "#9fdfff",
     category: "weapon",
-    stackable: false,
     power: 12,
   },
   w_sun: {
@@ -76,7 +69,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "/",
     color: "#ffe14d",
     category: "weapon",
-    stackable: false,
     power: 18,
     questTag: "sunblade",
   },
@@ -88,7 +80,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "[",
     color: "#8a7a5a",
     category: "armor",
-    stackable: false,
     reduction: 0,
   },
   a_leather: {
@@ -97,7 +88,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "[",
     color: "#cd7f32",
     category: "armor",
-    stackable: false,
     reduction: 1,
   },
   a_chain: {
@@ -106,7 +96,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "[",
     color: "#c0c0c8",
     category: "armor",
-    stackable: false,
     reduction: 2,
   },
   a_scale: {
@@ -115,7 +104,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "[",
     color: "#b8c0b0",
     category: "armor",
-    stackable: false,
     reduction: 3,
   },
   a_plate: {
@@ -124,7 +112,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "[",
     color: "#e8e8f0",
     category: "armor",
-    stackable: false,
     reduction: 4,
   },
 
@@ -135,7 +122,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#ff5fa2",
     category: "potion",
-    stackable: true,
     effect: "heal",
     magnitude: 10,
   },
@@ -145,7 +131,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#ff8fd0",
     category: "potion",
-    stackable: true,
     effect: "greaterHeal",
     magnitude: 20,
   },
@@ -155,7 +140,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "¤",
     color: "#ff8c00",
     category: "potion",
-    stackable: true,
     effect: "bomb",
     magnitude: 15,
   },
@@ -165,7 +149,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#ff5a3c",
     category: "potion",
-    stackable: true,
     effect: "blast",
     magnitude: 14,
   },
@@ -175,7 +158,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#7fb0ff",
     category: "potion",
-    stackable: true,
     effect: "ward",
     duration: 12,
   },
@@ -185,7 +167,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#ff9d3c",
     category: "potion",
-    stackable: true,
     effect: "might",
     duration: 12,
   },
@@ -195,7 +176,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#7fdf6a",
     category: "potion",
-    stackable: true,
     effect: "cleanse",
   },
   p_detect: {
@@ -204,7 +184,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#c86bff",
     category: "potion",
-    stackable: true,
     effect: "detect",
   },
   p_levit: {
@@ -213,7 +192,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#a9d8ff",
     category: "potion",
-    stackable: true,
     effect: "levitate",
     duration: 16,
   },
@@ -223,7 +201,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#ff7a3c",
     category: "potion",
-    stackable: true,
     effect: "emberstep",
     duration: 12,
   },
@@ -233,7 +210,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#bfe8ff",
     category: "potion",
-    stackable: true,
     effect: "frostwalk",
     duration: 14,
   },
@@ -243,7 +219,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#7a6cff",
     category: "potion",
-    stackable: true,
     effect: "shadow",
     duration: 14,
   },
@@ -253,7 +228,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "!",
     color: "#c86bff",
     category: "potion",
-    stackable: true,
     effect: "blink",
   },
 
@@ -264,7 +238,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "»",
     color: "#d0c0a0",
     category: "ammo",
-    stackable: true,
     value: 12,
   },
 
@@ -275,7 +248,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "$",
     color: "#ffd700",
     category: "coin",
-    stackable: true,
     value: 10,
   },
 
@@ -286,7 +258,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "(",
     color: "#ff8c00",
     category: "torch",
-    stackable: false,
     lightBonus: 3,
     fuel: 150,
   },
@@ -296,7 +267,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "(",
     color: "#ffd24d",
     category: "torch",
-    stackable: false,
     lightBonus: 4,
     fuel: 280,
   },
@@ -308,7 +278,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "*",
     color: "#7fdfff",
     category: "quest",
-    stackable: true,
     questTag: "moonstone",
   },
   q_sigil: {
@@ -317,7 +286,6 @@ export const ITEMS: Record<string, ItemDef> = {
     glyph: "*",
     color: "#c86bff",
     category: "quest",
-    stackable: true,
     questTag: "sigil",
   },
 };
@@ -329,14 +297,26 @@ export function itemDef(id: string): ItemDef {
 }
 
 // ── Selling ─────────────────────────────────────────────────────────────────
-/** Categories the shop will buy back (equipped gear isn't in the bag, so it's
- * never sellable; quest items and loose coins can't be sold). */
+/**
+ * Categories the shop will buy back (equipped gear isn't in the bag, so it's
+ * never sellable; quest items and loose coins can't be sold).
+ *
+ * **`ammo` is deliberately absent, and can't be re-added as-is.** Ammo is the one
+ * category bought in BUNDLES: `ItemDef.value` means "arrows per bundle" (see
+ * `giveItem`), so a shop entry is 8g for TWELVE arrows — 0.67g each — while
+ * `sellBagItem` pays per single arrow. Selling at any whole-gold price therefore
+ * beats the purchase price, and `sellPrice`'s `Math.max(1, …)` floor means no
+ * `baseValue` is low enough to fix it: even at 1g apiece a bundle sells back for
+ * 12g against 8g paid. That was an unbounded money loop (arrows have no `maxQty`),
+ * which quietly defeats the lean-economy tuning the whole shop rests on. Test
+ * `[63]` pins the general rule. To make ammo sellable, sell the STACK at a bundle
+ * rate — don't just add the category back.
+ */
 export const SELLABLE: ReadonlySet<ItemCategory> = new Set<ItemCategory>([
   "weapon",
   "armor",
   "potion",
   "torch",
-  "ammo",
 ]);
 
 /** A rough gold worth for an item, derived from its category + stats. */

@@ -229,7 +229,6 @@ export interface ItemDef {
   glyph: string;
   color: string;
   category: ItemCategory;
-  stackable: boolean;
   power?: number; // weapon
   /** weapon: tiles a struck monster is shoved back (into hazards = a kill) */
   knockback?: number;
