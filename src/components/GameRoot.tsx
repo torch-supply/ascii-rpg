@@ -24,7 +24,9 @@ import {
   EliteBars,
   LevelIntro,
 } from "@/components/hud/Hud";
-import BagPanel from "@/components/hud/BagPanel";
+import CharacterPanel from "@/components/hud/CharacterPanel";
+import LogRail from "@/components/hud/LogRail";
+import { BG, MARK } from "@/components/hud/palette";
 import Splash from "@/components/screens/Splash";
 import ClassSelect from "@/components/screens/ClassSelect";
 import MutatorSelect from "@/components/screens/MutatorSelect";
@@ -198,16 +200,39 @@ export default function GameRoot() {
   const showCanvas = CANVAS_MODES.has(mode);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-ink">
+    <div
+      className="relative h-full w-full overflow-hidden"
+      style={{ background: BG.shell }}
+    >
       {showCanvas && (
-        <div className="flex h-full w-full flex-col overflow-hidden">
+        // The shell gutter: 8px padding + a 7px gap between four framed panels,
+        // over a background one step darker than the map's #0d0d0d so the panels
+        // read as separate surfaces rather than one continuous field.
+        <div
+          className="flex h-full w-full flex-col overflow-hidden"
+          style={{
+            padding: 8,
+            gap: 7,
+            border: `1px solid ${MARK.shellBorder}`,
+          }}
+        >
           <HudBar />
           {/* The map fills only this region, so it always fits the viewport.
-              The bag strip is a SIBLING rather than an overlay: it must take
-              real width so the canvas's ResizeObserver narrows the viewport
-              instead of the panel covering live map. */}
-          <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className="relative min-h-0 flex-1 overflow-hidden">
+              Both rails are SIBLINGS rather than overlays: they must take real
+              width so the canvas's ResizeObserver narrows the viewport instead
+              of the panels covering live map. */}
+          <div
+            className="flex min-h-0 flex-1 overflow-hidden"
+            style={{ gap: 7 }}
+          >
+            <LogRail />
+            <div
+              className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
+              style={{
+                border: `1px solid ${MARK.mapBorder}`,
+                background: BG.map,
+              }}
+            >
               <GameCanvas />
               {mode !== "targeting" && <BossBar />}
               {mode !== "targeting" && <EliteBars />}
@@ -226,7 +251,7 @@ export default function GameRoot() {
                 </div>
               )}
             </div>
-            <BagPanel />
+            <CharacterPanel />
           </div>
           <HudFooter />
         </div>

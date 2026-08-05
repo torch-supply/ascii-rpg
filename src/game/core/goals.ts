@@ -8,14 +8,18 @@ export function goalConfigFor(state: GameState): GoalConfig {
   return LEVELS[state.currentLevel].goal;
 }
 
-/** Human-readable goal line for the HUD. */
-export function goalLabel(state: GameState): string {
+/**
+ * The objective WITHOUT its progress numbers — for surfaces that render progress
+ * themselves. The HUD row draws pips plus an "N of M" count and, on survive
+ * levels, the HOLD gauge, so a count baked into the label would be the same
+ * number said three times.
+ */
+export function goalTitle(state: GameState): string {
   const goal = goalConfigFor(state);
   switch (goal.type) {
     case "reachLocation":
       return "Find the way out (>)";
     case "collectX": {
-      const have = state.questProgress[goal.questTag] ?? 0;
       const names: Record<string, string> = {
         moonstone: "Moonstone Shards",
         sigil: "Dusk Sigils",
@@ -25,8 +29,7 @@ export function goalLabel(state: GameState): string {
       const def = Object.values(ITEMS).find(
         (d) => d.questTag === goal.questTag,
       );
-      const glyph = def ? ` (${def.glyph})` : "";
-      return `Collect ${name}${glyph} — ${have}/${goal.count}`;
+      return `Collect ${name}${def ? ` (${def.glyph})` : ""}`;
     }
     case "findItem": {
       // Show the item's real map glyph (and name), so the hint matches what the
@@ -43,14 +46,61 @@ export function goalLabel(state: GameState): string {
       const alive = state.monsters.some((m) => m.isGoalTarget);
       return alive ? `Slay ${name}` : `${name} — slain!`;
     }
-    case "killCount": {
-      const have = Math.min(state.levelKills, goal.count);
-      return `Cull the horde — ${have}/${goal.count}`;
-    }
+    case "killCount":
+      return "Cull the horde";
     case "survive": {
       const left = Math.max(0, goal.turns - state.turnCount);
-      return left > 0 ? `Hold out — ${left} turns` : "You held the line!";
+      return left > 0 ? "Hold out" : "You held the line!";
     }
+  }
+}
+
+/**
+ * The objective WITH inline progress — for surfaces that have no progress UI of
+ * their own (the level-intro card). Derived from `goalTitle` + `goalProgress`
+ * rather than written out again, so the three can't drift apart.
+ */
+export function goalLabel(state: GameState): string {
+  const goal = goalConfigFor(state);
+  const title = goalTitle(state);
+  const progress = goalProgress(state);
+  if (progress) return `${title} — ${progress.current}/${progress.total}`;
+  if (goal.type === "survive") {
+    const left = Math.max(0, goal.turns - state.turnCount);
+    if (left > 0) return `${title} — ${left} turns`;
+  }
+  return title;
+}
+
+/**
+ * Countable progress toward the goal, for the HUD's objective pips — or null
+ * when the goal has no meaningful "N of M" (reach the stair, find one item,
+ * slay one target).
+ *
+ * Display-only, and the single source for the count: `goalLabel` builds its
+ * inline "— N/M" from this rather than formatting its own, so the pips and the
+ * text can't disagree.
+ *
+ * `survive` is deliberately excluded — its clock is the HOLD gauge in the
+ * header, and drawing 40 pips for 40 turns would be nonsense.
+ */
+export function goalProgress(
+  state: GameState,
+): { current: number; total: number } | null {
+  const goal = goalConfigFor(state);
+  switch (goal.type) {
+    case "collectX":
+      return {
+        current: Math.min(state.questProgress[goal.questTag] ?? 0, goal.count),
+        total: goal.count,
+      };
+    case "killCount":
+      return {
+        current: Math.min(state.levelKills, goal.count),
+        total: goal.count,
+      };
+    default:
+      return null;
   }
 }
 

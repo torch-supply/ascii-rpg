@@ -234,12 +234,55 @@ body {
   animation: titleShimmer 5s ease-in-out infinite;
 }
 
+/* Scrollable but chromeless — the log rail scrolls back through its history
+   without a scrollbar competing with the ASCII. Needs a class because a
+   pseudo-element can't be set from an inline style. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* HUD chrome — the newest log line rises into place as it arrives. */
+@keyframes logIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.log-in {
+  animation: logIn 320ms ease-out;
+}
+
+/* Torch fuel bar — a slow guttering pulse. Kept in a narrow band (.82–1) rather
+   than the prototype's .30–.55: this drives the BAR itself, not a light halo, so
+   dipping low would read as the gauge dropping out rather than as flicker. */
+@keyframes torchFlicker {
+  0%,
+  100% {
+    opacity: 0.86;
+  }
+  43% {
+    opacity: 1;
+  }
+  71% {
+    opacity: 0.9;
+  }
+}
+.torch-flicker {
+  animation: torchFlicker 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ember-flicker,
   .ascii-shimmer,
   .intro-card,
   .narr-rise,
-  .dawn-rise {
+  .dawn-rise,
+  .log-in,
+  .torch-flicker {
     animation: none;
   }
   .ember-spark,

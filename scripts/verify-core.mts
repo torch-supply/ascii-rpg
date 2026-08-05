@@ -11,7 +11,13 @@ import {
 } from "@/game/core/state";
 import { resolveTurn } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
-import { isGoalComplete, levelParBonus } from "@/game/core/goals";
+import {
+  isGoalComplete,
+  levelParBonus,
+  goalTitle,
+  goalLabel,
+  goalProgress,
+} from "@/game/core/goals";
 import {
   idx,
   isWalkable,
@@ -71,9 +77,12 @@ import {
   GLOWCAP_COLOR,
   PLAYER_COLOR,
   EXIT_COLOR,
+  contrastRatio,
 } from "@/render/tiles";
 import { beatAmbient, ambientForBiome } from "@/render/lighting";
 import { cameraOrigin } from "@/render/CanvasRenderer";
+import { classifyLog } from "@/components/hud/logStyle";
+import { BG, MARK, TEXT } from "@/components/hud/palette";
 import type {
   GameMap,
   GameState,
@@ -5824,6 +5833,292 @@ console.log("\n[63] The shop can't be farmed");
     "bundle-priced ammo is not sellable one arrow at a time",
     sellPrice(ITEMS["am_arrow"]) === 0,
     `(pays ${sellPrice(ITEMS["am_arrow"])}/arrow for a ${ITEMS["am_arrow"].value}-arrow bundle)`,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [64] Log colour-coding
+//
+// The message log is prose, so its colour comes from a keyword heuristic — and a
+// heuristic over prose silently rots the moment someone rewords a message. These
+// lines are taken from the REAL templates in `actions/index.ts` / `status.ts`
+// with the interpolations filled in; if you change the wording there and the
+// colour moves, this is what says so.
+//
+// It exists because the first version keyed on `/for \d+/`, which cannot tell
+// "You strike the Skeleton for 8" from "The Skeleton hits you for 2" — so your
+// own hits were painted as injuries. The rule now is grammatical: harm names YOU
+// as the object.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\n[64] Log colour-coding");
+{
+  const CASES: [string, string][] = [
+    // your own blows — numbers, but you are the subject
+    ["You strike the Skeleton for 8 (4 left).", "attack"],
+    ["Critical! You strike the Goblin for 14 (2 left).", "attack"],
+    ["Sneak attack! You hit the Skeleton for 12 (0 left).", "attack"],
+    ["Out of arrows — you jab the Goblin for 1.", "attack"],
+    ["You batter down the Skeleton with your bow.", "attack"],
+    ["You smash the Goblin clean through a cracked wall!", "attack"],
+    ["You hack at the cracked wall. (2 more)", "attack"],
+    // deaths
+    ["You slay the Skeleton.", "kill"],
+    ["The Goblin succumbs.", "kill"],
+    // harm — you are the object
+    ["The Skeleton hits you for 2.", "harm"],
+    ["The Bog Imp hurls a bolt for 3.", "harm"],
+    ["Dark fire crashes down on you for 12!", "harm"],
+    ["A hidden spike trap! You take 4 damage.", "harm"],
+    ["The volatile creature bursts apart — the blast catches you!", "harm"],
+    ["You choke on a lungful of spores!", "harm"],
+    ["Thorns rake you — you're bleeding.", "harm"],
+    ["The Gargoyle Sentinel hurls you off the edge into the void!", "harm"],
+    ["The Gargoyle Sentinel throws you back.", "harm"],
+    ["The Gargoyle Sentinel looms — the void yawns at your back!", "harm"],
+    ["You are poisoned!", "harm"],
+    ["You catch fire!", "harm"],
+    // …but the SAME status template aimed at a monster is not harm to you
+    ["The Skeleton is poisoned!", "neutral"],
+    // healed / warded
+    ["You drink the Healing Potion. (+10 hp)", "good"],
+    ["You gather wild growth — +1 HP.", "good"],
+    ["A shimmer of warding wraps you. (6 turns)", "good"],
+    // loot
+    ["You pick up 6 gold.", "gain"],
+    ["You pick up a Healing Potion.", "gain"],
+    ["You recover a Sunblade.", "gain"],
+    ["You gather 12 Arrows.", "gain"],
+    // ordinary chatter
+    ["You stow the Chainmail.", "neutral"],
+    ["You shove the door open.", "neutral"],
+    ["The Skeleton drops a Healing Potion.", "neutral"],
+    ["Your torch gutters out. The dark closes back in.", "neutral"],
+    ["The water rises higher.", "neutral"],
+  ];
+
+  checkOver(
+    "every real message line lands in its intended category",
+    CASES,
+    ([line, want]) => classifyLog(line).kind === want,
+    20,
+  );
+
+  // The inversion this section exists to prevent, called out on its own so a
+  // regression names itself rather than hiding in the sweep above.
+  check(
+    "your own hit is NOT coloured as harm",
+    classifyLog("You strike the Skeleton for 8 (4 left).").kind !== "harm",
+    `(got ${classifyLog("You strike the Skeleton for 8 (4 left).").kind})`,
+  );
+  check(
+    "…and is visibly distinct from being hit",
+    classifyLog("You strike the Skeleton for 8 (4 left).").color !==
+      classifyLog("The Skeleton hits you for 2.").color &&
+      classifyLog("You strike the Skeleton for 8 (4 left).").glyph !==
+        classifyLog("The Skeleton hits you for 2.").glyph,
+  );
+
+  // Absolute anchors: without these the rules above could all collapse to one
+  // category and the mapping assertions would still be satisfiable.
+  checkOver(
+    "every category is actually reachable from a real message",
+    ["kill", "harm", "good", "gain", "attack", "neutral"],
+    (kind) => CASES.some(([line]) => classifyLog(line).kind === kind),
+    6,
+  );
+  checkOver(
+    "no two categories share BOTH a colour and a glyph",
+    ["kill", "harm", "good", "gain", "attack", "neutral"].flatMap((a, i, all) =>
+      all.slice(i + 1).map((b) => [a, b] as const),
+    ),
+    ([a, b]) => {
+      const x = CASES.find(([l]) => classifyLog(l).kind === a)![0];
+      const y = CASES.find(([l]) => classifyLog(l).kind === b)![0];
+      const sx = classifyLog(x);
+      const sy = classifyLog(y);
+      return sx.color !== sy.color || sx.glyph !== sy.glyph;
+    },
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [65] Objective text says each number ONCE
+//
+// The HUD row renders progress as pips plus an "N of M" count, so a count baked
+// into the label too is the same figure said three times (that shipped: "Collect
+// Moonstone Shards (*) — 0/3  ◇◇◇  0 of 3"). `goalTitle` is the countless form
+// the HUD uses; `goalLabel` adds the count back for the intro card, which has no
+// pips of its own. The split only helps if it stays split.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\n[65] Objective text says each number once");
+{
+  // Flattened to the STRINGS under test, not the states that produced them —
+  // `checkOver` names the offending item, and a raw GameState in that slot is a
+  // wall of JSON that tells you nothing about which text was wrong.
+  const rows = LEVELS.map((l, i) => {
+    const g = beginLevel("goal-text", i, createPlayer("warrior"));
+    const p = goalProgress(g);
+    return {
+      id: l.id,
+      type: l.goal.type,
+      title: goalTitle(g),
+      label: goalLabel(g),
+      progress: p ? `${p.current}/${p.total}` : null,
+    };
+  });
+
+  checkOver(
+    "the HUD's goal title never carries a progress count",
+    rows,
+    (r) => !/\d+\s*\/\s*\d+/.test(r.title),
+  );
+
+  // …the pips supply it instead, on the goals that have one.
+  const countable = rows.filter((r) => r.progress !== null);
+  check(
+    "at least one real level actually has a countable goal",
+    countable.length > 0,
+    `(${countable.length} of ${rows.length})`,
+  );
+  // The intro card has no pips, so it MUST still state the numbers inline.
+  checkOver(
+    "the intro-card label still spells out countable progress",
+    countable,
+    (r) => r.label.includes(r.progress!),
+  );
+
+  // Survive is the same trap wearing a different hat: row 1's HOLD gauge already
+  // counts the turns down, so the title must not repeat them.
+  const survive = rows.find((r) => r.type === "survive");
+  if (survive) {
+    check(
+      "a survive title defers its countdown to the HOLD gauge",
+      !/\d/.test(survive.title),
+      `(${survive.title})`,
+    );
+    check(
+      "…while the intro card still names the turn count",
+      /\d+ turns/.test(survive.label),
+      `(${survive.label})`,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [66] HUD chrome legibility
+//
+// [54] does this job for the ASCII grid; the HUD had none, and the slate
+// redesign introduced a dozen new greys sitting on near-black panels. The
+// components and this test read the SAME `hud/palette.ts`, so a tweak there is
+// measured rather than merely re-typed.
+//
+// Two tiers on purpose. TEXT has to be readable. STRUCTURE — borders, dotted
+// rules, empty-slot dashes — only has to register as present, so it sits far
+// below the text bar by design and holding it to one would be a false failure.
+//
+// Floors are regression floors calibrated just under the measured value, not
+// absolute standards. Where a real standard exists (WCAG AA at 4.5) it's used as
+// an absolute anchor so a "passing" number can't drift into genuinely unreadable.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\n[66] HUD chrome legibility");
+{
+  // ── text you actually read ──
+  checkOver(
+    "primary + secondary HUD text clears WCAG AA on its own panel",
+    [
+      { what: "fg on panel", fg: TEXT.primary, bg: BG.panel },
+      { what: "fg on header", fg: TEXT.primary, bg: BG.header },
+      { what: "section header", fg: TEXT.secondary, bg: BG.panel },
+      { what: "row-2 labels", fg: TEXT.secondary, bg: BG.header },
+      { what: "footer text", fg: TEXT.footer, bg: BG.footer },
+      { what: "footer key letter", fg: TEXT.key, bg: BG.footer },
+    ],
+    (r) => contrastRatio(r.fg, r.bg) >= 4.5,
+  );
+
+  // The one deliberately-faint caption. It sits BELOW AA (measured 2.72) because
+  // "PRESS 1-9" is a hint, not content — pinned so it can't quietly get fainter.
+  {
+    const r = contrastRatio(TEXT.tertiary, BG.panel);
+    check(
+      "the faintest HUD caption is quiet but not invisible",
+      r >= 2.4 && r < 4.5,
+      `(ratio ${r.toFixed(2)} — under AA by design; if this rises above 4.5 the tier collapsed)`,
+    );
+  }
+
+  // ── the log rail: every category readable, and mutually tellable apart ──
+  const LOG_SAMPLES = [
+    "You slay the Skeleton.",
+    "The Skeleton hits you for 2.",
+    "You drink the Healing Potion. (+10 hp)",
+    "You pick up 6 gold.",
+    "You strike the Skeleton for 8 (4 left).",
+    "You stow the Chainmail.",
+  ];
+  const cats = LOG_SAMPLES.map(classifyLog);
+  checkOver(
+    "every log category clears WCAG AA against the rail",
+    cats,
+    (c) => contrastRatio(c.color, BG.panel) >= 4.5,
+    6,
+  );
+  // Separation rule: a pair is distinguishable if the GLYPHS differ (the glyph
+  // is the signal — the same reasoning [54] uses for traps), or, when they share
+  // one, if the glyph colours are far apart. Only good/gain share a glyph today,
+  // at a measured 329.
+  checkOver(
+    "no two log categories are confusable",
+    cats.flatMap((a, i) => cats.slice(i + 1).map((b) => ({ a, b }))),
+    ({ a, b }) =>
+      a.glyph !== b.glyph || colorDistance(a.glyphColor, b.glyphColor) >= 200,
+    10,
+  );
+
+  // ── gauges: the read is FILLED vs EMPTY, not either against the panel ──
+  check(
+    "a filled vitality block is tellable from an empty one",
+    colorDistance("#3fbf3f", MARK.gaugeEmpty) >= 150 &&
+      colorDistance("#ff5555", MARK.gaugeEmpty) >= 150,
+    `(healthy ${Math.round(colorDistance("#3fbf3f", MARK.gaugeEmpty))}, low ${Math.round(colorDistance("#ff5555", MARK.gaugeEmpty))})`,
+  );
+  checkOver(
+    "a filled objective pip is tellable from an empty one, on every level",
+    LEVELS,
+    (l) => colorDistance(l.palette.accent, MARK.pipEmpty) >= 120,
+  );
+
+  // ── structure: present, not readable ──
+  checkOver(
+    "structural marks register against their panel without competing with text",
+    [
+      { what: "frame border", c: MARK.frame, bg: BG.panel },
+      { what: "corner glyph", c: MARK.corner, bg: BG.panel },
+      { what: "empty item slot", c: MARK.emptySlot, bg: BG.panel },
+      { what: "row separator", c: MARK.separator, bg: BG.panel },
+    ],
+    (r) => {
+      const d = colorDistance(r.c, r.bg);
+      // visible at all, and quieter than the secondary text above it
+      return d >= 45 && d < colorDistance(TEXT.secondary, BG.panel);
+    },
+  );
+
+  // ── region edges ──
+  // The gutter separates the PANELS by fill (measured 30). It does NOT separate
+  // the map that way — gutter vs map plate is ~8, i.e. nothing — so the map's
+  // edge is carried entirely by its border, and that's what's worth pinning.
+  // Asserting the fills instead would have been a threshold tuned to pass.
+  check(
+    "panel plates read as distinct from the gutter behind them",
+    colorDistance(BG.shell, BG.panel) >= 25,
+    `(${Math.round(colorDistance(BG.shell, BG.panel))})`,
+  );
+  check(
+    "the map region's edge is carried by its border, on both sides",
+    colorDistance(MARK.mapBorder, BG.map) >= 60 &&
+      colorDistance(MARK.mapBorder, BG.shell) >= 60,
+    `(vs map ${Math.round(colorDistance(MARK.mapBorder, BG.map))}, vs gutter ${Math.round(colorDistance(MARK.mapBorder, BG.shell))})`,
   );
 }
 

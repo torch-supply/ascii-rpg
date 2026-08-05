@@ -3,24 +3,33 @@
 import { SoundToggle } from "@/components/ui/SoundToggle";
 import { classDef } from "@/content/classes";
 import { mutatorById } from "@/content/mutators";
-import { ITEMS } from "@/content/items";
 import { LEVELS } from "@/content/levels";
 import { ELITE, MONSTERS } from "@/content/monsters";
-import { goalLabel } from "@/game/core/goals";
+import { goalLabel, goalProgress, goalTitle } from "@/game/core/goals";
 import { idx } from "@/game/core/grid";
-import { STATUS, STATUS_KEYS } from "@/game/core/status";
 import { useGameStore } from "@/store/gameStore";
 import { useEffect, useState } from "react";
+import { FramePanel } from "./Frame";
+import { BG, MARK, TEXT } from "./palette";
 
 /**
- * Design 3a — "refined terminal": the existing 3-row header + footer, restyled
- * with clearer hierarchy, segmented glow gauges (HP / turns), and a color-coded
- * message log. All live data (effects, ammo, survive countdown, goal) is
- * preserved verbatim — only the chrome changed.
+ * Design 2a — "Grimoire · slate": persistent chrome as four framed panels.
+ *
+ * The header carries only identity + vitality + place + objective; the loadout,
+ * ability, effects and conditions that used to crowd row 3 now live in the
+ * character panel, and the message log moved to its own rail. What's left here
+ * is two rows, both glanceable without reading.
  */
 
-// Segmented glow gauge (design 3a): a colored fill under a repeating mask that
-// punches it into bars, over a dark inset track.
+/** Most objective pips worth drawing. Collect goals are 3 today, but `killCount`
+ * takes an arbitrary N — a dozen diamonds would be uncountable at a glance AND
+ * push the objective row wide, so past this the count stands alone. */
+const MAX_PIPS = 8;
+
+// Segmented glow gauge: a colored fill under a repeating mask that punches it
+// into bars, over a dark inset track. `label` is optional — sitting beside the
+// objective it already reads as the objective's progress, so a "HOLD" caption
+// next to "Hold out" would just be the word twice.
 function SegGauge({
   label,
   pct,
@@ -30,7 +39,7 @@ function SegGauge({
   labelWidth,
   children,
 }: {
-  label: string;
+  label?: string;
   pct: number;
   fill: string;
   glow: string;
@@ -39,13 +48,15 @@ function SegGauge({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <span
-        className="text-[12px] tracking-[0.18em] text-[#8a8a96]"
-        style={labelWidth ? { width: labelWidth } : undefined}
-      >
-        {label}
-      </span>
+    <div className="flex shrink-0 items-center gap-2.5">
+      {label && (
+        <span
+          className="text-[12px] tracking-[0.18em]"
+          style={{ color: TEXT.secondary, width: labelWidth }}
+        >
+          {label}
+        </span>
+      )}
       <div
         className="relative h-2.5 overflow-hidden rounded-[1px] border"
         style={{ width, borderColor: "#3a3a46", background: "#0b0b0f" }}
@@ -67,7 +78,7 @@ function SegGauge({
   );
 }
 
-/** Top status bar — rendered in normal flow above the canvas region. */
+/** Top status bar — two framed rows above the map region. */
 export function HudBar() {
   const game = useGameStore((s) => s.game);
   if (!game) return null;
@@ -75,197 +86,195 @@ export function HudBar() {
   const p = game.player;
   const cls = classDef(p.classId);
   const level = LEVELS[game.currentLevel];
-  const weapon = ITEMS[p.weaponId];
-  const armor = ITEMS[p.armorId];
-  const powerLabel =
-    p.weaponBonus > 0
-      ? `${p.weaponPower}+${p.weaponBonus}`
-      : `${p.weaponPower}`;
-  const ammo = weapon.ranged
-    ? (p.bag.find((b) => b.defId === weapon.ranged!.ammoId)?.count ?? 0)
-    : null;
   const hpPct = Math.max(0, Math.round((p.hp / p.maxHp) * 100));
+  const low = hpPct <= 40;
   // The turn budget is no longer a threat on normal levels (no countdown /
   // overtime) — it's just a par-for-score target. The only visible turn gauge is
   // the "hold out N turns" countdown on survive levels, where the clock IS the
-  // goal.
+  // goal, so SegGauge survives for exactly that one case.
   const survive = level.goal.type === "survive";
   const surviveMax = survive ? (level.goal as { turns: number }).turns : 1;
   const surviveLeft = survive ? Math.max(0, surviveMax - game.turnCount) : 0;
   const turnPct = Math.max(0, Math.round((surviveLeft / surviveMax) * 100));
 
-  const hpFill =
-    hpPct > 40
-      ? "linear-gradient(90deg,#2f9e44,#4fd257)"
-      : "linear-gradient(90deg,#7d2f2f,#ff5555)";
-  const hpGlow =
-    hpPct > 40 ? "0 0 10px rgba(63,191,63,.55)" : "0 0 10px rgba(255,85,85,.5)";
-  const turnFill = "linear-gradient(90deg,#94823a,#ffd24d)";
-  const turnGlow = "0 0 10px rgba(255,210,77,.45)";
+  // 15-cell block gauge. Never round a live player down to zero blocks — an
+  // empty bar reads as dead, so keep one lit while there's any HP left.
+  const CELLS = 15;
+  const filled =
+    p.hp > 0 ? Math.max(1, Math.round((p.hp / p.maxHp) * CELLS)) : 0;
+  const progress = goalProgress(game);
 
   return (
-    <div
-      className="relative z-10 shrink-0 border-b border-edge px-[22px] py-[11px] text-[15px]"
-      style={{
-        background: "linear-gradient(180deg,#16161c,#101014)",
-        boxShadow: "0 1px 0 rgba(255,180,90,.06) inset",
-      }}
+    <FramePanel
+      corners={["tl", "tr"]}
+      className="z-10 shrink-0 px-[18px] pb-[11px] pt-[13px]"
+      style={{ background: `linear-gradient(180deg,${BG.header},#0f0f13)` }}
     >
-      {/* ember hairline along the very top edge */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-px"
-        style={{
-          background:
-            "linear-gradient(90deg,transparent,rgba(255,180,90,.35),transparent)",
-        }}
-      />
-
-      {/* row 1 — identity + lives + gold */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-baseline gap-3">
-          <span title={`Class: ${cls.name}`} style={{ color: cls.color }}>
-            {cls.glyph} {cls.name}
+      {/* row 1 — identity · vitality · lives · gold */}
+      <div className="flex items-center justify-between gap-[26px]">
+        <div className="flex items-center gap-[14px]">
+          <span
+            className="flex items-baseline gap-2.5"
+            title={`Class: ${cls.name}`}
+          >
+            <span
+              className="text-[22px] leading-none"
+              style={{ color: cls.color }}
+            >
+              {cls.glyph}
+            </span>
+            <span className="text-[17px] tracking-[0.04em] text-fg">
+              {cls.name}
+            </span>
+          </span>
+          <Sep />
+          <span
+            className="text-[11px] tracking-[0.2em]"
+            style={{ color: TEXT.secondary }}
+          >
+            VITALITY
           </span>
           <span
-            className="inline-block h-[13px] w-px translate-y-0.5"
-            style={{ background: "#33333c" }}
-          />
-          <span className="text-dim">
-            <span style={{ color: level.palette.accent }}>◈</span> Level{" "}
-            {game.currentLevel + 1}/{LEVELS.length} —{" "}
-            <span className="font-semibold tracking-[0.02em] text-fg">
-              {level.title}
+            className="text-[16px] leading-none tracking-[1px]"
+            style={{ color: low ? "#ff5555" : "#3fbf3f" }}
+            title={`${p.hp} / ${p.maxHp} HP`}
+          >
+            {"▰".repeat(filled)}
+            <span style={{ color: MARK.gaugeEmpty }}>
+              {"▱".repeat(CELLS - filled)}
             </span>
           </span>
-          {game.mutators?.length > 0 && (
-            <span
-              className="text-magic"
-              title={`Trials: ${game.mutators
-                .map((id) => mutatorById(id)?.name ?? id)
-                .join(", ")}`}
-            >
-              ⚠ {game.mutators.length}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-[18px]">
-          <span className="tracking-[2px] text-hp" title="lives">
+          <span className="text-[15px] text-fg">
+            {p.hp}
+            <span className="text-edge">/{p.maxHp}</span>
+          </span>
+          <Sep />
+          <span
+            className="text-[15px] tracking-[3px] text-danger"
+            title="lives"
+          >
             {"♥".repeat(Math.max(0, p.lives))}
             <span className="text-edge">
               {"♥".repeat(Math.max(0, 3 - p.lives))}
             </span>
           </span>
-          <span className="flex items-baseline gap-1.5 text-gold">
-            <span className="text-[12px]" style={{ color: "#9a7a12" }}>
-              GOLD
-            </span>{" "}
-            {p.coins}
-          </span>
         </div>
+        {/* The disc centres against the text block as a whole, while the number
+            and label keep their own baseline — one flex can't do both, hence the
+            nesting. `leading-none` is what stops the glyph's line box from
+            dragging it off centre. */}
+        <span className="flex shrink-0 items-center gap-2">
+          <span
+            className="text-[15px] leading-none"
+            style={{ color: TEXT.key }}
+          >
+            ⬤
+          </span>
+          <span className="flex items-baseline gap-2">
+            <span className="text-[17px] leading-none text-gold">
+              {p.coins}
+            </span>
+            <span
+              className="text-[10px] leading-none tracking-[0.22em]"
+              style={{ color: TEXT.secondary }}
+            >
+              GOLD
+            </span>
+          </span>
+        </span>
       </div>
 
-      {/* row 2 — segmented gauges */}
-      <div className="mt-[7px] flex items-center justify-between gap-6">
-        <SegGauge
-          label="HP"
-          pct={hpPct}
-          fill={hpFill}
-          glow={hpGlow}
-          width={190}
+      {/* row 2 — place · objective */}
+      <div
+        className="mt-[11px] flex items-center gap-[14px] pt-[10px]"
+        style={{ borderTop: `1px dashed ${MARK.rule}` }}
+      >
+        <span
+          className="shrink-0 text-[11px] tracking-[0.24em]"
+          style={{ color: TEXT.secondary }}
         >
-          <span className={hpPct > 40 ? "text-good" : "text-hp"}>
-            {p.hp}
-            <span className="text-edge">/{p.maxHp}</span>
+          LEVEL {game.currentLevel + 1} / {LEVELS.length}
+        </span>
+        <Sep />
+        <span className="shrink-0 text-[14px] tracking-[0.03em] text-fg">
+          {level.title}
+        </span>
+        <Sep />
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0" style={{ color: TEXT.key }}>
+            ✦
           </span>
-        </SegGauge>
+          {/* TITLE only — the pips and the count beside them carry the numbers,
+              and `goalLabel`'s inline "— 0/3" would be the same figure a third
+              time. The intro card, which has no pips, still uses the label. */}
+          <span className="truncate text-[14px] tracking-[0.03em] text-fg">
+            {goalTitle(game)}
+          </span>
+        </span>
+        {/* Row 2's progress slot: whatever form this goal's progress takes — pips
+            for a collect goal, the countdown gauge for a survive one. Both sit
+            beside the objective they belong to rather than up in row 1. */}
         {survive && (
           <SegGauge
-            label="HOLD"
             pct={turnPct}
-            fill={turnFill}
-            glow={turnGlow}
+            fill="linear-gradient(90deg,#94823a,#ffd24d)"
+            glow="0 0 10px rgba(255,210,77,.45)"
             width={150}
           >
             <span className="text-gold">{surviveLeft}</span>
           </SegGauge>
         )}
-      </div>
-
-      {/* row 3 — equipped loadout + active effects + objective */}
-      <div className="mt-[7px] flex items-center justify-between gap-6 text-dim">
-        <span className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
-          <span>
-            <span className="text-fg">⚔ {weapon.name}</span>
-            <span className="text-dim"> ({powerLabel})</span>
-            {ammo !== null && (
-              <span className={ammo > 0 ? "text-gold" : "text-hp"}>
-                {" "}
-                · » {ammo}
+        {progress && (
+          <>
+            {/* Pips are the at-a-glance read; past a handful they stop being
+                countable at a glance and just eat the row, so a long goal falls
+                back to the numeral alone. */}
+            {progress.total <= MAX_PIPS && (
+              <span className="flex shrink-0 items-center gap-1.5 text-[13px]">
+                {Array.from({ length: progress.total }, (_, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      color:
+                        i < progress.current
+                          ? level.palette.accent
+                          : MARK.pipEmpty,
+                    }}
+                  >
+                    {i < progress.current ? "◆" : "◇"}
+                  </span>
+                ))}
               </span>
             )}
+            <span
+              className="shrink-0 text-[12px]"
+              style={{ color: TEXT.secondary }}
+            >
+              {progress.current} of {progress.total}
+            </span>
+          </>
+        )}
+        {game.mutators?.length > 0 && (
+          <span
+            className="ml-auto shrink-0 text-magic"
+            title={`Trials: ${game.mutators
+              .map((id) => mutatorById(id)?.name ?? id)
+              .join(", ")}`}
+          >
+            ⚠ {game.mutators.length}
           </span>
-          <span>
-            <span className="text-fg">▣ {armor.name}</span>
-            <span className="text-dim"> ({armor.reduction})</span>
-          </span>
-          {cls.ability && (
-            <span title={cls.ability.blurb}>
-              <span className="text-dim">[q]</span> {cls.ability.name}
-              {p.abilityCooldown > 0 ? (
-                <span className="text-edge"> ({p.abilityCooldown})</span>
-              ) : (
-                <span className="text-good"> ✦</span>
-              )}
-            </span>
-          )}
-          {p.hasTorch && p.torchFuel > 0 && (
-            <span className={p.torchFuel <= 20 ? "text-hp" : "text-gold"}>
-              ( {p.torchId ? ITEMS[p.torchId].name : "Torch"} {p.torchFuel}
-            </span>
-          )}
-          {(p.effects.ward ?? 0) > 0 && (
-            <span className="text-magic">⛨ ward {p.effects.ward}</span>
-          )}
-          {(p.effects.might ?? 0) > 0 && (
-            <span style={{ color: "#ff9d3c" }}>⚔ might {p.effects.might}</span>
-          )}
-          {(p.effects.levitate ?? 0) > 0 && (
-            <span style={{ color: "#a9d8ff" }}>
-              ☁ float {p.effects.levitate}
-            </span>
-          )}
-          {(p.effects.emberstep ?? 0) > 0 && (
-            <span style={{ color: "#ff7a3c" }}>
-              ✷ ember {p.effects.emberstep}
-            </span>
-          )}
-          {(p.effects.frostwalk ?? 0) > 0 && (
-            <span style={{ color: "#bfe8ff" }}>
-              ❆ rime {p.effects.frostwalk}
-            </span>
-          )}
-          {(p.effects.shadow ?? 0) > 0 && (
-            <span style={{ color: "#9a8cff" }}>
-              ◐ shadow {p.effects.shadow}
-            </span>
-          )}
-          {STATUS_KEYS.map((k) =>
-            (p.effects[k] ?? 0) > 0 ? (
-              <span key={k} style={{ color: STATUS[k].hudColor }}>
-                {STATUS[k].hudGlyph} {k} {p.effects[k]}
-              </span>
-            ) : null,
-          )}
-        </span>
-        <span
-          className="flex shrink-0 items-center gap-2 whitespace-nowrap"
-          style={{ color: level.palette.accent }}
-        >
-          ✦ {goalLabel(game)}
-        </span>
+        )}
       </div>
-    </div>
+    </FramePanel>
+  );
+}
+
+/** The thin vertical rule between header groups. */
+function Sep() {
+  return (
+    <span aria-hidden className="shrink-0" style={{ color: MARK.frame }}>
+      │
+    </span>
   );
 }
 
@@ -413,87 +422,36 @@ export function LevelIntro() {
   );
 }
 
-// Color-code a log line by intent (design 3a). messageLog is plain strings, so
-// this is a keyword heuristic — if you later give log entries a typed `kind`,
-// switch on that instead. Order matters: kills before damage ("You slay …" vs
-// "… hits you for 3").
-function classifyLog(line: string): {
-  color: string;
-  glyph: string;
-  glyphColor: string;
-} {
-  const s = line.toLowerCase();
-  if (
-    /(pick up|picks up|you find|found|you get|receive|you buy|you gain)/.test(s)
-  )
-    return { color: "#ffd700", glyph: "+", glyphColor: "#ffd700" };
-  if (/(slay|slain|kill|defeat|destroy|dies|is dead|falls)/.test(s))
-    return { color: "#dcdce2", glyph: "×", glyphColor: "#ff7a3c" };
-  if (
-    /(hits? you|for \d+|damage|wounds|strikes you|bleed|burn|poison|takes \d+)/.test(
-      s,
-    )
-  )
-    return { color: "#c78a8a", glyph: "›", glyphColor: "#c0392b" };
-  return { color: "#9ea0ad", glyph: "·", glyphColor: "#4a4a58" };
-}
-
-/** Bottom status bar — color-coded message log (left) + controls (right). */
+/** Bottom status bar — a single 30px key strip. The message log moved out to
+ * `LogRail`, which is what takes this from ~66px to 30px. */
 export function HudFooter() {
   const game = useGameStore((s) => s.game);
   if (!game) return null;
-  const LOG_LINES = 3;
-  const recent = game.messageLog.slice(-LOG_LINES);
-  const log = [
-    ...Array(Math.max(0, LOG_LINES - recent.length)).fill(""),
-    ...recent,
+
+  const keys: [string, string][] = [
+    ["f", "fire"],
+    ["q", "power"],
+    ["c", "close"],
+    ["i", "inv"],
+    ["p", "pause"],
+    ["?", "help"],
   ];
 
   return (
-    <div
-      className="relative z-10 flex shrink-0 items-end justify-between gap-6 border-t border-edge px-[22px] py-[9px] text-[15px]"
-      style={{ background: "linear-gradient(0deg,#131318,#0e0e12)" }}
+    <FramePanel
+      corners={["bl", "br"]}
+      className="z-10 flex h-[30px] shrink-0 items-center justify-between px-[14px] text-[12.5px] tracking-[0.08em]"
+      style={{ background: BG.footer, color: TEXT.footer }}
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        {log.map((line, i) => {
-          if (!line)
-            return (
-              <span key={i} className="truncate" style={{ opacity: 0 }}>
-                &nbsp;
-              </span>
-            );
-          const c = classifyLog(line);
-          return (
-            <span
-              key={i}
-              className="truncate"
-              style={{
-                opacity: 0.45 + (i / (LOG_LINES - 1)) * 0.55,
-                color: c.color,
-              }}
-            >
-              <span style={{ color: c.glyphColor }}>{c.glyph}</span> {line}
-            </span>
-          );
-        })}
-      </div>
-
-      <div className="flex shrink-0 flex-col items-end gap-[3px] leading-tight text-[#7a7a86]">
-        <div className="mb-0.5">
-          <SoundToggle />
-        </div>
-        <span className="whitespace-nowrap">
-          move ↑↓←→ / wasd · bump = attack
-        </span>
-        <span className="whitespace-nowrap">
-          <span className="text-dim">[f]</span>ire ·{" "}
-          <span className="text-dim">[q]</span>power ·{" "}
-          <span className="text-dim">[c]</span>lose ·{" "}
-          <span className="text-dim">[i]</span>nv ·{" "}
-          <span className="text-dim">[p]</span>ause ·{" "}
-          <span className="text-dim">[?]</span>help
-        </span>
-      </div>
-    </div>
+      <span className="truncate">↑↓←→ / wasd move · bump to strike</span>
+      <span className="flex shrink-0 items-center gap-[13px]">
+        {keys.map(([k, label]) => (
+          <span key={k} className="whitespace-nowrap">
+            <span style={{ color: TEXT.key }}>{k}</span> {label}
+          </span>
+        ))}
+        <SoundToggle compact />
+      </span>
+    </FramePanel>
   );
 }

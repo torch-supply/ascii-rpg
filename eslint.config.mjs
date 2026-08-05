@@ -27,5 +27,8 @@ export default defineConfig([
     "build/**",
     "node_modules/**",
     "next-env.d.ts",
+    // Design handoff bundles are static prototypes, not app source — they ship
+    // their own vendored runtime and are never built or imported.
+    "design_handoff_*/**",
   ]),
 ]);
