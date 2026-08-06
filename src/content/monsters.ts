@@ -220,7 +220,24 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 4,
     armorPierce: 2, // its touch slips past armor
-    inflicts: { effect: "bleed", chance: 0.5, duration: 4 },
+    /**
+     * Bleed at 0.25, down from 0.5.
+     *
+     * The wraith stacks three multipliers — high base damage, armour pierce, and
+     * the heaviest DoT in the game (3/turn × 4 = 12, vs poison's and burn's 8) —
+     * and against a chainmail Warrior it was landing 5 + 12 while its own spawn
+     * table (ghoul, skeleton, goblin) landed 1. A 40-seed sweep found the bleed
+     * was doing essentially ALL of that work: deleting it took the Great Hall
+     * from 53% to 93% and the Crypt from 40% to 70%, while shaving base damage
+     * 6→5 bought only +4. At 0.5 the refresh rate meant a wraith fight was simply
+     * a bleeding fight; at 0.25 it's a real risk you can sometimes dodge.
+     *
+     * Left alone deliberately: `dmgPerTurn` (shared with brambles and the bear)
+     * and `armorPierce` — the latter is the wraith's whole identity as the answer
+     * to over-armouring, and note the balance harness CANNOT measure it, since
+     * the bot wears leather (1) and `max(0, 1−2) === max(0, 1−1)`.
+     */
+    inflicts: { effect: "bleed", chance: 0.25, duration: 4 },
     loot: {
       chance: 0.16,
       table: [

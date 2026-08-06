@@ -241,6 +241,22 @@ body {
   display: none;
 }
 
+/* An active condition in the header — a soft alarm pulse. Uses `brightness`
+   rather than a coloured glow so one keyframe serves every status tint (poison
+   green, bleed red, …); a box-shadow would have to bake in a colour. */
+@keyframes statusPulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.32);
+  }
+}
+.status-pulse {
+  animation: statusPulse 1.8s ease-in-out infinite;
+}
+
 /* HUD chrome — the newest log line rises into place as it arrives. */
 @keyframes logIn {
   from {
@@ -282,7 +298,8 @@ body {
   .narr-rise,
   .dawn-rise,
   .log-in,
-  .torch-flicker {
+  .torch-flicker,
+  .status-pulse {
     animation: none;
   }
   .ember-spark,

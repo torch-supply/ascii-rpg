@@ -727,12 +727,18 @@ check(
 const WIN_FLOOR: Record<string, number> = {
   dungeon_depths: 75, // 100 @52 seeds
   blackwood: 75, // 100 @52
-  the_mire: 50, // 83 @52
+  the_mire: 50, // 90 @52
   frostspine_pass: 50, // 71 @52
   iron_gate: 17, // 42 @52 after the Gate Warden went dmg 7 → 6
-  great_hall: 17, // 52 @52
-  sunken_crypt: 25, // 44 @52
-  ramparts: 8, // 31 @52 (survive/siege)
+  // The four wraith levels were re-measured after the wraith's bleed chance went
+  // 0.5 → 0.25. The floors themselves are UNCHANGED — a floor only ever needs
+  // moving when the measured rate falls toward it, and these all rose. Left
+  // conservative on purpose rather than re-seated tight to the new numbers:
+  // re-tightening after every buff is how a floor ends up tracking the bot's
+  // skill instead of guarding the level.
+  great_hall: 17, // 58 @52 (was 52 before the wraith bleed nerf)
+  sunken_crypt: 25, // 56 @52 (was 44)
+  ramparts: 8, // 38 @52 (was 31) (survive/siege)
   antechamber: 17, // 50 @52
   // throne_of_dusk is deliberately absent: every row plays a level in ISOLATION
   // with a fresh STARTING loadout, so the finale is fought with a rusty dagger and

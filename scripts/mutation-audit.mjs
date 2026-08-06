@@ -3,7 +3,8 @@
 // A mutation that SURVIVES every suite is either a coverage hole or an equivalent
 // mutant (judged by hand — see CLAUDE.md for the four known-equivalent ones).
 //
-// Run with: node scripts/mutation-audit.mjs      (~2 min; not part of test:all)
+// Run with: node scripts/mutation-audit.mjs            (~9 min; not part of test:all)
+//          node scripts/mutation-audit.mjs --check    (verify anchors only, seconds)
 //
 // Add a row whenever you add a tuning dial or a formula term. Two lessons this
 // harness taught, both worth remembering when reading a survivor:
@@ -697,10 +698,10 @@ const MUTATIONS = [
     "  const lit = p.hasTorch;",
   ],
   [
-    "clonePlayer shares the bag/effects by reference (aliasing)",
+    "clonePlayer shares the bag/effects/slots by reference (aliasing)",
     F.state,
-    "  return { ...p, bag: p.bag.map((b) => ({ ...b })), effects: { ...p.effects } };",
-    "  return { ...p, bag: p.bag, effects: p.effects };",
+    "    bag: p.bag.map((b) => ({ ...b })),\n    effects: { ...p.effects },\n    slotMap: { ...p.slotMap },",
+    "    bag: p.bag,\n    effects: p.effects,\n    slotMap: p.slotMap,",
   ],
   [
     "beginLevel's entry snapshot aliases the live player",
@@ -811,6 +812,33 @@ const MUTATIONS = [
     "    game.player.parBonus = game.player.parBonus ?? 0;",
   ],
 ];
+
+/**
+ * `--check` — verify every `find` anchor still matches, and exit. Seconds, not
+ * the ~9 minutes a full audit costs.
+ *
+ * Worth having because the failure is invisible until you spend those minutes: a
+ * Prettier reflow or an ordinary edit shifts a literal, the mutation silently
+ * becomes a no-op, and the run reports PATCH-MISSED at the very end. Reformatting
+ * `clonePlayer` to add one field broke an anchor exactly this way. Run it after
+ * touching any audited file.
+ */
+if (process.argv.includes("--check")) {
+  const cache = {};
+  let missed = 0;
+  for (const [label, file, find] of MUTATIONS) {
+    const path = `${ROOT}/${file}`;
+    cache[path] ??= readFileSync(path, "utf8");
+    if (!cache[path].includes(find)) {
+      console.log(`PATCH-MISSED  ${label}  (${file})`);
+      missed++;
+    }
+  }
+  console.log(
+    `\n${MUTATIONS.length} anchors checked · ${missed} would silently no-op`,
+  );
+  process.exit(missed === 0 ? 0 : 1);
+}
 
 const suites = ["test:core", "test:play", "test:store"];
 

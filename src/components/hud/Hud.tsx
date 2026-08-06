@@ -6,6 +6,7 @@ import { mutatorById } from "@/content/mutators";
 import { LEVELS } from "@/content/levels";
 import { ELITE, MONSTERS } from "@/content/monsters";
 import { goalLabel, goalProgress, goalTitle } from "@/game/core/goals";
+import { STATUS, STATUS_KEYS } from "@/game/core/status";
 import { idx } from "@/game/core/grid";
 import { useGameStore } from "@/store/gameStore";
 import { useEffect, useState } from "react";
@@ -15,16 +16,37 @@ import { BG, MARK, TEXT } from "./palette";
 /**
  * Design 2a — "Grimoire · slate": persistent chrome as four framed panels.
  *
- * The header carries only identity + vitality + place + objective; the loadout,
- * ability, effects and conditions that used to crowd row 3 now live in the
- * character panel, and the message log moved to its own rail. What's left here
- * is two rows, both glanceable without reading.
+ * Row 1 is the CHARACTER (identity, vitality, lives, gold — true wherever you
+ * are); row 2 is the CURRENT LEVEL (place, objective, progress) plus live
+ * status. The loadout and bag moved to the character panel and the message log
+ * to its own rail, which is what took this from three crowded rows to two
+ * glanceable ones.
  */
 
 /** Most objective pips worth drawing. Collect goals are 3 today, but `killCount`
  * takes an arbitrary N — a dozen diamonds would be uncountable at a glance AND
  * push the objective row wide, so past this the count stands alone. */
 const MAX_PIPS = 8;
+
+/** The six terrain/combat buffs, with the app's existing glyphs and colours. */
+const BUFFS: { key: string; glyph: string; label: string; color: string }[] = [
+  { key: "ward", glyph: "⛨", label: "ward", color: "#7fdfff" },
+  { key: "might", glyph: "⚔", label: "might", color: "#ff9d3c" },
+  { key: "levitate", glyph: "☁", label: "float", color: "#a9d8ff" },
+  { key: "emberstep", glyph: "✷", label: "ember", color: "#ff7a3c" },
+  { key: "frostwalk", glyph: "❆", label: "rime", color: "#bfe8ff" },
+  { key: "shadow", glyph: "◐", label: "shadow", color: "#9a8cff" },
+];
+
+/**
+ * Above this many active conditions, the chips drop their `−N/turn` detail so
+ * they all still FIT. Deliberately a detail-degrade rather than the "cap and
+ * overflow to +N" the design sketched: a hidden condition is the one thing this
+ * move exists to prevent you from missing, and "+2" tells you there are more
+ * without telling you what — useless precisely when you're deciding whether to
+ * quaff an antidote. Buffs may overflow; conditions never do.
+ */
+const CONDITION_DETAIL_MAX = 2;
 
 // Segmented glow gauge: a colored fill under a repeating mask that punches it
 // into bars, over a dark inset track. `label` is optional — sitting beside the
@@ -103,6 +125,9 @@ export function HudBar() {
   const filled =
     p.hp > 0 ? Math.max(1, Math.round((p.hp / p.maxHp) * CELLS)) : 0;
   const progress = goalProgress(game);
+  const buffs = BUFFS.filter((b) => (p.effects[b.key] ?? 0) > 0);
+  const conditions = STATUS_KEYS.filter((k) => (p.effects[k] ?? 0) > 0);
+  const terse = conditions.length > CONDITION_DETAIL_MAX;
 
   return (
     <FramePanel
@@ -159,17 +184,21 @@ export function HudBar() {
             </span>
           </span>
         </div>
-        {/* The disc centres against the text block as a whole, while the number
-            and label keep their own baseline — one flex can't do both, hence the
-            nesting. `leading-none` is what stops the glyph's line box from
-            dragging it off centre. */}
+        {/* The coin is a CSS circle, not the `⬤` glyph it started as. A glyph's
+            ink sits wherever its font puts it inside the em box, and this text
+            falls back to a different font on every platform — so any alignment
+            tuned against one machine is wrong on the next. A div has no metrics
+            to fight: `items-center` centres two real boxes, everywhere.
+
+            The nesting is still needed because one flex can't do both jobs —
+            the coin centres against the number, while the number and its label
+            keep their own shared baseline. */}
         <span className="flex shrink-0 items-center gap-2">
           <span
-            className="text-[15px] leading-none"
-            style={{ color: TEXT.key }}
-          >
-            ⬤
-          </span>
+            aria-hidden
+            className="shrink-0 rounded-full"
+            style={{ width: 12, height: 12, background: TEXT.key }}
+          />
           <span className="flex items-baseline gap-2">
             <span className="text-[17px] leading-none text-gold">
               {p.coins}
@@ -254,16 +283,58 @@ export function HudBar() {
             </span>
           </>
         )}
-        {game.mutators?.length > 0 && (
-          <span
-            className="ml-auto shrink-0 text-magic"
-            title={`Trials: ${game.mutators
-              .map((id) => mutatorById(id)?.name ?? id)
-              .join(", ")}`}
-          >
-            ⚠ {game.mutators.length}
-          </span>
-        )}
+        {/* Status lives at row 2's right edge — the same spot you already check
+            for HP and gold, and a short saccade from the map. Conditions read as
+            alarm chips (tinted, outlined, softly pulsing); buffs sit beside them
+            as compact glyph+count tokens, since a buff is reassurance and a
+            condition is a decision. */}
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {conditions.map((k) => {
+            const st = STATUS[k];
+            return (
+              <span
+                key={k}
+                className="status-pulse flex items-center gap-1.5 px-2 py-[2px] text-[12px]"
+                style={{
+                  color: st.hudColor,
+                  border: `1px solid ${st.hudColor}66`,
+                  background: `${st.hudColor}14`,
+                }}
+                title={`${k} — ${p.effects[k]} turns, −${st.dmgPerTurn} HP/turn`}
+              >
+                <span>{st.hudGlyph}</span>
+                <span className="capitalize">{k}</span>
+                <span>{p.effects[k]}</span>
+                {!terse && (
+                  <span className="text-[10px]" style={{ opacity: 0.75 }}>
+                    −{st.dmgPerTurn}/turn
+                  </span>
+                )}
+              </span>
+            );
+          })}
+          {buffs.map((b) => (
+            <span
+              key={b.key}
+              className="flex items-center gap-1 px-1.5 py-[2px] text-[12px]"
+              style={{ color: b.color, border: `1px solid ${b.color}40` }}
+              title={`${b.label} — ${p.effects[b.key]} turns`}
+            >
+              <span>{b.glyph}</span>
+              <span>{p.effects[b.key]}</span>
+            </span>
+          ))}
+          {game.mutators?.length > 0 && (
+            <span
+              className="shrink-0 text-magic"
+              title={`Trials: ${game.mutators
+                .map((id) => mutatorById(id)?.name ?? id)
+                .join(", ")}`}
+            >
+              ⚠ {game.mutators.length}
+            </span>
+          )}
+        </span>
       </div>
     </FramePanel>
   );

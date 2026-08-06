@@ -4,16 +4,20 @@ import { CONFIG } from "@/content/config";
 import { classDef } from "@/content/classes";
 import { ITEMS } from "@/content/items";
 import { HOTBAR_SLOTS, hotbar } from "@/game/core/hotbar";
-import { STATUS, STATUS_KEYS } from "@/game/core/status";
 import { gameStore, useGameStore } from "@/store/gameStore";
 import type { PlayerState } from "@/game/core/types";
 import { FramePanel } from "./Frame";
 import { BG, MARK, TEXT } from "./palette";
 
 /**
- * The character panel down the right edge — EQUIPPED · ABILITY · BAG ·
- * EFFECTS · CONDITIONS. Grown out of the old `BagPanel`, and it keeps that
- * panel's central rule:
+ * The character panel down the right edge — EQUIPPED · ABILITY · BAG.
+ *
+ * Effects and conditions used to live here too, and moved to header row 2: the
+ * bottom of a tall rail is the last place the eye goes, and it's the furthest
+ * point from where you're actually looking (the `@`). A condition is the one
+ * status you must not miss, so it belongs where you already check HP.
+ *
+ * It keeps that panel's central rule:
  *
  * the BAG block is a LEGEND, not a control surface. Keys 1-9 are bound
  * globally in `keymap.ts` and act during play; the rows exist so you can see
@@ -32,17 +36,6 @@ export const CHAR_PANEL_WIDTH = 256;
 
 const HEADER = "text-[10px] tracking-[0.26em]";
 const ROW = "flex items-baseline justify-between text-[12px]";
-
-/** The six terrain/combat buffs, in the order the header used to list them.
- * Glyphs and colors are the app's existing ones, unchanged. */
-const BUFFS: { key: string; glyph: string; label: string; color: string }[] = [
-  { key: "ward", glyph: "⛨", label: "ward", color: "#7fdfff" },
-  { key: "might", glyph: "⚔", label: "might", color: "#ff9d3c" },
-  { key: "levitate", glyph: "☁", label: "float", color: "#a9d8ff" },
-  { key: "emberstep", glyph: "✷", label: "ember", color: "#ff7a3c" },
-  { key: "frostwalk", glyph: "❆", label: "rime", color: "#bfe8ff" },
-  { key: "shadow", glyph: "◐", label: "shadow", color: "#9a8cff" },
-];
 
 function Section({
   title,
@@ -84,9 +77,6 @@ export default function CharacterPanel() {
   // that isn't this fixed-height layout.
   const slots = hotbar(p);
   const rows = Array.from({ length: HOTBAR_SLOTS }, (_, i) => slots[i] ?? null);
-
-  const buffs = BUFFS.filter((b) => (p.effects[b.key] ?? 0) > 0);
-  const conditions = STATUS_KEYS.filter((k) => (p.effects[k] ?? 0) > 0);
 
   return (
     <FramePanel
@@ -153,10 +143,8 @@ export default function CharacterPanel() {
       )}
 
       {/* ── BAG ──
-          This block is the one that gives when the window is short: it takes the
-          leftover height and scrolls internally. The panel as a whole must NOT
-          scroll — conditions are the thing you need to see without looking for
-          it, so they stay pinned below rather than sliding off the bottom. */}
+          Takes the leftover height and scrolls internally rather than letting
+          the panel scroll as a whole. */}
       <div className="flex min-h-0 flex-1 flex-col gap-[5px]">
         <div className="flex items-baseline justify-between">
           <span className={HEADER}>├─ BAG</span>
@@ -220,59 +208,6 @@ export default function CharacterPanel() {
           })}
         </div>
       </div>
-
-      {/* ── EFFECTS (buffs) ── */}
-      {buffs.length > 0 && (
-        <Section title="EFFECTS">
-          <div className="flex flex-wrap gap-[5px]">
-            {buffs.map((b) => (
-              <span
-                key={b.key}
-                className="px-1.5 py-0.5 text-[11px]"
-                style={{ color: b.color, border: `1px solid ${b.color}4d` }}
-              >
-                {b.glyph} {b.label} {p.effects[b.key]}
-              </span>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* ── CONDITIONS (debuffs) ── */}
-      {conditions.length > 0 && (
-        <Section title="CONDITIONS" last>
-          <div className="flex flex-col gap-1">
-            {conditions.map((k) => {
-              const st = STATUS[k];
-              return (
-                <div
-                  key={k}
-                  className="flex items-center gap-2 px-2 py-[3px] text-[12px]"
-                  style={{
-                    borderLeft: `2px solid ${st.hudColor}`,
-                    background: `${st.hudColor}12`,
-                  }}
-                >
-                  <span style={{ color: st.hudColor }}>{st.hudGlyph}</span>
-                  <span
-                    className="flex-1 capitalize"
-                    style={{ color: st.hudColor }}
-                  >
-                    {k}
-                  </span>
-                  <span style={{ color: st.hudColor }}>{p.effects[k]}</span>
-                  <span
-                    className="text-[10px]"
-                    style={{ color: TEXT.tertiary }}
-                  >
-                    −{st.dmgPerTurn}/turn
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </Section>
-      )}
     </FramePanel>
   );
 }
