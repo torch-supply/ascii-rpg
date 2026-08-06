@@ -17,12 +17,15 @@ import { ELITE, MONSTERS } from "@/content/monsters";
 import { CLASS_LIST } from "@/content/classes";
 import { ITEMS } from "@/content/items";
 import { STATUS } from "@/game/core/status";
+import { classifyLog } from "@/components/hud/logStyle";
+import { BG, MARK } from "@/components/hud/palette";
 import { ambientForBiome, BIOMES } from "@/render/lighting";
 import {
   BIOME_ATMOSPHERE,
   WEATHER_ATMOSPHERE,
   CHASM_BG,
   colorDistance,
+  contrastRatio,
   luminance,
   rgbOf,
   dim,
@@ -52,6 +55,20 @@ const DARKEST_FLOOR = [
 ]
   .filter((c): c is string => !!c)
   .reduce((a, b) => (luminance(b) < luminance(a) ? b : a));
+
+/** One line per log kind, taken from the real message templates with their
+ * interpolations filled in — the same corpus test [64] asserts against. Keeping
+ * them here rather than inventing prose is the point: the classifier is a
+ * heuristic OVER THIS TEXT, so a sample that isn't real proves nothing. */
+const LOG_SAMPLES = [
+  "You strike the Skeleton for 8 (4 left).",
+  "You slay the Skeleton.",
+  "The Skeleton hits you for 2.",
+  "A hidden spike trap! You take 4 damage.",
+  "You drink the Healing Potion. (+10 hp)",
+  "You pick up 6 gold.",
+  "You stow the Chainmail.",
+];
 
 /** `#rrggbb` + alpha → rgba(), so a swatch can show a decal at its REAL opacity. */
 function withAlpha(hex: string, alpha: number): string {
@@ -593,6 +610,143 @@ export default function StyleGallery() {
             <Dist a={v.color} b={DARKEST_FLOOR} />
           </div>
         ))}
+      </div>
+
+      {/* ── activity log ─────────────────────────────────────────────── */}
+      <h2 style={{ fontSize: 17, color: "#ffb347", marginTop: 34 }}>
+        Activity log · message kinds
+      </h2>
+      <p style={{ fontSize: 13, color: "#778", maxWidth: 780, marginTop: 4 }}>
+        Lines are lifted from the REAL templates in{" "}
+        <code>actions/index.ts</code> and <code>status.ts</code> — the same
+        corpus test <code>[64]</code> asserts against — so this shows what the
+        rail actually paints, not a designer&apos;s idea of it. The left column
+        is the rail at its true width and background; the right names the kind
+        each line resolves to. Harm is keyed on YOU being the grammatical
+        object, which is what keeps &ldquo;You strike&nbsp;…&rdquo; out of the
+        injury colour.
+      </p>
+      <div
+        style={{ display: "flex", gap: 22, flexWrap: "wrap", marginTop: 12 }}
+      >
+        {/* the rail, as drawn */}
+        <div
+          style={{
+            width: 232,
+            padding: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            border: `1px solid ${MARK.frame}`,
+            background: `linear-gradient(180deg,${BG.panel},#0e0e12)`,
+          }}
+        >
+          {LOG_SAMPLES.map((line) => {
+            const c = classifyLog(line);
+            return (
+              <span
+                key={line}
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  color: c.color,
+                  fontSize: 13,
+                  lineHeight: 1.45,
+                }}
+              >
+                <span style={{ color: c.glyphColor, flexShrink: 0 }}>
+                  {c.glyph}
+                </span>
+                <span>{line}</span>
+              </span>
+            );
+          })}
+        </div>
+
+        {/* what each resolves to, with the readings the tests pin */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {LOG_SAMPLES.map((line) => {
+            const c = classifyLog(line);
+            return (
+              <div
+                key={line}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                }}
+              >
+                <span
+                  style={{
+                    width: 60,
+                    color: c.color,
+                    textTransform: "uppercase",
+                    letterSpacing: 1,
+                  }}
+                >
+                  {c.kind}
+                </span>
+                <span style={{ color: c.glyphColor, width: 14 }}>
+                  {c.glyph}
+                </span>
+                <span style={{ color: "#556", width: 62 }}>{c.color}</span>
+                <span style={{ color: "#778" }}>
+                  AA{" "}
+                  <span
+                    style={{
+                      color:
+                        contrastRatio(c.color, BG.panel) >= 4.5
+                          ? "#5aa86a"
+                          : "#ff6a6a",
+                    }}
+                  >
+                    {contrastRatio(c.color, BG.panel).toFixed(2)}
+                  </span>
+                </span>
+                <span style={{ color: "#556" }}>
+                  vs&nbsp;rail <Dist a={c.color} b={BG.panel} />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* status afflictions produce log lines too — and the SAME template aimed
+          at a monster is not harm to you, which is the pair worth seeing side by
+          side rather than trusting a regex about */}
+      <h3 style={{ fontSize: 14, color: "#9aa", marginTop: 18 }}>
+        Status afflictions — you vs. a monster
+      </h3>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          marginTop: 6,
+        }}
+      >
+        {Object.values(STATUS).flatMap((st) =>
+          ["You", "The Skeleton"].map((who) => {
+            const line = st.onApply(who);
+            const c = classifyLog(line);
+            return (
+              <div
+                key={`${st.key}-${who}`}
+                style={{ display: "flex", gap: 8, fontSize: 13 }}
+              >
+                <span style={{ width: 60, color: "#556", fontSize: 11 }}>
+                  {c.kind}
+                </span>
+                <span style={{ color: c.glyphColor, width: 12 }}>
+                  {c.glyph}
+                </span>
+                <span style={{ color: c.color }}>{line}</span>
+              </div>
+            );
+          }),
+        )}
       </div>
 
       {/* ── weather ──────────────────────────────────────────────────── */}

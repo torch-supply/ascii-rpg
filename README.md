@@ -21,7 +21,7 @@ rendered on a canvas. Runs entirely in the browser — no backend, no accounts.
 ```bash
 npm install
 npm run dev        # dev server at http://localhost:3000
-npm run build      # static export to out/
+npm run build      # static export to out/ (set NEXT_PUBLIC_SITE_URL for prod share links)
 
 # tests (no framework — plain tsx scripts under scripts/)
 npm run test:core  # pure-engine checks: content integrity (every id/color referenced actually exists), mechanics in isolation (determinism, goals, combat, connectivity, status/fire/elites/stealth/ranged/altars/doors/…), turn-resolution behavior and generation placement RULES (quest items on open ground, traps only where a bypass exists, forage/lore in nooks, the flood's dry spine), every run modifier still honoring the generator's guarantees, camera/viewport math, and color legibility (an unreadable glyph is a bug, not taste)
