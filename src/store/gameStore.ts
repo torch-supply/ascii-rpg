@@ -101,6 +101,13 @@ export interface GameStore {
   activeAltar: AltarInstance | null;
   /** the lore prop being read (null unless mode === "lore") */
   activeLore: LoreInstance | null;
+  /**
+   * Bumped on every death. PRESENTATION ONLY — the mode transition stays
+   * synchronous (store tests `[S6]`/`[S7]` assert it on the lethal turn, and the
+   * LoopDriver shouldn't grow timing), so this is just a signal the view layer
+   * can watch to hold a freeze-frame before the card appears.
+   */
+  deathFlash: number;
   /** stats captured when a run ends (shown on victory / game-over) */
   runResult: RunResult | null;
   /** global SFX toggle (persisted across sessions) */
@@ -307,6 +314,13 @@ export const gameStore = createStore<GameStore>((set, get) => {
     const game = get().game!;
     armInputSettle(); // the killing keypress mustn't skip the death/game-over card
     playSfx("death");
+    // Overkill leaves HP negative — the core subtracts damage without a floor,
+    // since only the `<= 0` test matters to it. Clamp HERE, at the moment death
+    // is acknowledged: "-3 / 26" is not a state the player should ever read, and
+    // the death freeze-frame now holds that readout on screen for 1.3s. Fixing
+    // it at the source rather than in the HUD, because the header was already
+    // papering over it with `Math.max(0, …)` in two other places.
+    game.player.hp = Math.max(0, game.player.hp);
     game.player.lives -= 1;
     if (game.player.lives <= 0) {
       clearSave();
@@ -316,12 +330,14 @@ export const gameStore = createStore<GameStore>((set, get) => {
         hasSave: false,
         saveInfo: null,
         runResult: makeRunResult(game, false),
+        deathFlash: get().deathFlash + 1,
       });
       return;
     }
     set({
       game: { ...game },
       mode: "narration",
+      deathFlash: get().deathFlash + 1,
       narration: {
         title: "You Fall",
         body: `Darkness swallows you.\n\nBut the quest is not yet ended. You draw breath, and rise once more.\n\nLives remaining: ${game.player.lives}`,
@@ -345,6 +361,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     activeAltar: null,
     activeLore: null,
     runResult: null,
+    deathFlash: 0,
     soundOn: true,
     pendingClassId: "warrior",
     selectedMutators: [],

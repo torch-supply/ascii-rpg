@@ -9,6 +9,7 @@ import { Prose } from "@/components/ui/Prose";
 import { RunStats } from "@/components/ui/RunStats";
 import { AsciiField } from "@/components/ui/AsciiField";
 import { BoxFrame } from "@/components/ui/BoxFrame";
+import { causeOfDeath, classifyLog } from "@/components/hud/logStyle";
 
 export default function GameOver() {
   const game = useGameStore((s) => s.game);
@@ -54,11 +55,15 @@ export default function GameOver() {
         </div>
 
         {game && (
-          <div className="narr-rise" style={{ animationDelay: "320ms" }}>
+          <div
+            className="narr-rise flex flex-col items-center gap-2"
+            style={{ animationDelay: "320ms" }}
+          >
             <p className="text-balance text-xs text-dim">
               You fell in Level {game.currentLevel + 1}:{" "}
               {LEVELS[game.currentLevel].title}.
             </p>
+            <LastWords log={game.messageLog} />
           </div>
         )}
 
@@ -78,5 +83,28 @@ export default function GameOver() {
         </div>
       </BoxFrame>
     </div>
+  );
+}
+
+/**
+ * The final beat of the run, in the game's own words.
+ *
+ * The log already knows which lines are harm (`classifyLog`), so the killing
+ * blow costs nothing to find — no new state, no death bookkeeping. Shown
+ * verbatim and in the rail's own harm colour, so it reads as the last line of
+ * the run rather than as a stat.
+ */
+function LastWords({ log }: { log: readonly string[] }) {
+  const line = causeOfDeath(log);
+  if (!line) return null; // a fall, or a death whose turn logged nothing
+  const c = classifyLog(line);
+  return (
+    <p
+      className="flex items-baseline justify-center gap-2 text-balance text-[13px]"
+      style={{ color: c.color }}
+    >
+      <span style={{ color: c.glyphColor }}>{c.glyph}</span>
+      <span>{line}</span>
+    </p>
   );
 }

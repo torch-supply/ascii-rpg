@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { gameStore, useGameStore, type GameStore } from "@/store/gameStore";
 import { KeyboardInput } from "@/game/input/KeyboardInput";
 import { LEVELS } from "@/content/levels";
@@ -39,6 +39,17 @@ import HelpModal from "@/components/overlays/HelpModal";
 import InventoryModal from "@/components/overlays/InventoryModal";
 import AltarModal from "@/components/overlays/AltarModal";
 import LoreModal from "@/components/overlays/LoreModal";
+
+/**
+ * How long the world holds, drained, before the death card appears. Fed to the
+ * CSS as `--death-ms` so the animations and this timer are ONE number — split
+ * across TS and a stylesheet they drift, and the card starts arriving mid-fade.
+ *
+ * The store's input-settle guard is only 250ms, so a player mashing Enter can
+ * outrun this. That self-resolves (advancing returns the mode to a canvas mode,
+ * which drops the hold) and is better than eating their input.
+ */
+const DEATH_FREEZE_MS = 1300;
 
 const CANVAS_MODES = new Set([
   "playing",
@@ -197,12 +208,47 @@ export default function GameRoot() {
     };
   }, []);
 
-  const showCanvas = CANVAS_MODES.has(mode);
+  // `ssr: false` on this component means `window` exists; the CSS block also
+  // neutralises the animations, but skipping the hold entirely is the honest
+  // reading of "reduce motion" — no pause, straight to the card.
+  const reducedMotion =
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+  // ── death freeze-frame ────────────────────────────────────────────────────
+  // The store flips to gameover/narration on the lethal turn (synchronously —
+  // `[S6]`/`[S7]` depend on it), so the hold lives here: keep the last painted
+  // frame up, drain the colour out of it, and withhold the card for a beat.
+  // Adjusting state during render is React's documented pattern for "derive from
+  // a prop change", and mirrors how `LevelIntro` reveals itself.
+  const deathFlash = useGameStore((s) => s.deathFlash);
+  const [seenFlash, setSeenFlash] = useState(deathFlash);
+  const [freezing, setFreezing] = useState(false);
+  if (deathFlash !== seenFlash) {
+    setSeenFlash(deathFlash);
+    setFreezing(!reducedMotion);
+  }
+  useEffect(() => {
+    if (!freezing) return;
+    const t = setTimeout(() => setFreezing(false), DEATH_FREEZE_MS);
+    return () => clearTimeout(t);
+  }, [freezing]);
+  // Advancing early cancels the hold. DERIVED rather than synced in an effect:
+  // an effect that calls setState on a mode change just triggers a second render
+  // to reach a value this expression already knows.
+  const frozen = freezing && !CANVAS_MODES.has(mode);
+
+  const showCanvas = CANVAS_MODES.has(mode) || frozen;
 
   return (
     <div
       className="relative h-full w-full overflow-hidden"
-      style={{ background: BG.shell }}
+      style={
+        {
+          background: BG.shell,
+          "--death-ms": `${DEATH_FREEZE_MS}ms`,
+        } as React.CSSProperties
+      }
     >
       {showCanvas && (
         // The shell gutter: 8px padding + a 7px gap between four framed panels,
@@ -227,12 +273,24 @@ export default function GameRoot() {
           >
             <LogRail />
             <div
-              className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
+              className={`relative min-h-0 min-w-0 flex-1 overflow-hidden ${
+                frozen ? "death-drain" : ""
+              }`}
               style={{
                 border: `1px solid ${MARK.mapBorder}`,
                 background: BG.map,
               }}
             >
+              {frozen && (
+                <div
+                  aria-hidden
+                  className="death-bloom pointer-events-none absolute inset-0 z-30"
+                  style={{
+                    background:
+                      "radial-gradient(circle at 50% 50%, rgba(192,57,43,0.55) 0%, rgba(120,20,20,0.28) 45%, transparent 75%)",
+                  }}
+                />
+              )}
               <GameCanvas />
               {mode !== "targeting" && <BossBar />}
               {mode !== "targeting" && <EliteBars />}
@@ -260,9 +318,9 @@ export default function GameRoot() {
       {mode === "splash" && <Splash />}
       {mode === "classSelect" && <ClassSelect />}
       {mode === "mutators" && <MutatorSelect />}
-      {mode === "narration" && <Narration />}
+      {mode === "narration" && !frozen && <Narration />}
       {mode === "shop" && <Shop />}
-      {mode === "gameover" && <GameOver />}
+      {mode === "gameover" && !frozen && <GameOver />}
       {mode === "victory" && <Victory />}
       {mode === "paused" && <PauseModal />}
       {mode === "inventory" && <InventoryModal />}

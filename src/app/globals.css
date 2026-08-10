@@ -241,6 +241,47 @@ body {
   display: none;
 }
 
+/* Death freeze-frame: the world drains and dims for a beat before the card
+   appears. A filter on the map REGION rather than anything in the renderer —
+   the store's mode transition stays synchronous (tests assert it on the lethal
+   turn), so this is purely a view-layer hold over the last painted frame. */
+@keyframes deathDrain {
+  0% {
+    filter: grayscale(0) brightness(1);
+  }
+  100% {
+    filter: grayscale(1) brightness(0.45);
+  }
+}
+.death-drain {
+  /* duration comes from `--death-ms`, set inline by GameRoot from
+     DEATH_FREEZE_MS — one number, so the card can't arrive mid-fade or after a
+     dead pause. The fallback matches the constant only as a safety net. */
+  animation: deathDrain var(--death-ms, 1300ms) ease-out forwards;
+}
+
+/* The instant of the blow — a red bloom over the map that fades out under the
+   drain. Separate element so it can fade on its own curve. */
+@keyframes deathBloom {
+  0% {
+    opacity: 0;
+  }
+  /* a slower swell than the first pass (which peaked at 12% of 900ms — a snap),
+     then a long tail so the red is still receding as the colour drains */
+  18% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.42;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.death-bloom {
+  animation: deathBloom var(--death-ms, 1300ms) ease-out forwards;
+}
+
 /* An active condition in the header — a soft alarm pulse. Uses `brightness`
    rather than a coloured glow so one keyframe serves every status tint (poison
    green, bleed red, …); a box-shadow would have to bake in a colour. */
@@ -254,7 +295,10 @@ body {
   }
 }
 .status-pulse {
-  animation: statusPulse 1.8s ease-in-out infinite;
+  /* Rate is overridable per use via `--pulse-ms`. Conditions take the default
+     1.8s; the vitality gauge tightens it as HP falls, so the alarm gets more
+     insistent the closer you are to dying without needing a second keyframe. */
+  animation: statusPulse var(--pulse-ms, 1.8s) ease-in-out infinite;
 }
 
 /* HUD chrome — the newest log line rises into place as it arrives. */
@@ -299,7 +343,9 @@ body {
   .dawn-rise,
   .log-in,
   .torch-flicker,
-  .status-pulse {
+  .status-pulse,
+  .death-drain,
+  .death-bloom {
     animation: none;
   }
   .ember-spark,

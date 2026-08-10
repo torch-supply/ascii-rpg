@@ -81,7 +81,7 @@ import {
 } from "@/render/tiles";
 import { beatAmbient, ambientForBiome } from "@/render/lighting";
 import { cameraOrigin } from "@/render/CanvasRenderer";
-import { classifyLog } from "@/components/hud/logStyle";
+import { causeOfDeath, classifyLog } from "@/components/hud/logStyle";
 import { BG, MARK, TEXT } from "@/components/hud/palette";
 import type {
   GameMap,
@@ -5917,6 +5917,38 @@ console.log("\n[64] Log colour-coding");
       classifyLog("You strike the Skeleton for 8 (4 left).").glyph !==
         classifyLog("The Skeleton hits you for 2.").glyph,
   );
+
+  // ── cause of death: the last harm line, for the game-over screen ──
+  {
+    const run = [
+      "You pick up 6 gold.",
+      "The Wraith hits you for 5.",
+      "You strike the Wraith for 8 (6 left).",
+      "You are bleeding!",
+      "You stow the Chainmail.",
+    ];
+    check(
+      "cause of death is the LAST harm line, not the first or the newest",
+      causeOfDeath(run) === "You are bleeding!",
+      `(got ${causeOfDeath(run)})`,
+    );
+    const bled = ["You slay the Goblin.", "The bleed claims you."];
+    check(
+      "…a bleed-out is attributed, not just a melee blow",
+      causeOfDeath(bled) === "The bleed claims you.",
+      `(got ${causeOfDeath(bled)})`,
+    );
+    check(
+      "…and your own attacks are never mistaken for what killed you",
+      causeOfDeath(["You strike the Skeleton for 8 (4 left)."]) === null,
+      `(got ${causeOfDeath(["You strike the Skeleton for 8 (4 left)."])})`,
+    );
+    check(
+      "a log with no harm at all yields null rather than a wrong line",
+      causeOfDeath(["You pick up 6 gold.", "You shove the door open."]) ===
+        null,
+    );
+  }
 
   // Absolute anchors: without these the rules above could all collapse to one
   // category and the mapping assertions would still be satisfiable.

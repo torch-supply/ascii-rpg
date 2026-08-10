@@ -84,3 +84,22 @@ export function classifyLog(line: string): LogStyle {
             : "neutral";
   return { kind, ...STYLE[kind] };
 }
+
+/**
+ * The line that killed you — the most recent `harm` entry in the log.
+ *
+ * Returns the message VERBATIM rather than trying to name the killer. Pulling
+ * "The Wraith" out of "The Wraith hits you for 3." means another layer of regex
+ * over prose, and the game's own sentence is both more evocative and impossible
+ * to get wrong. A DoT finish reads correctly too — "The bleed claims you." is
+ * classified as harm like any other.
+ *
+ * Null when nothing in the log qualifies: a fall into a chasm, or a death on a
+ * turn whose message never landed.
+ */
+export function causeOfDeath(log: readonly string[]): string | null {
+  for (let i = log.length - 1; i >= 0; i--) {
+    if (classifyLog(log[i]).kind === "harm") return log[i];
+  }
+  return null;
+}

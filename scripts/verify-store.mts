@@ -380,6 +380,14 @@ console.log("\n[S7] Death (last life) → game over");
     "losing the last life ends the run at game over",
     st().mode === "gameover",
   );
+  // Overkill leaves HP negative in the core (it only tests `<= 0`), and the death
+  // freeze-frame parks that readout on screen for over a second. "-3 / 26" is not
+  // a state the player should ever read.
+  check(
+    "HP never reads negative once you are dead",
+    st().game!.player.hp === 0,
+    `(hp ${st().game!.player.hp})`,
+  );
   check(
     "the run result is recorded as a loss",
     st().runResult?.victory === false,

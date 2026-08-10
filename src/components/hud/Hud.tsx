@@ -48,6 +48,15 @@ const BUFFS: { key: string; glyph: string; label: string; color: string }[] = [
  */
 const CONDITION_DETAIL_MAX = 2;
 
+/**
+ * The low-HP alarm on the vitality gauge. It starts at the same 40% threshold
+ * that already turns the gauge red, and tightens from a slow throb at the edge
+ * of trouble to an urgent one at death's door — so the pulse RATE carries "how
+ * bad is it", information the colour alone can't (red is red at 39% and 4%).
+ */
+const LOW_PULSE_SLOW = 1700; // ms, at the 40% threshold
+const LOW_PULSE_FAST = 620; // ms, at 0 HP
+
 // Segmented glow gauge: a colored fill under a repeating mask that punches it
 // into bars, over a dark inset track. `label` is optional — sitting beside the
 // objective it already reads as the objective's progress, so a "HOLD" caption
@@ -124,6 +133,11 @@ export function HudBar() {
   const CELLS = 15;
   const filled =
     p.hp > 0 ? Math.max(1, Math.round((p.hp / p.maxHp) * CELLS)) : 0;
+  // eased across the low band, so the rate says how much trouble you're in
+  const lowPulseMs = Math.round(
+    LOW_PULSE_FAST +
+      (LOW_PULSE_SLOW - LOW_PULSE_FAST) * Math.min(1, Math.max(0, hpPct / 40)),
+  );
   const progress = goalProgress(game);
   const buffs = BUFFS.filter((b) => (p.effects[b.key] ?? 0) > 0);
   const conditions = STATUS_KEYS.filter((k) => (p.effects[k] ?? 0) > 0);
@@ -159,19 +173,31 @@ export function HudBar() {
           >
             VITALITY
           </span>
+          {/* Gauge and number pulse as ONE unit when low — the blocks throbbing
+              while the figure beside them sat still read as a glitch. The rate
+              tightens as HP falls (see `LOW_PULSE_*`), so the alarm escalates. */}
           <span
-            className="text-[16px] leading-none tracking-[1px]"
-            style={{ color: low ? "#ff5555" : "#3fbf3f" }}
-            title={`${p.hp} / ${p.maxHp} HP`}
+            className={`flex items-center gap-[14px] ${low ? "status-pulse" : ""}`}
+            style={
+              low
+                ? ({ "--pulse-ms": `${lowPulseMs}ms` } as React.CSSProperties)
+                : undefined
+            }
           >
-            {"▰".repeat(filled)}
-            <span style={{ color: MARK.gaugeEmpty }}>
-              {"▱".repeat(CELLS - filled)}
+            <span
+              className="text-[16px] leading-none tracking-[1px]"
+              style={{ color: low ? "#ff5555" : "#3fbf3f" }}
+              title={`${p.hp} / ${p.maxHp} HP`}
+            >
+              {"▰".repeat(filled)}
+              <span style={{ color: MARK.gaugeEmpty }}>
+                {"▱".repeat(CELLS - filled)}
+              </span>
             </span>
-          </span>
-          <span className="text-[15px] text-fg">
-            {p.hp}
-            <span className="text-edge">/{p.maxHp}</span>
+            <span className={`text-[15px] ${low ? "text-hp" : "text-fg"}`}>
+              {p.hp}
+              <span className="text-edge">/{p.maxHp}</span>
+            </span>
           </span>
           <Sep />
           <span
