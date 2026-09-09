@@ -9,7 +9,9 @@ import { BoxFrame } from "@/components/ui/BoxFrame";
 /**
  * The [i] overlay: a two-pane box-framed character sheet (Equipped & Stats ·
  * Bag) over a plain dim scrim — no animated field, matching the pause/help
- * modals. Equip/use is keyboard-driven (the numbers are labels).
+ * modals. Equip/use is keyboard-driven for the nine hotkeyed items, and by
+ * CLICKING the row for everything else — past nine there is no key to press,
+ * so these rows are the only way to reach an overflow item at all.
  */
 export default function InventoryModal() {
   const game = useGameStore((s) => s.game);
@@ -118,11 +120,15 @@ export default function InventoryModal() {
                         : def.category === "weapon" || def.category === "armor"
                           ? "equip"
                           : "";
-                    return (
-                      <div
-                        key={`${b.defId}-${i}`}
-                        className="flex items-center justify-between gap-2.5 border border-[#2c2c36] bg-[rgba(18,18,22,0.5)] px-3 py-[7px]"
-                      >
+                    // An actionable row is a BUTTON, and that is what makes an
+                    // overflow item reachable at all: past the nine hotkeys
+                    // there is no key and no panel row (the panel is a fixed
+                    // nine), so this sheet is the only surface that can address
+                    // it. Routed by defId, since a slotless entry has no slot
+                    // to route by. Inert rows (ammo, torches, quest items) stay
+                    // plain — a button that does nothing is worse than a label.
+                    const label = (
+                      <>
                         <span>
                           <span className={slot ? "text-magic" : "text-edge"}>
                             [{slot ?? "—"}]
@@ -138,7 +144,27 @@ export default function InventoryModal() {
                             {kind}
                           </span>
                         )}
-                      </div>
+                      </>
+                    );
+                    const box =
+                      "flex w-full items-center justify-between gap-2.5 border border-[#2c2c36] bg-[rgba(18,18,22,0.5)] px-3 py-[7px] text-left";
+                    if (!kind)
+                      return (
+                        <div key={`${b.defId}-${i}`} className={box}>
+                          {label}
+                        </div>
+                      );
+                    return (
+                      <button
+                        key={`${b.defId}-${i}`}
+                        type="button"
+                        title={`${kind === "use" ? "Use" : "Equip"} ${def.name}`}
+                        onMouseDown={(e) => e.preventDefault()} // never take focus
+                        onClick={() => gameStore.getState().useBagItem(b.defId)}
+                        className={`${box} hover:bg-[rgba(40,34,20,0.5)]`}
+                      >
+                        {label}
+                      </button>
                     );
                   })}
                 </div>

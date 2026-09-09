@@ -167,6 +167,8 @@ export interface GameStore {
   toggleSound: () => void;
   continueNarration: () => void;
   useBagSlot: (n: number) => void;
+  /** Use a bag item BY ID — the only route to an entry with no hotbar slot. */
+  useBagItem: (defId: string) => void;
 
   // persistence
   persist: () => void;
@@ -698,13 +700,29 @@ export const gameStore = createStore<GameStore>((set, get) => {
     },
 
     useBagSlot: (n: number) => {
-      const { game, mode } = get();
+      const { game } = get();
       if (!game) return;
       // By stable slot, NOT by bag index: the bag compacts when a stack empties,
       // so an index-keyed hotkey silently repoints mid-fight (quaff your last
       // Healing Potion and `[1]` becomes whatever was `[2]`).
       const entry = bagEntryForSlot(game.player, n);
       if (!entry) return; // a spent slot is inert — it costs no turn
+      get().useBagItem(entry.defId);
+    },
+
+    useBagItem: (defId: string) => {
+      const { game, mode } = get();
+      if (!game) return;
+      // Keyed by defId, so it can reach a bag entry that holds NO hotbar slot.
+      // There are only nine number keys and eighteen bag-eligible items, and a
+      // cautious player really does carry more than nine kinds at once (the
+      // staples plus the situational potions you save for the right moment).
+      // The tenth used to be unusable: no key, no panel row (the panel is a
+      // fixed nine), and the inventory sheet was read-only — so it showed as
+      // `[—]` and you carried it to the end of the run. The sheet's rows route
+      // here, which is the only surface that can address a slotless item.
+      const entry = game.player.bag.find((b) => b.defId === defId);
+      if (!entry) return; // nothing carried — costs no turn
       const def = ITEMS[entry.defId];
       if (mode === "inventory") set({ mode: "playing" });
       if (def.category === "potion") {

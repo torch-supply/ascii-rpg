@@ -263,7 +263,7 @@ export const LEVELS: LevelConfig[] = [
     structures: [
       {
         palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
-        loot: [{ itemId: "p_detect" }, { itemId: "p_gheal" }],
+        loot: [{ itemId: "p_detect" }, { itemId: "p_rime" }],
       },
       {
         size: { w: 5, h: 5 },
@@ -357,7 +357,7 @@ export const LEVELS: LevelConfig[] = [
       gate: "crackedWall",
       guardian: "cave_bear",
       loot: [
-        { itemId: "p_gheal" },
+        { itemId: "p_levit" },
         { itemId: "w_frost" },
         { itemId: "c_gold" },
       ],
@@ -465,7 +465,7 @@ export const LEVELS: LevelConfig[] = [
     // bashing through is the same verb as the rest of it.
     secretVault: {
       gate: "crackedWall",
-      loot: [{ itemId: "p_gheal" }, { itemId: "p_bomb" }, { itemId: "c_gold" }],
+      loot: [{ itemId: "p_ember" }, { itemId: "p_bomb" }, { itemId: "c_gold" }],
     },
     mapWidth: 84,
     mapHeight: 50,
@@ -720,7 +720,7 @@ export const LEVELS: LevelConfig[] = [
     // loot was anywhere but open ground.
     secretVault: {
       gate: "door",
-      loot: [{ itemId: "p_gheal" }, { itemId: "p_ward" }, { itemId: "c_gold" }],
+      loot: [{ itemId: "p_blink" }, { itemId: "p_ward" }, { itemId: "c_gold" }],
     },
     // An exposed wall-walk under a thundering sky — but its biome is `castle`,
     // which is a sealed interior everywhere else, so it inherited 3 tiles of
@@ -774,7 +774,11 @@ export const LEVELS: LevelConfig[] = [
     // a sealed reliquary — a shut door, a last cache before the throne
     secretVault: {
       gate: "door",
-      loot: [{ itemId: "p_gheal" }, { itemId: "p_bomb" }, { itemId: "c_gold" }],
+      loot: [
+        { itemId: "p_shadow" },
+        { itemId: "p_bomb" },
+        { itemId: "c_gold" },
+      ],
     },
     // Black marble veining up through the gallery floor: the throne's own stone
     // spreading BACKWARDS into the antechamber, its embers drifting over those

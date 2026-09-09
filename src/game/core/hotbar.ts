@@ -9,7 +9,16 @@ import type { BagEntry, PlayerState } from "./types";
  */
 
 /** How many bag items get a number key. Bounded by the keys that exist (1-9);
- * anything past this is reachable only from the inventory sheet. */
+ * anything past this is reachable ONLY by clicking its row on the `[i]`
+ * inventory sheet, which is therefore load-bearing rather than cosmetic. That
+ * claim used to be false: the sheet was read-only and the HUD panel renders a
+ * fixed nine rows, so a tenth distinct item had no key, no row and no route —
+ * it displayed as `[—]` and was carried, unusable, to the end of the run. It is
+ * reachable in ordinary play: fourteen item types can occupy a slot (the
+ * thirteen potions plus arrows — torches are fuel and quest items go to
+ * `questProgress`, so neither ever lands here), and nine of the thirteen
+ * potions are situational ones a careful player hoards. Store check `[S17]`
+ * pins it. */
 export const HOTBAR_SLOTS = 9;
 
 /**

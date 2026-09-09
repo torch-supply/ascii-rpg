@@ -40,6 +40,8 @@ import { idx } from "@/game/core/grid";
 import { giveItem } from "@/game/core/inventory";
 import { bagEntryForSlot, hotbar } from "@/game/core/hotbar";
 import type { GameState, Pos } from "@/game/core/types";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // the store reads bare `localStorage` inside its functions, so import it only
 // AFTER the shim is installed (dynamic import runs after top-level code above)
@@ -1107,6 +1109,107 @@ console.log("\n[S16] Bag hotkeys during play");
       `(${before} → ${JSON.stringify(st().game!.player.slotMap)})`,
     );
   }
+}
+
+// [S17] The tenth bag item — overflow past the nine hotkeys stays USABLE
+//
+// There are nine number keys and fourteen item types that can occupy a slot
+// (the thirteen potions plus arrows — a torch is FUEL and a quest item goes to
+// `questProgress`, so neither ever reaches the bag), and nine of the thirteen
+// potions are situational ones a careful player hoards, so carrying more than
+// nine kinds at once is ordinary play, not a corner case. Everything
+// past the ninth gets NO slot: no number key, and no row on the HUD panel,
+// which renders a fixed `HOTBAR_SLOTS`. The `[i]` sheet is the only surface
+// left that can address it — and it was read-only, so the tenth item showed as
+// `[—]` and was carried, unusable, to the end of the run.
+//
+// Pinned here rather than in core because the defect was entirely in the SEAM:
+// the bookkeeping was right (core [62] already says an overflow item holds no
+// slot — correctly), and every UI route happened to be keyed by slot.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\n[S17] Overflow past the nine hotkeys");
+{
+  await bootToPlay("overflow-seed");
+  const g = st().game!;
+  g.monsters = [];
+  g.player.bag = [];
+  g.player.slotMap = {};
+  // the staples plus the situational potions you save for the right moment
+  for (const id of [
+    "p_heal",
+    "p_gheal",
+    "p_antidote",
+    "p_bomb",
+    "am_arrow",
+    "i_torch",
+    "p_blink",
+    "p_levit",
+    "p_rime",
+    "p_shadow",
+    "p_ward",
+  ])
+    giveItem(g.player, id);
+  g.player.hp = g.player.maxHp - 8;
+
+  const orphans = g.player.bag.filter((b) => !g.player.slotMap[b.defId]);
+  check(
+    "a plausible bag really does overflow the nine keys",
+    orphans.length > 0,
+    `(${g.player.bag.length} entries, ${orphans.length} without a slot)`,
+  );
+  // pick one we can observe the effect of: a plain drinkable, not a targeted one
+  const ward = g.player.bag.find((b) => b.defId === "p_ward");
+  check(
+    "(setup) the Potion of Warding is one of the slotless ones",
+    !!ward && !g.player.slotMap["p_ward"],
+  );
+
+  const turnsBefore = g.turnCount;
+  st().useBagItem("p_ward");
+  await settle();
+  const after = st().game!;
+  check(
+    "a slotless item can still be used — the sheet's row is a real route",
+    !after.player.bag.some((b) => b.defId === "p_ward"),
+    `(bag: ${after.player.bag.map((b) => b.defId).join(", ")})`,
+  );
+  check("...and it spends the turn", after.turnCount > turnsBefore);
+  check(
+    "...and it actually took effect",
+    (after.player.effects?.ward ?? 0) > 0,
+    `(effects: ${JSON.stringify(after.player.effects)})`,
+  );
+  check(
+    "using it closes the sheet back to play",
+    st().mode === "playing",
+    `(mode ${st().mode})`,
+  );
+  // A WIRING check, not a behavioural one — and it is here because the defect
+  // this whole section exists for was in the seam, not the logic. Everything
+  // above drives the store directly, so reverting the sheet's row from a
+  // <button> back to a <div> would leave every assertion above green while the
+  // overflow item goes unreachable again — the exact failure, reintroduced one
+  // level up. This headless harness cannot render React, so the cheapest honest
+  // cover is to assert the sheet still routes to the slot-independent action.
+  {
+    const sheet = readFileSync(
+      join(process.cwd(), "src/components/overlays/InventoryModal.tsx"),
+      "utf8",
+    );
+    check(
+      "the [i] sheet still wires its rows to useBagItem (the only overflow route)",
+      /onClick=\{[^}]*useBagItem\(/.test(sheet.replace(/\s+/g, " ")),
+    );
+  }
+
+  check(
+    "an item you do not carry is inert — no turn spent",
+    (() => {
+      const t = st().game!.turnCount;
+      st().useBagItem("p_might");
+      return st().game!.turnCount === t;
+    })(),
+  );
 }
 
 console.log(
