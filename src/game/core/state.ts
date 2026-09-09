@@ -7,6 +7,7 @@ import { generateLevel } from "./map/generate";
 import { computeVisible } from "./map/fov";
 import { applyLevelMutators } from "@/content/mutators";
 import { syncBagSlots } from "./hotbar";
+import { computeLightMap, lightGatedVisible } from "./light";
 
 export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
   const cls = classDef(classId);
@@ -27,6 +28,7 @@ export function createPlayer(classId: string = DEFAULT_CLASS_ID): PlayerState {
     coins: 0,
     bag: cls.bag.map((b) => ({ ...b })),
     slotMap: {},
+    loreSeen: [],
     kills: 0,
     totalTurns: 0,
     goldEarned: 0,
@@ -49,6 +51,7 @@ export function clonePlayer(p: PlayerState): PlayerState {
     bag: p.bag.map((b) => ({ ...b })),
     effects: { ...p.effects },
     slotMap: { ...p.slotMap },
+    loreSeen: [...(p.loreSeen ?? [])],
   };
 }
 
@@ -60,14 +63,29 @@ export function recomputeLight(p: PlayerState): void {
   p.lightRadius = p.baseLightRadius + torchBonus;
 }
 
-/** Recompute FOV and merge into the explored (fog-memory) set. */
+/**
+ * Recompute FOV and merge into the explored (fog-memory) set.
+ *
+ * Under `CONFIG.sight === "lightGated"` this is line-of-sight out to
+ * `CONFIG.sightRange` filtered by what is actually LIT (see `core/light.ts`),
+ * rather than a disc of `player.lightRadius`. The light map is computed STEADY
+ * — no flicker, no transient FX — because this runs once per turn and decides
+ * what the game considers visible: a guttering torch must not make tiles wink
+ * in and out of `state.visible`.
+ *
+ * `"torch"` is the older model, kept as a one-flag fallback: FOV radius IS your
+ * light radius, so a lit brazier down a dark hall simply isn't in the set.
+ */
 export function recomputeFOV(state: GameState): void {
-  const vis = computeVisible(
-    state.map,
-    state.player.x,
-    state.player.y,
-    state.player.lightRadius,
-  );
+  const vis =
+    CONFIG.sight === "lightGated"
+      ? lightGatedVisible(state, computeLightMap(state, 0, true))
+      : computeVisible(
+          state.map,
+          state.player.x,
+          state.player.y,
+          state.player.lightRadius,
+        );
   state.visible = vis;
   const explored = new Set(state.explored);
   for (const i of vis) explored.add(i);

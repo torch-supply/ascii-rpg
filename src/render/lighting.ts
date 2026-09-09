@@ -1,8 +1,4 @@
-import * as ROT from "rot-js";
-import type { Biome, GameState } from "@/game/core/types";
-import { ITEMS } from "@/content/items";
-import { MONSTERS } from "@/content/monsters";
-import { idx, isTransparent } from "@/game/core/grid";
+import type { Biome } from "@/game/core/types";
 
 /**
  * Dynamic colored lighting via `ROT.Lighting`.
@@ -45,6 +41,11 @@ const BIOME_AMBIENT: Record<Biome, BiomeAmbient> = {
   grove: { center: [88, 74, 98], edge: [72, 60, 82] },
   // flooded undercity — cold, damp green-grey stone; light drowns down here
   undercity: { center: [76, 94, 88], edge: [62, 78, 74] },
+  // overcast daylight on wet stone — cool, flat, no warmth in it
+  graveyard: { center: [96, 102, 112], edge: [72, 78, 88] },
+  // daylight through a broken roof onto standing water — green, and colder
+  // than the marsh outside because the stone holds no heat
+  sanctum: { center: [88, 104, 100], edge: [64, 78, 76] },
 };
 export function ambientForBiome(biome: Biome): BiomeAmbient {
   return BIOME_AMBIENT[biome] ?? BIOME_AMBIENT.dungeon;
@@ -88,150 +89,10 @@ export function beatAmbient(
 export const AMBIENT_ENTITY: [number, number, number] = [132, 128, 148];
 
 // ── emitted light colors (0–255 per channel) ────────────────────────────────
-const TORCH_LIT: [number, number, number] = [235, 198, 150]; // torch burning
-const TORCH_EMBER: [number, number, number] = [165, 135, 100]; // bare light, no torch
-const FIRE_LIGHT: [number, number, number] = [255, 140, 50];
-const SUNBLADE_LIGHT: [number, number, number] = [255, 225, 120];
-const ALTAR_LIGHT: [number, number, number] = [150, 95, 225];
-const BOSS_LIGHT: [number, number, number] = [95, 40, 130]; // cold necrotic aura
-const BARRAGE_LIGHT: [number, number, number] = [215, 45, 30]; // dark-fire telegraph
-const GLOWCAP_LIGHT: [number, number, number] = [58, 168, 146]; // bioluminescent teal (soft)
-
-const LOW_FUEL = 20; // torch starts guttering at/under this (matches HUD warning)
-const REFLECTIVITY = 0.12; // how much surfaces bounce light (0–1)
-const PASSES = 2; // reflection bounces (1 = direct only)
-
-export type LightMap = Map<number, [number, number, number]>;
-/** A transient light the renderer injects from active cosmetic FX (bolts,
- * explosions, hit sparks) — already color/intensity-scaled for this frame. */
-export interface ExtraLight {
-  x: number;
-  y: number;
-  color: [number, number, number];
-}
-
-const scale = (
-  c: [number, number, number],
-  k: number,
-): [number, number, number] => [c[0] * k, c[1] * k, c[2] * k];
-
-/** Compute per-tile colored light for the current state. `now` (ms) drives the
- * torch/fire/barrage flicker; `reduceMotion` holds them steady; `extra` are
- * transient FX lights for this frame. Cells absent from the map receive no
- * source light (the renderer falls back to ambient). */
-export function computeLightMap(
-  state: GameState,
-  now = 0,
-  reduceMotion = false,
-  extra: ExtraLight[] = [],
-): LightMap {
-  const map = state.map;
-  const w = map.width;
-  const p = state.player;
-  const range = Math.max(3, Math.round(p.lightRadius));
-
-  const fov = new ROT.FOV.PreciseShadowcasting(
-    (x, y) => isTransparent(map, x, y),
-    { topology: 8 },
-  );
-  const reflectivity = (x: number, y: number) =>
-    x >= 0 && y >= 0 && x < map.width && y < map.height ? REFLECTIVITY : 0;
-
-  const lighting = new ROT.Lighting(reflectivity, { range, passes: PASSES });
-  lighting.setFOV(fov);
-
-  // ── player light ────────────────────────────────────────────────────────────
-  // A LIT torch/lantern flickers and reaches far (the extended range comes from
-  // lightRadius); with none, it's a faint, STEADY ember — just your eyes, a
-  // small unwavering pool. As a torch's fuel runs low the flame dims,
-  // warm-shifts (loses green/blue), and its flicker deepens — a guttering torch.
-  const lit = p.hasTorch && p.torchFuel > 0;
-  const health = lit && p.torchFuel <= LOW_FUEL ? p.torchFuel / LOW_FUEL : 1;
-  const amp = reduceMotion ? 0 : 0.2 + (1 - health) * 0.45; // flicker depth
-  const s = 0.5 + 0.5 * Math.sin(now * 0.017) * Math.sin(now * 0.041);
-  const torchFlicker = lit ? 1 - amp * (1 - s) : 1; // no flicker without a flame
-  let torchColor: [number, number, number] = lit
-    ? [TORCH_LIT[0], TORCH_LIT[1], TORCH_LIT[2]]
-    : [TORCH_EMBER[0], TORCH_EMBER[1], TORCH_EMBER[2]];
-  if (lit && health < 1) {
-    const dimK = 0.5 + 0.5 * health; // dims toward 50% as it dies
-    torchColor = [
-      torchColor[0] * dimK,
-      torchColor[1] * dimK * (0.72 + 0.28 * health), // cut green (→ warmer)
-      torchColor[2] * dimK * (0.55 + 0.45 * health), // cut blue more
-    ];
-  }
-  lighting.setLight(p.x, p.y, scale(torchColor, torchFlicker));
-
-  // ── lingering fire — each tile flickers on its own phase ─────────────────────
-  for (const f of state.fireTiles) {
-    const ff = reduceMotion
-      ? 1
-      : 0.68 + 0.32 * Math.abs(Math.sin(now * 0.02 + f.i));
-    lighting.setLight(f.i % w, Math.floor(f.i / w), scale(FIRE_LIGHT, ff));
-  }
-
-  // ── bioluminescent fungi — glowing teal light, each on its own gentle pulse ──
-  const tiles = map.tiles;
-  for (let i = 0; i < tiles.length; i++) {
-    if (tiles[i] !== "glowcap") continue;
-    const gp = reduceMotion
-      ? 1
-      : 0.72 + 0.28 * Math.abs(Math.sin(now * 0.006 + i));
-    lighting.setLight(i % w, Math.floor(i / w), scale(GLOWCAP_LIGHT, gp));
-  }
-
-  // ── the Sunblade on the ground gives off a warm gold light ──────────────────
-  for (const it of state.items) {
-    if (ITEMS[it.defId]?.questTag === "sunblade") {
-      lighting.setLight(it.x, it.y, SUNBLADE_LIGHT);
-    }
-  }
-
-  // ── unspent altars glow cold violet ─────────────────────────────────────────
-  for (const a of state.altars) {
-    if (!a.used) lighting.setLight(a.x, a.y, ALTAR_LIGHT);
-  }
-
-  // ── boss aura — a cold necrotic glow that precedes it into a room ────────────
-  for (const m of state.monsters) {
-    if (MONSTERS[m.defId]?.isBoss) lighting.setLight(m.x, m.y, BOSS_LIGHT);
-  }
-
-  // ── glowing creatures (a drifting wisp) — a small pulsing light source ───────
-  for (const m of state.monsters) {
-    const glow = MONSTERS[m.defId]?.glow;
-    if (!glow) continue;
-    const wp = reduceMotion
-      ? 0.85
-      : 0.6 + 0.4 * Math.abs(Math.sin(now * 0.009 + m.x * 1.7 + m.y));
-    lighting.setLight(m.x, m.y, scale(glow, wp));
-  }
-
-  // ── lich dark-fire barrage — pulsing red underlight on the telegraphed tiles ─
-  if (state.barrage.length) {
-    const pulse = reduceMotion
-      ? 0.8
-      : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.012));
-    for (const bi of state.barrage) {
-      lighting.setLight(
-        bi % w,
-        Math.floor(bi / w),
-        scale(BARRAGE_LIGHT, pulse),
-      );
-    }
-  }
-
-  // ── transient FX lights (bolts, explosions, hit sparks) ─────────────────────
-  for (const e of extra) {
-    lighting.setLight(e.x, e.y, e.color);
-  }
-
-  const out: LightMap = new Map();
-  lighting.compute((x, y, color) => {
-    if (x >= 0 && y >= 0 && x < map.width && y < map.height) {
-      out.set(idx(x, y, w), [color[0], color[1], color[2]]);
-    }
-  });
-  return out;
-}
+// The light COMPUTATION itself lives in `@/game/core/light` — it decides
+// `state.visible`, so it is core, not render. Re-exported here so the renderer's
+// call sites read as one lighting module; what stays on this side is the part
+// that is purely look: the per-biome AMBIENT tint, which colours a visible tile
+// but never illuminates one.
+export type { LightMap, ExtraLight } from "@/game/core/light";
+export { computeLightMap } from "@/game/core/light";

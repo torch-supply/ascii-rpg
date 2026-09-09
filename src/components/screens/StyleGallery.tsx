@@ -20,6 +20,7 @@ import { STATUS } from "@/game/core/status";
 import { classifyLog } from "@/components/hud/logStyle";
 import { BG, MARK } from "@/components/hud/palette";
 import { ambientForBiome, BIOMES } from "@/render/lighting";
+import { SKYLIGHT } from "@/game/core/light";
 import {
   BIOME_ATMOSPHERE,
   WEATHER_ATMOSPHERE,
@@ -33,8 +34,11 @@ import {
   GAS_COLOR,
   DECAL_STYLE,
   SPORE_VENT_COLOR,
+  ATMO_EMISSIVE,
   SPORE_VENT_PRIMING_GLYPH,
   SPORE_VENT_PRIMING_COLOR,
+  SCONCE_LIT,
+  SCONCE_COLD,
   PLAYER_COLOR,
   terrainColor,
   terrainGlyph,
@@ -67,7 +71,7 @@ const LOG_SAMPLES = [
   "A hidden spike trap! You take 4 damage.",
   "You drink the Healing Potion. (+10 hp)",
   "You pick up 6 gold.",
-  "You stow the Chainmail.",
+  "You take up the War Axe, setting down the Frostbrand.",
 ];
 
 /** `#rrggbb` + alpha → rgba(), so a swatch can show a decal at its REAL opacity. */
@@ -241,7 +245,7 @@ export default function StyleGallery() {
               ["¶", "#b0a890", "lore — remains"],
               ["¶", "#6a6a66", "lore — already read"],
               ["▴", "#ff9d3c", "fire — burning"],
-              ["*", "#ff5a3c", "fire — guttering out"],
+              ["▵", "#ff5a3c", "fire — guttering out"],
               // fire and gas each ALTERNATE two glyphs frame to frame (the flicker /
               // drift), so both shapes have to read — not just the one you'd screenshot
               ["∴", GAS_COLOR, "poison haze"],
@@ -256,6 +260,12 @@ export default function StyleGallery() {
                 SPORE_VENT_PRIMING_COLOR,
                 "spore vent — about to blow",
               ],
+              // A lit wall bracket, and the cold iron you REMEMBER seeing once the
+              // tile leaves view. Missing here entirely until now, which is how it
+              // kept a glyph two exclamation marks wide while twelve potions use
+              // one: nothing in the gallery ever put the two side by side.
+              ["Ω", SCONCE_LIT, "wall sconce — lit"],
+              ["Ω", SCONCE_COLD, "wall sconce — remembered (cold iron)"],
             ] as const
           ).map(([glyph, color, label, bg], i) => (
             <div
@@ -338,9 +348,21 @@ export default function StyleGallery() {
           };
           // Collisions that are DELIBERATE design, not defects — a hidden trap
           // is supposed to be indistinguishable from floor until you sense it.
+          // Collisions that are CONVENTIONS, not bugs. Labelling them is what
+          // lets a real one stand out instead of drowning in a list of expected
+          // pairs — the report is only useful if its output is short.
           const intentional: Record<string, string> = {
             "·": "by design — hidden traps must look like floor",
             ",": "by design — hidden traps must look like floor",
+            "#": "by design — a cracked wall must look like the wall it hides in",
+            "♣": "by design — a cracked wall must look like the wall it hides in",
+            "♠": "by design — a cracked wall must look like the wall it hides in",
+            "▲": "by design — a cracked wall must look like the wall it hides in",
+            "/": "by design — one glyph per item CLASS (weapons)",
+            "[": "by design — one glyph per item CLASS (armor)",
+            "!": "by design — one glyph per item CLASS (potions)",
+            "(": "by design — one glyph per item CLASS (light sources)",
+            "✷": "harmless — the class badge is HUD chrome, never drawn on the map",
           };
           // Use the RENDERED glyph, not the raw table: `terrainGlyph` overrides
           // several (a cracked wall draws as the biome's wall; forage uses
@@ -355,8 +377,31 @@ export default function StyleGallery() {
               );
           add("‡", "altar / shrine", "#d6a4ff");
           add("¶", "lore prop", "#cbb488");
+          add("@", "player", PLAYER_COLOR);
           for (const m of Object.values(MONSTERS))
             add(m.glyph, `monster: ${m.id}`, m.color);
+          // ITEMS and OVERLAYS were never in this report's input, which is why it
+          // read clean while `∴` meant both a healing arcane mote and a cloud of
+          // poison (the mote is `❖` now), `‼` for a wall sconce was two of the `!`
+          // twelve potions share (`Ω` now), and `*` was both a guttering fire and
+          // the quest shards a collect level sends you to pick up (fire guessed
+          // `▵` now, the hollow twin of its own burning frame). All three were
+          // hazard/boon or scenery/loot pairs invisible here, because the report
+          // only ever compared terrain against monsters.
+          for (const it of Object.values(ITEMS))
+            add(it.glyph, `item: ${it.id}`, it.color);
+          for (const c of CLASS_LIST)
+            if (c.glyph) add(c.glyph, `class badge: ${c.id}`, "#ffd24d");
+          add("▴", "fire — burning", "#ff9d3c");
+          add("▵", "fire — guttering", "#ff5a3c");
+          add("∴", "poison haze", GAS_COLOR);
+          add("✷", "lich barrage telegraph", "#ff6a4a");
+          add("Ω", "wall sconce", SCONCE_LIT);
+          add(
+            SPORE_VENT_PRIMING_GLYPH,
+            "spore vent priming",
+            SPORE_VENT_PRIMING_COLOR,
+          );
           return [...uses.entries()]
             .filter(([, u]) => u.length > 1)
             .map(([g, u]) => (
@@ -434,7 +479,22 @@ export default function StyleGallery() {
               <Swatch hex={rgb(amb.center)} label="ambient center" />
               <Swatch hex={rgb(amb.edge)} label="ambient edge" />
               <div style={{ marginTop: 4, color: "#667" }}>
-                atmosphere: {atm ? `${atm.kind} ×${atm.count}` : "—"}
+                atmosphere:{" "}
+                {atm
+                  ? `${atm.kind} ×${atm.count} · ${
+                      ATMO_EMISSIVE.has(atm.kind)
+                        ? "emissive (keeps full strength in the dark)"
+                        : "reflective (dims with the ground)"
+                    }`
+                  : "—"}
+              </div>
+              {/* How far you see here with NO light of your own — the biome's own
+                  daylight. Absent = the pitch-dark floor (`CONFIG.unlitSight`),
+                  which is only correct indoors: the Iron Gate's graveyard read as
+                  a sealed cellar until it was given a value. */}
+              <div style={{ marginTop: 2, color: "#667" }}>
+                unaided sight:{" "}
+                {SKYLIGHT[b] != null ? `${SKYLIGHT[b]} (open sky)` : "indoors"}
               </div>
             </div>
           );
@@ -757,7 +817,10 @@ export default function StyleGallery() {
         {Object.entries(WEATHER_ATMOSPHERE).map(([k, a]) => (
           <div key={k}>
             {k}: {a!.kind} ×{a!.count} @{a!.alpha}{" "}
-            <span style={{ color: a!.color }}>■</span>
+            <span style={{ color: a!.color }}>■</span>{" "}
+            <span style={{ color: "#667" }}>
+              {ATMO_EMISSIVE.has(a!.kind) ? "emissive" : "reflective"}
+            </span>
           </div>
         ))}
       </div>

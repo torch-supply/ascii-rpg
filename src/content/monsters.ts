@@ -158,6 +158,26 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 0,
   },
+  // GARRISONS CAME DOWN ~20% GAME-WIDE, so each remaining monster had to carry
+  // more — kill rewards are 22–80% of a run's income, and cutting bodies without
+  // compensating would quietly gut the economy.
+  //
+  // `coinReward` was the obvious lever and turned out to be the WRONG one. Raised
+  // alongside everything else it put run income at 240g against a 193g baseline —
+  // the opposite of lean — and backing it out entirely landed at 188g with the
+  // carried-run gate IMPROVED (2/2/3 → 3/2/3). The compensation was already being
+  // done by the two dials below: elites pay double and drop guaranteed loot, so
+  // raising `eliteChance` is itself an income raise, and richer drop tables carry
+  // `c_gold`. Three dials pushing one number is how you overshoot without seeing
+  // it; measure each before stacking the next.
+  //
+  // What DID move: drop chances across the mid tier (goblin .10→.15, skeleton /
+  // zombie / ghoul .12→.16, wraith .16→.22, gargoyle .20→.28), as part of moving
+  // loot off the open floor. A monster is an out-of-the-way place too — you have
+  // to beat it — and it pairs with the smaller garrisons: fewer bodies, each one
+  // worth killing, rather than a crowd you walk past. Trash (rat/bat/spider)
+  // keeps `coinReward: 1` and no drop at all: it should still read as not worth
+  // the turn.
   goblin: {
     id: "goblin",
     name: "Goblin",
@@ -171,7 +191,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 2,
     opensDoors: true, // goblins are clever enough to work a latch
-    loot: { chance: 0.1, table: [{ itemId: "p_heal", weight: 1 }] },
+    loot: { chance: 0.15, table: [{ itemId: "p_heal", weight: 1 }] },
   },
   skeleton: {
     id: "skeleton",
@@ -186,7 +206,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 3,
     loot: {
-      chance: 0.12,
+      chance: 0.16,
       table: [
         { itemId: "p_heal", weight: 3 },
         { itemId: "a_leather", weight: 1 },
@@ -205,7 +225,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 6,
     speed: 1,
     coinReward: 3,
-    loot: { chance: 0.12, table: [{ itemId: "p_heal", weight: 1 }] },
+    loot: { chance: 0.16, table: [{ itemId: "p_heal", weight: 1 }] },
   },
   wraith: {
     id: "wraith",
@@ -239,7 +259,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
      */
     inflicts: { effect: "bleed", chance: 0.25, duration: 4 },
     loot: {
-      chance: 0.16,
+      chance: 0.22,
       table: [
         { itemId: "p_gheal", weight: 2 },
         { itemId: "p_ward", weight: 1 },
@@ -258,7 +278,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     sightRadius: 6,
     speed: 1,
     coinReward: 3,
-    loot: { chance: 0.12, table: [{ itemId: "p_heal", weight: 2 }] },
+    loot: { chance: 0.16, table: [{ itemId: "p_heal", weight: 2 }] },
   },
   gargoyle: {
     id: "gargoyle",
@@ -274,7 +294,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     speed: 1,
     coinReward: 5,
     loot: {
-      chance: 0.2,
+      chance: 0.28,
       table: [
         { itemId: "p_gheal", weight: 2 },
         { itemId: "a_scale", weight: 1 },
@@ -375,6 +395,14 @@ export const MONSTERS: Record<string, MonsterDef> = {
     dmg: 6,
     armor: 1,
     behavior: "guardChase", // guards the bridge until it spots you
+    // You cannot freeze a thing made of frost. Chill makes a monster skip its
+    // turn, and the Frostbrand refreshes it (chance 0.5, duration 3) while it is
+    // still frozen — measured, Gorm spent 55% of the fight unable to act, and
+    // the WEAKER Frostbrand (power 7) left you on 22 HP where the stronger War
+    // Axe (power 8) left you on 6. Halving it takes that to 16% and 10 HP: the
+    // blade still bites a little, so you learn it is RESISTED rather than
+    // broken, but it stops being the answer to the one enemy it should not be.
+    resist: { chill: 0.5 },
     sightRadius: 9,
     speed: 1,
     coinReward: 16,

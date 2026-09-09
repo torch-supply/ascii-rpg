@@ -396,7 +396,7 @@ export function BossBar() {
       <div className="w-80 max-w-[80%] border border-hp/60 bg-panel/90 px-3 py-1.5 shadow-[0_0_12px_rgba(255,60,60,0.25)]">
         <div className="flex items-baseline justify-between text-[11px] uppercase tracking-[0.2em]">
           <span style={{ color: def.color }}>
-            {def.glyph} {def.name}
+            <span className="normal-case">{def.glyph}</span> {def.name}
           </span>
           <span className="text-dim">
             {Math.max(0, boss.hp)}/{def.maxHp}
@@ -454,7 +454,13 @@ export function EliteBars() {
           >
             <div className="flex items-baseline justify-between gap-2 text-[10px] uppercase tracking-[0.15em]">
               <span className="whitespace-nowrap" style={{ color: tint }}>
-                {def.glyph} {label}
+                {/* The glyph must NOT be uppercased with the name: these bars
+                    exist so you can match the readout to a thing on screen, and
+                    `text-transform` silently rewrote it. Monster glyphs use both
+                    cases and two pairs actually collide — a snow hare's `h`
+                    rendered as `H`, the HERALD, and a bat's `b` as `B`, the cave
+                    bear. */}
+                <span className="normal-case">{def.glyph}</span> {label}
               </span>
               <span className="shrink-0 text-dim">
                 {Math.max(0, m.hp)}/{maxHp}

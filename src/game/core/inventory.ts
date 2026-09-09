@@ -17,26 +17,36 @@ export function removeOneFromBag(p: PlayerState, defId: string) {
   else p.bag.splice(i, 1);
 }
 
-/** Wield a weapon. Swaps, never discards: the currently-held weapon is stowed
- * back into the bag, and the new one is taken out of it — so every weapon you
- * find stays available to re-equip or sell. */
-export function equipWeapon(p: PlayerState, defId: string) {
-  if (p.weaponId === defId) return;
+/**
+ * Wield a weapon / don armour, returning the defId this DISPLACED (or null).
+ *
+ * You carry ONE weapon and ONE suit of armour. The replaced piece used to be
+ * stowed in the bag, which quietly made the bag a gear warehouse: a run can turn
+ * up ~11 pieces, worth 178g of sell value against a ~190g purse, and most of an
+ * "inventory" was spare kit you were never going to wear. The caller now decides
+ * where the displaced piece goes — the floor at your feet during play, a
+ * trade-in credit at a shop counter — so a swap is a real choice with a real
+ * cost, and what you set down is still lying there if you want it back.
+ */
+export function equipWeapon(p: PlayerState, defId: string): string | null {
+  if (p.weaponId === defId) return null;
   const def = ITEMS[defId];
-  if (p.weaponId) addToBag(p, p.weaponId); // keep the old one
+  const displaced = p.weaponId || null;
   removeOneFromBag(p, defId); // the newly-wielded one leaves the bag
   p.weaponId = defId;
   p.weaponPower = def.power ?? 0;
+  return displaced;
 }
 
 /** Don armor. Same swap semantics as `equipWeapon`. */
-export function equipArmor(p: PlayerState, defId: string) {
-  if (p.armorId === defId) return;
+export function equipArmor(p: PlayerState, defId: string): string | null {
+  if (p.armorId === defId) return null;
   const def = ITEMS[defId];
-  if (p.armorId) addToBag(p, p.armorId);
+  const displaced = p.armorId || null;
   removeOneFromBag(p, defId);
   p.armorId = defId;
   p.armorReduction = def.reduction ?? 0;
+  return displaced;
 }
 
 /**
@@ -61,17 +71,20 @@ export function addToBag(p: PlayerState, defId: string, count = 1) {
  * upgrade, otherwise stow it; potions stack in the bag; a torch widens light.
  * (Coins and quest items are handled separately at pickup.)
  */
-export function giveItem(p: PlayerState, defId: string) {
+/** Acquire an item. Returns any gear defId it DISPLACED, for the caller to
+ * trade in or drop. */
+export function giveItem(p: PlayerState, defId: string): string | null {
   const def = ITEMS[defId];
   switch (def.category) {
+    // Bought at a counter: it goes straight on, and the piece it replaces is
+    // traded in (the caller credits `sellPrice`). No "is it better?" test —
+    // you chose to buy it, and POWER IS NOT THE ONLY AXIS: a Frostbrand chills
+    // and a mace knocks back, so a bare `power >` comparison silently threw
+    // away the property you were carrying the weapon for.
     case "weapon":
-      if ((def.power ?? 0) > p.weaponPower) equipWeapon(p, defId);
-      else addToBag(p, defId);
-      break;
+      return equipWeapon(p, defId);
     case "armor":
-      if ((def.reduction ?? 0) > p.armorReduction) equipArmor(p, defId);
-      else addToBag(p, defId);
-      break;
+      return equipArmor(p, defId);
     case "torch": {
       // A torch is your light source, not a bag item — buying/finding another
       // ADDS its fuel (extra turns to burn). Adopt the brighter one; never
@@ -90,4 +103,5 @@ export function giveItem(p: PlayerState, defId: string) {
     default:
       addToBag(p, defId);
   }
+  return null;
 }

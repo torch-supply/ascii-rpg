@@ -42,7 +42,7 @@ const STYLE: Record<LogKind, Omit<LogStyle, "kind">> = {
   // the project's 110 legibility bar, so the two were tellable apart by glyph
   // alone and the colour carried nothing. Dropping it a step both clears the bar
   // (134) and puts the hierarchy the right way up: a kill or a hit should read
-  // louder than "You stow the Chainmail."
+  // louder than "You take up the War Axe, setting down the Frostbrand."
   neutral: { color: "#8b8d99", glyph: "·", glyphColor: "#4a4a58" },
 };
 

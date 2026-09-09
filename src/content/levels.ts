@@ -22,6 +22,11 @@ export const LEVELS: LevelConfig[] = [
     subBiomes: [
       {
         biome: "cavern",
+        // A destination, not an arrival: the glowcap hollows are the thing you
+        // navigate toward, and they are SELF-LIT while the pit proper is dark.
+        // Starting in one (50% of seeds) both spoiled the discovery and inverted
+        // the lesson level 1 exists to teach — that your torch is your sight.
+        noStart: true,
         // readable warm cave rock (the walls you can SEE are the walls that
         // block) — the teal glow comes from the fungi's own light, not the tiles
         palette: { wall: "#5c5048", floor: "#241f1b", accent: "#79f2dc" },
@@ -42,8 +47,9 @@ export const LEVELS: LevelConfig[] = [
     // to suit (the turn limit is a score target now, so a roomy par is fine).
     mapWidth: 56,
     mapHeight: 34,
+    sconces: 3, // a forgotten pit — the glowcaps light it, not the gaolers
     generator: "digger",
-    monsterBudget: 9,
+    monsterBudget: 8,
     spawnTable: [
       { monsterId: "rat", weight: 6 },
       { monsterId: "bat", weight: 4 },
@@ -98,6 +104,10 @@ export const LEVELS: LevelConfig[] = [
         scale: 0.14,
         threshold: 0.3,
         hazards: [{ type: "bramble", density: 0.28, clumps: 4 }],
+        // the thorns SNAG (a bleed on entry) — waking in them is a hazard you
+        // never chose. The bog and the glade are both fine arrivals; this is the
+        // only Blackwood region that isn't.
+        noStart: true,
       },
     ],
     // the ruins of a woodcutters' hamlet, swallowed by the cursed wood — several
@@ -138,7 +148,13 @@ export const LEVELS: LevelConfig[] = [
     mapWidth: 84,
     mapHeight: 52,
     generator: "cellular",
-    monsterBudget: 20,
+    // GARRISONS CAME DOWN ~20% GAME-WIDE, and elite chances went up to match:
+    // fewer bodies, more of them worth fearing, so a level is more exploration
+    // than corridor-clearing. The Ramparts is the ONE level left alone — it is a
+    // survive level where `siege.cap` is the real governor and ring-spawned
+    // reinforcements arrive already chasing, so a smaller garrison makes it
+    // HARDER, not easier (measured: 14→11 dropped the bot 33%→17%).
+    monsterBudget: 15,
     spawnTable: [
       { monsterId: "rat", weight: 3 },
       { monsterId: "bat", weight: 4 },
@@ -153,6 +169,12 @@ export const LEVELS: LevelConfig[] = [
       { itemId: "a_leather", weight: 2 },
     ],
     coinRichness: 1.15,
+    // Explicitly none. Every eligible wall on this level belonged to a
+    // FREESTANDING structure, so the whole budget used to hang burning brackets
+    // on hut walls: no tended flame in the woods — the hamlet is abandoned. Daylight
+    // through the canopy (`SKYLIGHT.forest`) is what you see by here.
+    sconces: 0,
+    eliteChance: 0.08,
     baseLightRadius: 6,
     trapCount: 4,
     waterCount: 22,
@@ -161,7 +183,7 @@ export const LEVELS: LevelConfig[] = [
     ambient: [{ monsterId: "wisp", count: 3 }], // pale lights drifting in the cursed wood
     goal: { type: "collectX", questTag: "moonstone", count: 3 },
     narration:
-      "The three shards flare as one, and a silver thread pulls you downward — toward a reek of rot and black standing water. The Mire. Somewhere out in the reeds a soft light is burning that has nothing to do with fire. Whatever the dead are guarding, the only path runs through it.",
+      "The three shards flare as one, and a silver thread pulls you downward — toward a reek of rot and black standing water. The Mire. Somewhere out in the reeds a soft light is burning that has nothing to do with fire, and further out, half-drowned, stands the roofline of the temple the pilgrim road was built to reach. The way onward runs through the water, or it does not run at all.",
     shopTier: 2,
   },
   {
@@ -185,6 +207,17 @@ export const LEVELS: LevelConfig[] = [
         palette: { wall: "#4f6b3a", floor: "#2a3826", accent: "#8fd0a0" },
         layout: "maze",
         size: 0.38,
+        // GROWN, not built. A bare `maze` wing is a rectilinear lattice, which
+        // made the bog's one natural feature the only thing on the level
+        // generated as architecture — beside a temple and wayshrines whose
+        // straight walls are the point. `organic` doubles the lattice and erodes
+        // it into ragged reed banks with wandering channels.
+        organic: true,
+        // A labyrinth is somewhere you go INTO. Arriving already lost inside
+        // the reeds (18% of seeds) reads as disorientation, not as a bog you
+        // wade into — and it's unreachable by a biome blocklist, since the wing
+        // is `marsh` like the base.
+        noStart: true,
       },
       // a fungal grove — luminous caps growing out of the rot. Beautiful and
       // poisonous: the glow draws you in, the bog's spore vents do the rest.
@@ -194,20 +227,65 @@ export const LEVELS: LevelConfig[] = [
         scale: 0.13,
         threshold: 0.1,
         hazards: [{ type: "glowcap", density: 0.18, clumps: 3 }],
+        // the grove's whole trick is that the glow draws you in from OUTSIDE;
+        // starting inside it skips the lure, and its spore vents can poison you
+        // on the first turn
+        noStart: true,
+      },
+      {
+        // THE DROWNED TEMPLE — the Great Hall's cathedral generator sunk into a
+        // bog: a colonnaded nave with side chapels, half-flooded. Reusing
+        // `hall` here is the point; the same structure reads completely
+        // differently in a marsh than it does in Blackhall.
+        biome: "sanctum",
+        palette: { wall: "#5d6f68", floor: "#232e2b", accent: "#8fd0b4" },
+        layout: "hall",
+        size: 0.44, // a nave wants room; smaller wings get severed more often
+
+        hazards: [{ type: "water", density: 0.14, clumps: 4 }],
+        // THE PILGRIMAGE: the exit is inside the temple, so the level is a journey
+        // TO somewhere rather than to wherever the bog happened to trail off.
+        // The lore was already "drowned pilgrims, a liar's signpost" — this makes
+        // the thing they were walking towards real.
+        goalHere: true,
+        // …and never BEGIN here. Measured at 23%: you'd spawn inside the temple
+        // with the exit also inside it, so a pilgrimage could be finished in a
+        // few steps. Both ends of the journey in one region is the worst version
+        // of this bug, which is why the pair is always worth checking together.
+        noStart: true,
       },
     ],
     // a half-sunken wayshrine of the old dawn-faith — a lone ruin, offerings in
+    // A PILGRIM ROAD, not one shrine. `structures[]` re-scans for its own
+    // clearing per entry, so four small wayshrines scatter across the bog as
+    // waymarkers toward the temple — and the lore's "liar's signpost" finally
+    // has something to lie about.
     structures: [
       {
         palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
         loot: [{ itemId: "p_detect" }, { itemId: "p_gheal" }],
       },
+      {
+        size: { w: 5, h: 5 },
+        palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
+        loot: [{ itemId: "c_gold" }],
+      },
+      {
+        size: { w: 5, h: 5 },
+        palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
+        loot: [{ itemId: "p_heal" }],
+      },
+      {
+        size: { w: 6, h: 5 },
+        palette: { wall: "#6f7a5c", floor: "#33382a", accent: "#a9c07a" },
+        loot: [{ itemId: "c_gold" }, { itemId: "p_antidote" }],
+      },
     ],
     // a big, sprawling wetland — water channels, reed maze, and dry hummocks
-    mapWidth: 72,
-    mapHeight: 46,
+    mapWidth: 84,
+    mapHeight: 54,
     generator: "cellular",
-    monsterBudget: 16,
+    monsterBudget: 15,
     spawnTable: [
       { monsterId: "spider", weight: 4 },
       { monsterId: "imp", weight: 2 },
@@ -222,19 +300,24 @@ export const LEVELS: LevelConfig[] = [
       { itemId: "i_torch", weight: 1 },
     ],
     coinRichness: 1.15,
+    // Explicitly none. Every eligible wall on this level belonged to a
+    // FREESTANDING structure, so the whole budget used to hang burning brackets
+    // on hut walls: the wayshrines are ruins and the bog has nothing to burn; open sky
+    // over the reeds (`SKYLIGHT.marsh`) is the light on this level.
+    sconces: 0,
     baseLightRadius: 6,
     trapCount: 4,
-    forageCount: 10,
+    forageCount: 14,
     waterCount: 64,
     oilCount: 16,
-    sporeVentCount: 5, // fumaroles seeping poison haze across the rotting bog
-    eliteChance: 0.1,
+    sporeVentCount: 7, // fumaroles seeping poison haze across the rotting bog
+    eliteChance: 0.15,
     altarCount: 1,
-    loreCount: 2, // drowned pilgrims, a liar's signpost
+    loreCount: 4, // drowned pilgrims, a liar's signpost, and the temple itself
     ambient: [{ monsterId: "marsh_frog", count: 3 }], // frogs plop away in the bog
     goal: { type: "reachLocation" },
     narration:
-      "You drag onto the last stone of the causeway, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into a warren of ice-choked caves and black crevasses — the Frostspine Pass — and something enormous is breathing on the wind.",
+      "You leave the temple by its drowned back stair, mud to the knee, and the air turns suddenly cold and clean. Ahead the ground climbs into a warren of ice-choked caves and black crevasses — the Frostspine Pass — and something enormous is breathing on the wind.",
     shopTier: 3,
   },
   {
@@ -284,7 +367,7 @@ export const LEVELS: LevelConfig[] = [
     mapWidth: 72,
     mapHeight: 46,
     generator: "cellular",
-    monsterBudget: 17,
+    monsterBudget: 13,
     spawnTable: [
       { monsterId: "goblin", weight: 5 },
       { monsterId: "skeleton", weight: 5 },
@@ -297,6 +380,11 @@ export const LEVELS: LevelConfig[] = [
       { itemId: "w_axe", weight: 1 },
     ],
     coinRichness: 1.25,
+    // Explicitly none. Every eligible wall on this level belonged to a
+    // FREESTANDING structure, so the whole budget used to hang burning brackets
+    // on hut walls: the watchpost was abandoned long ago; snow throwing back the
+    // daylight (`SKYLIGHT.mountain`) is the only light in the pass.
+    sconces: 0,
     baseLightRadius: 5,
     trapCount: 4,
     // crevasses: frozen tarns (water — Rimewalk can bridge) AND bottomless
@@ -304,40 +392,88 @@ export const LEVELS: LevelConfig[] = [
     waterCount: 18,
     chasmCount: 28,
     forageCount: 8,
-    eliteChance: 0.12,
+    eliteChance: 0.18,
     loreCount: 2, // the border-watch's retreat, a frozen climber
     ambient: [{ monsterId: "snow_hare", count: 2 }], // a hare bolts across the snow
     goal: { type: "killTarget", monsterId: "frost_troll" },
     narration:
-      "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — above ground burned black and still drifting with ash, where the siege starved and nothing has grown since. The Warden who holds that gate has already seen you.",
+      "Gorm topples off the bridge into the white below, and the way is open. Across the chasm the gates of Blackhall Castle loom — iron and old bone — and between you and them lies the castle's burial ground: rank on rank of markers under an open grey sky, and past its wall the ash-fields where the siege starved and nothing has grown since. The Warden who holds that gate has already seen you.",
     shopTier: 4,
   },
   {
     id: "iron_gate",
     title: "The Iron Gate",
-    biome: "castle",
-    palette: { wall: "#6a5c6e", floor: "#2e2833", accent: "#d24a4a" },
-    // an `ashen` wastes region — the war-scorched approach to Blackhall: falling
-    // ash, dim ember glow, oil-soaked ground that a firebomb turns to an inferno.
+    // THE THRESHOLD LEVEL: the base is now the OUTSIDE — Blackhall's burial
+    // ground under an open sky — and the gatehouse is carved into it as a
+    // `rogue` wing. You cross the graves, pass the chapel, and go in.
+    //
+    // Flipping the base also follows the documented lesson that a tight base
+    // generator starves a COMBAT level of kiting room: `rogue` runs 13-27% floor,
+    // and this level's goal is to fight across the map to the Warden. A forgiving
+    // cellular base with a structural wing is the recommended shape.
+    biome: "graveyard",
+    palette: { wall: "#5c6068", floor: "#22252b", accent: "#9aa3b4" },
+    // You always begin OUTSIDE the walls — on the graves or the burned siege
+    // ground, either reads as an approach. Never inside the gatehouse: crossing
+    // into it is the whole point of the level.
     subBiomes: [
+      {
+        // the gatehouse itself — a grid of connected guard chambers, and the one
+        // part of Blackhall still garrisoned (hence every sconce on the level)
+        biome: "castle",
+        palette: { wall: "#6a5c6e", floor: "#2e2833", accent: "#d24a4a" },
+        layout: "rogue",
+        // The Gate Warden HOLDS THE GATE, so the fight belongs in the gatehouse.
+        // Placed at the farthest cell of the whole map it stood out on the open
+        // graves on 60% of seeds, which reads as the boss having wandered off
+        // the thing it is named for — and wastes the one built interior on the
+        // level. Paired with `noStart` below: you begin outside the walls and
+        // fight your way in, which is the level.
+        goalHere: true,
+        // Never begin INSIDE the walls — 12% of seeds did, and the gatehouse is
+        // the one place this level exists to make you fight your way to. The
+        // `ashen` siege ground deliberately stays allowed: on the graves or out
+        // on the burned ground both read as arriving from outside.
+        noStart: true,
+        size: 0.46,
+        hazards: [],
+      },
       {
         // an ash-choked, scorched expanse — the siege burned this approach to
         // the gate to nothing; falling ash, ember glow, pooled pitch (oil) to fire
         biome: "ashen",
         palette: { wall: "#3a332e", floor: "#241f1c", accent: "#ff7a2a" },
-        threshold: 0.1, // a real ashen expanse, not just a pocket
+        threshold: 0.12,
         hazards: [{ type: "oil", density: 0.3 }],
       },
     ],
-    // a grander gate approach — bigger halls, thick with the dead. The Gate
-    // Warden holds the FAR end (killTarget places it at farthest-from-start), so
-    // you must fight across the whole gatehouse + ashen approach to reach it.
-    mapWidth: 66,
-    mapHeight: 42,
-    generator: "rogue", // a defended gatehouse — a grid of connected chambers
+    // A chapel on the approach — the one building outside the walls, its door
+    // shut. `structures[]` stamps a real interior into open ground, so the level
+    // has THREE kinds of space: graves under sky, a small sealed room, and the
+    // gatehouse warren beyond.
+    structures: [
+      {
+        size: { w: 9, h: 7 },
+        loot: [{ itemId: "p_gheal" }, { itemId: "c_gold" }],
+        palette: { wall: "#6e6a5c", floor: "#2b2a24", accent: "#c9a227" },
+      },
+    ],
+    // Grown from 66x42 for the extra ground: the graves need room to read as a
+    // field rather than a strip, and the gatehouse wing eats ~46% of the map.
+    // The garrison's stores, walled up when the siege closed in. A CRACKED WALL
+    // rather than a door: this level is a fight your way in, and blasting or
+    // bashing through is the same verb as the rest of it.
+    secretVault: {
+      gate: "crackedWall",
+      loot: [{ itemId: "p_gheal" }, { itemId: "p_bomb" }, { itemId: "c_gold" }],
+    },
+    mapWidth: 84,
+    mapHeight: 50,
+    sconces: 16, // GARRISONED and still held — and now only in the gatehouse wing
+    generator: "cellular", // open, broken ground outside the walls
     // the old budget (18) was high because a CULL goal needs density; now that
     // you must cross the whole gatehouse to the warden, the garrison is thinner
-    monsterBudget: 13,
+    monsterBudget: 11,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "ghoul", weight: 4 },
@@ -350,25 +486,31 @@ export const LEVELS: LevelConfig[] = [
       // so there is no half-step here.
       { monsterId: "gargoyle", weight: 1 },
     ],
-    turnLimit: 560,
-    itemDropCount: 6,
+    turnLimit: 760, // par scales with the traverse (score target only)
+    itemDropCount: 9, // scaled with the 1.5x area — loot per tile held constant
     dropTable: [
+      { itemId: "i_torch", weight: 1 },
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_heal", weight: 2 },
       { itemId: "p_bomb", weight: 1 },
     ],
     coinRichness: 1.3,
     baseLightRadius: 5,
-    trapCount: 5,
+    trapCount: 7,
     crackedWallCount: 4,
     doorCount: 3,
-    forageCount: 6, // a few arcane motes to soften the cull grind (→ ~2 after lootScale)
-    eliteChance: 0.15,
+    // Raised well past a proportional scale (6 -> 12). The level grew 52% and the
+    // bot's walk grew 56% (305 -> 477 tiles), and deaths moved LATER (turn 84 ->
+    // 106) — the signature of attrition over distance rather than a difficulty
+    // spike. On a long traverse it's healing per tile walked that has to hold,
+    // not monsters per tile. The graveyard also gives the motes somewhere to be.
+    forageCount: 12,
+    eliteChance: 0.22,
     altarCount: 1,
-    loreCount: 1, // the castle's surrender, in gilt
+    loreCount: 3, // the surrender in gilt, plus what the graves say
     goal: { type: "killTarget", monsterId: "gate_captain" },
     narration:
-      "The Gate Warden falls, and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead.",
+      "The Gate Warden falls, and the portcullis grinds upward on rusted chains. Beyond spreads the great hall of Blackhall — cold, vast, and thick with the castle's restless dead. Far down the nave one bay of the roof has fallen in, and grey daylight stands in the gap like a pillar. Somewhere beneath the flagstones a stair goes down, and the air that comes up it smells of graves.",
     shopTier: 5,
   },
   {
@@ -385,22 +527,62 @@ export const LEVELS: LevelConfig[] = [
         { itemId: "c_gold" },
       ],
     },
+    // TWO REGIONS, no extra size. The hall was the sparsest level in the game
+    // (1.11 POIs per 100 walkable tiles) because `genHall` floored 74% of the
+    // map; tightening the chapels took that to 52% and the density to 1.57
+    // without adding a single threat. What it still lacked was VARIETY — it was
+    // the only level in the back half with no sub-biome at all.
+    subBiomes: [
+      {
+        // THE ROOF FELL IN. Ash drifts down through the gap and there is sky
+        // above you — an outdoor patch in the middle of a cathedral, and with
+        // per-region skylight it reads as the one bright place in Blackhall.
+        biome: "ashen",
+        // you arrive through the gate into the nave, under a roof — not already
+        // standing in the one bay where it has fallen in
+        noStart: true,
+        palette: { wall: "#4a423a", floor: "#2b2620", accent: "#ff9d4a" },
+        threshold: 0.1, // a real breach, not a skylight
+        hazards: [], // a hole in a roof, not a pitch fire — no oil here
+      },
+      {
+        // THE UNDERCROFT — a warren under the chancel, and the first sight of
+        // what Blackhall keeps below. Foreshadows the Sunken Crypt two levels on.
+        biome: "crypt",
+        // the undercroft is the level's first sight of what Blackhall keeps
+        // underground. Beginning down there (11% of seeds) spends that reveal
+        // before the cathedral above has been seen at all.
+        noStart: true,
+        palette: { wall: "#5a6356", floor: "#232a26", accent: "#9fb08a" },
+        layout: "rogue",
+        size: 0.34,
+        hazards: [],
+      },
+    ],
     mapWidth: 72,
     mapHeight: 46,
+    sconces: 10, // a cathedral nave, lit for ritual — but the rituals stopped
     generator: "hall", // a grand cathedral nave + flanking chambers
     // the hall is the most OPEN map in the game (~77% floor), so a budget tuned
     // for a normal map leaves it hollow — this is the "thick with the castle's
     // restless dead" hall, and the long walk should meet something
-    monsterBudget: 20,
+    // Tightening the chapels cut walkable area 2442 -> ~1250, which doubled
+    // monster density without changing the count — the mirror of growing a map
+    // and leaving its population alone. Measured at 40 seeds: 20 monsters gave
+    // 40%, 16 gave 68%. A straight area-proportional cut (to ~10) reads at 80%+
+    // and makes a cathedral full of the dead feel empty; the traverse got
+    // shorter too, so pressure per journey isn't purely a function of area.
+    monsterBudget: 13,
     spawnTable: [
       { monsterId: "skeleton", weight: 4 },
       { monsterId: "zombie", weight: 3 },
       { monsterId: "ghoul", weight: 4 },
       { monsterId: "wraith", weight: 2 },
     ],
-    turnLimit: 560,
+    turnLimit: 460, // a tighter hall is a shorter traverse (score target only)
     itemDropCount: 9,
     dropTable: [
+      { itemId: "i_torch", weight: 1 },
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_gheal", weight: 2 },
       { itemId: "a_chain", weight: 1 },
@@ -412,7 +594,7 @@ export const LEVELS: LevelConfig[] = [
     crackedWallCount: 6,
     doorCount: 5,
     forageCount: 6, // a little more relief to match the fuller hall
-    eliteChance: 0.15,
+    eliteChance: 0.22,
     altarCount: 3,
     loreCount: 3, // a servant's diary, a guardsman at his post, a besieger's helm
     goal: { type: "collectX", questTag: "sigil", count: 3 },
@@ -431,6 +613,11 @@ export const LEVELS: LevelConfig[] = [
         biome: "crypt",
         palette: { wall: "#585044", floor: "#1c1c17", accent: "#9fe0b0" },
         layout: "maze",
+        // you descend into the crypt from the hall above; waking already deep in
+        // the bone catacombs (27% of seeds) skips that descent — and, like the
+        // Mire's reeds, it is `crypt` like the base, so no biome blocklist could
+        // have said so
+        noStart: true,
         size: 0.36,
       },
       // bioluminescent fungi have colonized a damp hollow — glowing islands that
@@ -438,6 +625,9 @@ export const LEVELS: LevelConfig[] = [
       // blaze); cool wet cave rock, distinct from the Pit's warm grotto
       {
         biome: "cavern",
+        // the glowcap islands are the dry, lit REFUGE you find as the water
+        // rises — being handed it at spawn is the opposite of that
+        noStart: true,
         palette: { wall: "#3f4a48", floor: "#1a2220", accent: "#79f2dc" },
         scale: 0.13,
         threshold: 0.12, // a generous blob so the fragmented crypt floor still
@@ -448,6 +638,11 @@ export const LEVELS: LevelConfig[] = [
       // the sluice-gates failed, and the crypt has been drowning ever since.
       {
         biome: "undercity",
+        // the underworks are WHERE THE FLOOD COMES FROM. Starting in the flooded
+        // channels of a flooding level is backwards both ways: narratively you
+        // arrive from the castle above, and mechanically it's the wettest ground
+        // on the map.
+        noStart: true,
         palette: { wall: "#4a5a52", floor: "#161d1b", accent: "#7fd0a8" },
         scale: 0.15,
         threshold: 0.04,
@@ -466,10 +661,11 @@ export const LEVELS: LevelConfig[] = [
     // without crowding — it was the tightest map in the game at 54×34
     mapWidth: 60,
     mapHeight: 38,
+    sconces: 2, // a tomb, and drowning; the fungal hollows are the only light
     generator: "digger",
     // thinned so the WATER is the antagonist here, not the horde (the crypt
     // was the busiest level in the game; the flood was getting drowned out)
-    monsterBudget: 12,
+    monsterBudget: 10,
     spawnTable: [
       { monsterId: "ghoul", weight: 5 },
       { monsterId: "skeleton", weight: 4 },
@@ -490,7 +686,7 @@ export const LEVELS: LevelConfig[] = [
     oilCount: 10,
     crackedWallCount: 3,
     doorCount: 2,
-    eliteChance: 0.18,
+    eliteChance: 0.25,
     altarCount: 1,
     loreCount: 2, // the Sunblade's rifled tomb, its keeper's vow
     goal: { type: "findItem", questTag: "sunblade" },
@@ -517,8 +713,31 @@ export const LEVELS: LevelConfig[] = [
       },
     ],
     // a long, exposed wall-walk (the void beyond the parapet, towers to hold in)
+    // A tower storeroom. Gated by a DOOR, not a cracked wall, and that is the
+    // whole design: this is the one level with a real clock, so breaking in has
+    // to cost a turn or two rather than four melee bumps while waves close on
+    // you. It was also the level with almost nothing hidden on it — 3% of its
+    // loot was anywhere but open ground.
+    secretVault: {
+      gate: "door",
+      loot: [{ itemId: "p_gheal" }, { itemId: "p_ward" }, { itemId: "c_gold" }],
+    },
+    // An exposed wall-walk under a thundering sky — but its biome is `castle`,
+    // which is a sealed interior everywhere else, so it inherited 3 tiles of
+    // unaided sight while its own icy stretch (a `mountain` sub-region) gave 11:
+    // a four-fold jump between adjacent tiles of the same battlement. 4 is a
+    // stormy NIGHT sky: dim enough that a torch still buys +44 tiles on the one
+    // level with real fuel pressure, open enough that the wall stops reading as
+    // a corridor. It caps the ice too — snow throws daylight back only if there
+    // is daylight.
+    skylight: 4,
     mapWidth: 84,
     mapHeight: 34,
+    // Deliberately sparse. Seven braziers plus a lantern lit most of an open
+    // wall-walk (323 tiles — the brightest reading in the game), which undercuts
+    // the one level whose whole tension is sightline along the wall. Three reads
+    // as waypoints in the storm rather than floodlighting the battlement.
+    sconces: 3,
     generator: "rampart",
     monsterBudget: 14,
     spawnTable: [
@@ -529,6 +748,7 @@ export const LEVELS: LevelConfig[] = [
     turnLimit: 260,
     itemDropCount: 4,
     dropTable: [
+      { itemId: "i_torch", weight: 1 },
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_gheal", weight: 2 },
       { itemId: "p_bomb", weight: 1 },
@@ -543,7 +763,7 @@ export const LEVELS: LevelConfig[] = [
     ambient: [{ monsterId: "raven", count: 3 }], // carrion ravens wheel over the wall
     goal: { type: "survive", turns: 50 },
     narration:
-      "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead: the antechamber of the throne, a long gallery of stone figures facing the aisle. Malachar's Herald waits at the far end, wreathed in cold fire — and not every one of those statues is stone.",
+      "You hold the ramparts until the assault breaks and the wind finally dies to nothing. A single black door stands open ahead: the antechamber of the throne, a long gallery of stone figures facing the aisle. Black marble has crept back out of the throne room and into its floor. Malachar's Herald waits at the far end, wreathed in cold fire — and not every one of those statues is stone.",
     shopTier: 8,
   },
   {
@@ -556,14 +776,42 @@ export const LEVELS: LevelConfig[] = [
       gate: "door",
       loot: [{ itemId: "p_gheal" }, { itemId: "p_bomb" }, { itemId: "c_gold" }],
     },
+    // Black marble veining up through the gallery floor: the throne's own stone
+    // spreading BACKWARDS into the antechamber, its embers drifting over those
+    // cells (`throne` carries the rising-ember atmosphere, gated per region). It
+    // was the last level in the game with no sub-biome at all — one uniform
+    // castle palette end to end. Cosmetic only: `hazards: []` overrides the
+    // throne default (oil at 0.3 density), which would strew pitch across a
+    // ceremonial hall.
+    subBiomes: [
+      {
+        biome: "throne",
+        // the marble spreads backwards FROM the throne, so it should read as a
+        // gradient you walk into; arriving already on it contradicts that
+        noStart: true,
+        palette: { wall: "#74494a", floor: "#3a2b2b", accent: "#ffd700" },
+        scale: 0.1,
+        threshold: 0.16,
+        hazards: [],
+      },
+    ],
     // a grand processional STATUE GALLERY — a colonnaded promenade lined with
     // gargoyle "statues" (guardChase: still as stone until you draw near, then
     // they wake and shove); side aisles behind the pillars to flank/break LOS
     lightingBeat: "dusk", // dread deepens as the Herald falls — darkest before the dawn
     mapWidth: 66,
     mapHeight: 40,
+    sconces: 5, // the processional lights are failing as the dusk deepens
     generator: "gallery",
-    monsterBudget: 14,
+    // Counts are set against the gallery's WALKABLE area, which grew ~16% when
+    // the narthex/apse and flanking chambers claimed the dead rock — a bigger
+    // map at fixed counts is the same incomplete edit as a smaller one, just in
+    // the easy direction. `monsterBudget` deliberately did NOT move: measured at
+    // 40 seeds, the old and new geometry both read 35%, so the extra floor cost
+    // the garrison nothing (the rooms are off the spine — the bot never enters
+    // most of them). 35% is the lowest non-boss win-rate in the game and is a
+    // question for the balance pass, not for the layout.
+    monsterBudget: 12,
     spawnTable: [
       { monsterId: "gargoyle", weight: 3 }, // the gallery's statues, come alive
       { monsterId: "wraith", weight: 2 },
@@ -571,8 +819,9 @@ export const LEVELS: LevelConfig[] = [
       { monsterId: "ghoul", weight: 4 },
     ],
     turnLimit: 540,
-    itemDropCount: 6,
+    itemDropCount: 7,
     dropTable: [
+      { itemId: "i_torch", weight: 1 },
       { itemId: "c_gold", weight: 6 },
       { itemId: "p_gheal", weight: 2 },
       { itemId: "p_bomb", weight: 1 },
@@ -580,11 +829,15 @@ export const LEVELS: LevelConfig[] = [
     coinRichness: 1.8,
     baseLightRadius: 5,
     trapCount: 3,
-    crackedWallCount: 3,
+    crackedWallCount: 4,
     doorCount: 2,
-    forageCount: 1,
-    eliteChance: 0.12,
-    loreCount: 1, // a last fragment before the throne
+    forageCount: 2,
+    eliteChance: 0.2,
+    // 2, not 1. At 1251 walkable tiles this was the sparsest level in the game
+    // for lore by a wide margin (0.8 per 1000 tiles against a 1.3-4.9 range),
+    // and one fragment would now be spent entirely on the reliquary hint —
+    // leaving no room for the marble and the statues, which are the level.
+    loreCount: 2, // a last pair of fragments before the throne
     goal: { type: "killTarget", monsterId: "herald" },
     narration:
       "The Herald falls to ash and the black door yields. Beyond, a stair of black marble climbs to the Throne of Dusk. Malachar is waiting. End this.",
@@ -598,8 +851,9 @@ export const LEVELS: LevelConfig[] = [
     lightingBeat: "dawn", // the sky rekindles as Malachar falls — the quest's payoff
     mapWidth: 44,
     mapHeight: 28,
+    sconces: 0, // nothing here is tended. Malachar is the only light
     generator: "digger",
-    monsterBudget: 11,
+    monsterBudget: 9,
     spawnTable: [
       { monsterId: "wraith", weight: 5 },
       { monsterId: "skeleton", weight: 4 },

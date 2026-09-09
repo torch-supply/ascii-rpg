@@ -9,7 +9,7 @@ import {
   recomputeLight,
   recomputeFOV,
 } from "@/game/core/state";
-import { resolveTurn } from "@/game/core/actions";
+import { resolveTurn, takeGearAt } from "@/game/core/actions";
 import { Rng } from "@/game/core/rng";
 import {
   isGoalComplete,
@@ -44,7 +44,7 @@ import { MONSTERS, ELITE } from "@/content/monsters";
 import { ITEMS, SHOP_TIERS, sellPrice } from "@/content/items";
 import type { ShopEntry } from "@/content/items";
 import { CLASS_LIST } from "@/content/classes";
-import { LORE_POOLS } from "@/content/lore";
+import { LORE_POOLS, loreForBiome, loreByTitle } from "@/content/lore";
 import {
   giveItem,
   equipWeapon,
@@ -69,6 +69,7 @@ import {
   SPORE_VENT_PRIMING_GLYPH,
   SPORE_VENT_PRIMING_COLOR,
   TERRAIN_GLYPH,
+  terrainGlyph,
   CHASM_BG,
   GAS_COLOR,
   SPORE_VENT_COLOR,
@@ -79,7 +80,19 @@ import {
   EXIT_COLOR,
   contrastRatio,
 } from "@/render/tiles";
-import { beatAmbient, ambientForBiome } from "@/render/lighting";
+import { beatAmbient, ambientForBiome, BIOMES } from "@/render/lighting";
+import {
+  BIOME_ATMOSPHERE,
+  WEATHER_ATMOSPHERE,
+  ATMO_EMISSIVE,
+  ATMO_LIT_REF,
+  ATMO_MIN_SCALE,
+} from "@/render/tiles";
+import {
+  computeLightMap,
+  torchFlickerDepth,
+  unaidedSight,
+} from "@/game/core/light";
 import { cameraOrigin } from "@/render/CanvasRenderer";
 import { causeOfDeath, classifyLog } from "@/components/hud/logStyle";
 import { BG, MARK, TEXT } from "@/components/hud/palette";
@@ -89,6 +102,7 @@ import type {
   Pos,
   TileType,
   StatusKind,
+  Biome,
 } from "@/game/core/types";
 
 let failures = 0;
@@ -315,31 +329,28 @@ console.log("\n[0] Content integrity: id references + color validity");
     itemExists(r.id),
   );
 
-  // ── biomes a level actually uses should have their OWN lore pool (the
-  //    fallback silently serves dungeon fragments in, say, a mountain) ──
-  const usedBiomes = [
-    ...new Set(
-      LEVELS.flatMap((l) => [
-        ...(l.loreCount ? [l.biome] : []),
-        ...(l.subBiomes ?? []).map((s) => s.biome),
-      ]),
-    ),
-  ];
   // Lore is placed per REGION, so a prop can draw from any biome the level
   // carries — base OR sub-biome. Every one of those needs its own pool, else
   // the fallback silently serves dungeon fragments in, say, a fungal grove.
-  const loreBiomes = [
-    ...new Set(
-      LEVELS.filter((l) => (l.loreCount ?? 0) > 0).flatMap((l) => [
-        l.biome,
-        ...(l.subBiomes ?? []).map((s) => s.biome),
-      ]),
-    ),
-  ];
+
+  // Per (LEVEL, biome), not per biome — and against the FILTERED pool, because a
+  // level pin can empty a pool for one level while leaving it full for another.
+  // Checking the raw pool misses exactly that: pin every `crypt` fragment to the
+  // Sunken Crypt and `LORE_POOLS.crypt` still has six entries, while the Great
+  // Hall's undercroft can draw none of them. `placeLore` then skips those cells
+  // and quietly puts all the props elsewhere on the level, so the region loses
+  // its story with no shortfall to notice — the level still places its full
+  // count. That silence is the whole reason this is keyed by pair.
+  const lorePairs = LEVELS.filter((l) => (l.loreCount ?? 0) > 0).flatMap((l) =>
+    [l.biome, ...(l.subBiomes ?? []).map((sp) => sp.biome)].map((b) => ({
+      level: l.id,
+      biome: b,
+    })),
+  );
   checkOver(
-    "every biome a lore prop can land in has its own pool (no silent fallback)",
-    loreBiomes,
-    (b) => (LORE_POOLS[b]?.length ?? 0) > 0,
+    "every region a prop can land in has fragments for THAT level",
+    lorePairs,
+    (r) => loreForBiome(r.biome, r.level).length > 0,
   );
   // …and a fragment must not name a place its pool can appear OUTSIDE of (the
   // marsh pilgrim said "The Mire kept them" while turning up in the Blackwood).
@@ -354,16 +365,92 @@ console.log("\n[0] Content integrity: id references + color validity");
     pool.flatMap((e) =>
       placeNames
         .filter((p) => e.text.toLowerCase().includes(p))
-        .map((p) => ({ biome: b, title: e.title, place: p })),
+        .map((p) => ({ biome: b, title: e.title, place: p, levels: e.levels })),
     ),
   );
+  // A fragment PINNED to one level may name that level's place freely — that is
+  // what `LoreEntry.levels` is for. The rule only binds fragments free to roam.
+  const roams = (n: { biome: string; levels?: string[] }) =>
+    n.levels && n.levels.length === 1
+      ? false
+      : (homes.get(n.biome)?.size ?? 0) > 1;
   check(
-    "no lore fragment names a place its biome can appear outside of",
-    named.every((n) => (homes.get(n.biome)?.size ?? 0) <= 1),
+    "no unpinned lore fragment names a place its biome can appear outside of",
+    !named.some(roams),
     named
-      .filter((n) => (homes.get(n.biome)?.size ?? 0) > 1)
+      .filter(roams)
       .map((n) => `"${n.title}" names ${n.place} but ${n.biome} spans levels`)
       .join("; "),
+  );
+
+  // A typo in `levels` deletes a fragment from the game SILENTLY — it simply
+  // never passes the filter, and nothing else notices the pool got smaller.
+  const levelIds = new Set(LEVELS.map((l) => l.id));
+  const pinRefs = Object.entries(LORE_POOLS).flatMap(([b, pool]) =>
+    pool.flatMap((e) =>
+      (e.levels ?? []).map((id) => ({ biome: b, title: e.title, id })),
+    ),
+  );
+  // The Iron Gate's shape IS "begin outside the walls, fight your way in", and
+  // both halves live on one spec. Without pinning it, deleting either flag just
+  // deletes the assertion that guards it — the generic `goalHere` check in [68]
+  // only fires for levels that declare one.
+  {
+    const gate = LEVELS.find((l) => l.id === "iron_gate");
+    const keep = (gate?.subBiomes ?? []).find((sp) => sp.biome === "castle");
+    check(
+      "the Iron Gate is a fight INTO the gatehouse (goal inside, never start there)",
+      !!keep?.goalHere && !!keep?.noStart,
+      `(goalHere ${keep?.goalHere}, noStart ${keep?.noStart})`,
+    );
+  }
+
+  checkOver("every lore `levels` pin names a real level", pinRefs, (r) =>
+    levelIds.has(r.id),
+  );
+  // …and that level must actually CARRY the fragment's biome, or the pin is dead
+  // content: gated to a level whose regions can never draw from that pool.
+  checkOver(
+    "every lore pin names a level that carries that biome",
+    pinRefs,
+    (r) => {
+      const l = LEVELS.find((x) => x.id === r.id);
+      if (!l) return false;
+      return [l.biome, ...(l.subBiomes ?? []).map((sp) => sp.biome)].includes(
+        r.biome as never,
+      );
+    },
+  );
+
+  // The OUTCOME check, and the one that catches a starved pool. `placeLore`
+  // skips a cell when that region's filtered pool is exhausted, so a pool too
+  // thin for its level quietly places FEWER props than `loreCount` — no error,
+  // just missing story. Pinning fragments to levels made this a live risk: the
+  // Great Hall's undercroft can only draw the three unpinned `crypt` fragments,
+  // because the other three belong to the drowning tomb.
+  const shortfalls: string[] = [];
+  const repeats: string[] = [];
+  for (let li = 0; li < LEVELS.length; li++) {
+    const want = LEVELS[li].loreCount ?? 0;
+    if (want === 0) continue;
+    for (const seed of ["l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8"]) {
+      const g = beginLevel(seed, li, createPlayer());
+      if (g.lore.length < want)
+        shortfalls.push(`${LEVELS[li].id}/${seed}: ${g.lore.length}/${want}`);
+      const titles = g.lore.map((l) => l.title);
+      if (new Set(titles).size < titles.length)
+        repeats.push(`${LEVELS[li].id}/${seed}`);
+    }
+  }
+  check(
+    "every level places its full loreCount (no pool starved by a pin)",
+    shortfalls.length === 0,
+    shortfalls.slice(0, 4).join("; "),
+  );
+  check(
+    "no level ever shows the same fragment twice",
+    repeats.length === 0,
+    repeats.slice(0, 4).join("; "),
   );
 }
 
@@ -1966,24 +2053,113 @@ console.log("\n[26] Turn par vs map size (reachability floor only)");
   );
 }
 
-// ─── 27. Equipment swapping — never lose a weapon; switching is clean ────────
-console.log("\n[27] Equipment swapping");
+// ─── 27. Equipment swapping — ONE weapon, ONE suit; the old piece is set down ─
+// You carry one of each. The replaced piece used to be stowed in the bag, which
+// made the bag a gear warehouse (a run turns up ~11 pieces worth 178g of sell
+// value against a ~190g purse). It is now DISPLACED — `equipWeapon`/`equipArmor`
+// return it and the caller decides: the floor at your feet in play, a trade-in
+// credit at a shop counter. Nothing is destroyed either way.
+console.log("\n[27] Equipment swapping (one weapon, one suit)");
 {
   const p = createPlayer(); // Rusty Dagger wielded, empty bag
-  giveItem(p, "w_short"); // an upgrade → auto-equips
-  check("an upgrade auto-equips", p.weaponId === "w_short");
+  const displaced = equipWeapon(p, "w_short");
+  check("equipping swaps in", p.weaponId === "w_short");
   check(
-    "the replaced weapon is stowed, not discarded",
-    p.bag.some((b) => b.defId === "w_dagger"),
+    "the replaced weapon is HANDED BACK, not silently destroyed",
+    displaced === "w_dagger",
+  );
+  check(
+    "…and it does NOT go into the bag — the bag is not a gear warehouse",
+    !p.bag.some((b) => b.defId === "w_dagger"),
+  );
+  check(
+    "re-equipping the same weapon is a no-op that displaces nothing",
+    equipWeapon(p, "w_short") === null && p.weaponId === "w_short",
+  );
+  const back = equipWeapon(p, "w_dagger");
+  check(
+    "swapping back displaces the other one, still losing nothing",
+    p.weaponId === "w_dagger" && back === "w_short",
   );
 
-  equipWeapon(p, "w_dagger"); // switch back to the stowed weapon
-  check("re-equipping a stowed weapon swaps in", p.weaponId === "w_dagger");
+  // Armour behaves identically.
+  const a = createPlayer("warrior");
+  const oldArmor = a.armorId;
+  const off = equipArmor(a, "a_plate");
   check(
-    "the swap leaves no duplicate and loses nothing",
-    p.bag.filter((b) => b.defId === "w_dagger").length === 0 &&
-      p.bag.some((b) => b.defId === "w_short"),
+    "armour swaps the same way",
+    a.armorId === "a_plate" &&
+      off === oldArmor &&
+      !a.bag.some((b) => b.defId === oldArmor),
   );
+
+  // In PLAY the displaced piece lands at your feet, so it stays recoverable.
+  // `takeGearAt` is the path the gear prompt runs.
+  {
+    const g = beginLevel("swap-seed", 0, createPlayer());
+    const was = g.player.weaponId;
+    g.items = [
+      { id: "floor-axe", defId: "w_axe", x: g.player.x, y: g.player.y },
+    ];
+    const gave = takeGearAt(g, "floor-axe");
+    check(
+      "taking gear off the floor wields it and sets the old piece down there",
+      g.player.weaponId === "w_axe" &&
+        gave === was &&
+        g.items.some(
+          (i) => i.defId === was && i.x === g.player.x && i.y === g.player.y,
+        ),
+      `(wielding ${g.player.weaponId}, floor holds ${g.items.map((i) => i.defId).join("+")})`,
+    );
+    check(
+      "the taken piece is gone from the floor (no duplication)",
+      !g.items.some((i) => i.id === "floor-axe"),
+    );
+  }
+
+  // GEAR IS NOT AUTO-TAKEN any more — stepping onto a piece leaves it lying
+  // there for the prompt to offer. The old rule equipped on a bare `power >`
+  // test, which silently threw away a Frostbrand's chill for one point of axe.
+  //
+  // `pickUp` fires on a MOVE, not on `wait`. A first draft of both checks below
+  // stood the player ON the item and waited, which triggers no pickup at all —
+  // so they passed with auto-take still fully enabled. Step ONTO the tile.
+  const stepOnto = (g: GameState, defId: string, id: string) => {
+    const step = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ].find(([dx, dy]) => isWalkable(g.map, g.player.x + dx, g.player.y + dy))!;
+    g.items = [{ id, defId, x: g.player.x + step[0], y: g.player.y + step[1] }];
+    resolveTurn(g, { type: "move", dx: step[0], dy: step[1] }, new Rng(3));
+  };
+  {
+    const g = beginLevel("swap-seed", 0, createPlayer());
+    g.monsters = [];
+    g.player.weaponId = "w_frost";
+    g.player.weaponPower = ITEMS.w_frost.power ?? 0;
+    stepOnto(g, "w_axe", "lure");
+    check(
+      "walking over a stronger weapon does NOT silently take your Frostbrand",
+      g.player.weaponId === "w_frost" && g.items.some((i) => i.id === "lure"),
+      `(wielding ${g.player.weaponId})`,
+    );
+  }
+
+  // …except QUEST gear, which must stay automatic: the Sunblade is a `weapon`
+  // carrying `questTag`, and it IS the Sunken Crypt's objective — a prompt you
+  // could decline would let a player refuse their own goal.
+  {
+    const g = beginLevel("swap-seed", 0, createPlayer());
+    g.monsters = [];
+    stepOnto(g, "w_sun", "sun");
+    check(
+      "quest gear is still taken automatically (the Sunblade is an objective)",
+      g.player.weaponId === "w_sun" && (g.questProgress["sunblade"] ?? 0) === 1,
+      `(wielding ${g.player.weaponId}, progress ${g.questProgress["sunblade"] ?? 0})`,
+    );
+  }
 
   // Torches aren't bag items — a second one ADDS fuel (extra turns to burn),
   // and a brighter one upgrades the light without a plain torch downgrading it.
@@ -3034,14 +3210,26 @@ console.log("\n[40] Run modifiers");
       (treach.trapCount ?? 0) > 0,
   );
 
-  // Champions' `max(0.3, …)` FLOOR is the whole reason it works on the levels
-  // that declare no eliteChance at all (the Pit, the Blackwood, the Throne) —
-  // a bare `× 2` would leave those three untouched by the trial they paid score
-  // for. Assert both halves: the floor, and the raise on a level that has one.
-  const champ = applyLevelMutators(base, ["champions"]);
+  // Champions' `max(0.3, …)` FLOOR is the whole reason it works on a level that
+  // declares no eliteChance at all — a bare `× 2` leaves those untouched by the
+  // trial they paid score for. Assert both halves: the floor, and the raise on a
+  // level that has one.
+  //
+  // The level is chosen by PROPERTY, not by name. This was pinned to the
+  // Blackwood, which stopped declaring none the moment garrisons were thinned and
+  // elite chances raised across the game — so the check failed on a content edit
+  // that had not broken anything. If a future pass gives every level an
+  // eliteChance the floor becomes untestable, and that should be a loud failure
+  // rather than a silently-skipped check.
+  const noElite = LEVELS.find((l) => l.eliteChance === undefined);
   check(
-    "champions lifts elite chance on a level that declares none",
-    base.eliteChance === undefined && (champ.eliteChance ?? 0) >= 0.3,
+    "a level declaring no eliteChance still exists (the floor needs one)",
+    noElite !== undefined,
+  );
+  const champ = applyLevelMutators(noElite ?? base, ["champions"]);
+  check(
+    `champions lifts elite chance on a level that declares none (${noElite?.id})`,
+    noElite?.eliteChance === undefined && (champ.eliteChance ?? 0) >= 0.3,
   );
   const mire = LEVELS.find((l) => l.id === "the_mire")!;
   const champMire = applyLevelMutators(mire, ["champions"]);
@@ -3724,6 +3912,64 @@ console.log("\n[50] Gallery: niche offerings + varied collapsed pit");
   check(
     "the collapsed pit varies per seed (present on some, absent on others)",
     pitSeeds > 0 && pitSeeds < seeds.length,
+  );
+
+  // The gallery's PLAN, not its decoration. A `gallery` map is one rectangular
+  // band with over half the map left as solid rock, so before the narthex/apse
+  // and flanking chambers every seed walked the same uniform corridor and the
+  // niche/pit jitter was decoration on an unchanging shape. These two assert the
+  // shape itself, so an edit that silently drops either room type reddens.
+  //
+  // Reachability is NOT re-checked here: [28]/[43] already guarantee every open
+  // tile is reachable on every level, which covers the chambers for free.
+  const openAt = (map: GameMap, x: number, y: number) => {
+    const t = map.tiles[idx(x, y, map.width)];
+    return t !== "wall" && t !== "chasm";
+  };
+  let chamberSeeds = 0;
+  let endBaySeeds = 0;
+  for (const seed of seeds) {
+    const g = beginLevel(seed, ai, createPlayer());
+    const { width: w, height: h } = g.map;
+    // the hall band = the rows that run nearly the full width
+    const rowOpen = (y: number) => {
+      let n = 0;
+      for (let x = 1; x < w - 1; x++) if (openAt(g.map, x, y)) n++;
+      return n;
+    };
+    const band: number[] = [];
+    for (let y = 1; y < h - 1; y++) if (rowOpen(y) > w * 0.7) band.push(y);
+    const top = band[0];
+    const bot = band[band.length - 1];
+    // A flanking chamber is the only thing that can put floor 5+ rows clear of
+    // the band: niches reach 2 deep and the end bays swell at most 4.
+    let deep = 0;
+    for (let y = 1; y < h - 1; y++) {
+      if (y > top - 5 && y < bot + 5) continue;
+      for (let x = 1; x < w - 1; x++) if (openAt(g.map, x, y)) deep++;
+    }
+    if (deep > 0) chamberSeeds++;
+    // The end bays are TALLER than the hall: a column inside either end bay opens
+    // more rows than the band itself is high. Compared against the BAND HEIGHT
+    // rather than against a mid-hall column, which was the first attempt and is
+    // wrong — the flanking chambers straddle mid-map, so a mid column often runs
+    // through one and the reference inflates to match the thing being measured
+    // (it tied on 1 seed in 8 and read as the narthex being missing).
+    const colOpen = (x: number) => {
+      let n = 0;
+      for (let y = 1; y < h - 1; y++) if (openAt(g.map, x, y)) n++;
+      return n;
+    };
+    const bandH = bot - top + 1;
+    if (colOpen(4) > bandH && colOpen(w - 5) > bandH) endBaySeeds++;
+  }
+  check(
+    "flanking chambers are cut into the dead rock beyond the hall",
+    chamberSeeds === seeds.length,
+  );
+  check(
+    "a narthex and apse make both ends taller than the hall",
+    endBaySeeds === seeds.length,
   );
 }
 
@@ -4576,19 +4822,31 @@ console.log("\n[58] Turn-resolution behavior (mutation-audit closures)");
   // impossible — `visible` holds only the player's own tile — so `chase` can only
   // have come from the blow.
   {
-    const { g, mon, spot } = arena("skeleton", "idle");
+    const { g, mon } = arena("skeleton", "idle");
     g.player.hasTorch = false;
     g.player.lightRadius = 0;
     recomputeFOV(g);
+    // Zeroing the player's light makes detection impossible: `detectRange` is
+    // `min(def.sightRadius, player.lightRadius, …)`.
+    //
+    // This was asserted as "the player can't see it", which meant the same thing
+    // only while the FOV radius WAS `lightRadius`. Light-gated sight split the
+    // two: you keep a small unaided disc, so an adjacent monster now sits in
+    // `visible` while remaining unable to detect YOU — detection reads
+    // `player.lightRadius` directly, never `state.visible`. The proxy died; the
+    // property it stood for did not. So prove it BEHAVIOURALLY instead: left
+    // alone for a turn, the target must still be asleep.
+    const rng = new Rng(4);
+    resolveTurn(g, { type: "wait" }, rng);
     check(
-      "(setup) the target is unseen, so only the blow can wake it",
-      !g.visible.includes(idx(mon.x, mon.y, g.map.width)),
+      "(setup) the target can't wake on its own — only the blow can wake it",
+      mon.state === "idle",
+      `(state ${mon.state})`,
     );
-    resolveTurn(
-      g,
-      { type: "move", dx: spot.x - g.player.x, dy: spot.y - g.player.y },
-      new Rng(4),
-    );
+    // Re-aim each swing: an idle monster may shuffle. Looping can't manufacture
+    // a pass — with detection impossible, the blow is the only thing that can
+    // flip it to `chase`.
+    for (let t = 0; t < 6 && mon.state !== "chase"; t++) strikeAdjacent(g, rng);
     check(
       "striking an unaware monster wakes it (sneak isn't repeatable)",
       mon.state === "chase",
@@ -5271,18 +5529,23 @@ console.log("\n[59] Generation placement rules (mutation-audit closures)");
 // `lighting`) plus `gameStore`. These are the survivors that were real holes.
 console.log("\n[60] Inventory, snapshots & altar costs");
 {
-  // (a) Equipping SWAPS — the replaced piece is stowed, never discarded, so
-  // anything you find stays re-equippable and sellable. `[27]` covered the weapon
-  // path; the ARMOR path had no test, and discarding it silently ate your gear.
+  // (a) Equipping SWAPS and HANDS BACK the replaced piece — it must never be
+  // silently destroyed, and it must never land in the bag (one weapon, one suit;
+  // the bag is not a gear warehouse). `[27]` covers the weapon path.
   {
     const p = createPlayer("warrior");
     const old = p.armorId!;
     check("(setup) the warrior starts in armor", !!old);
-    equipArmor(p, "a_plate");
+    const displaced = equipArmor(p, "a_plate");
     check(
-      "equipping armor stows the old set instead of discarding it",
-      p.armorId === "a_plate" && p.bag.some((b) => b.defId === old),
-      `(bag: ${p.bag.map((b) => b.defId).join(",")})`,
+      "equipping armour hands back the old set rather than eating it",
+      p.armorId === "a_plate" && displaced === old,
+      `(displaced ${displaced})`,
+    );
+    check(
+      "…and the old set does NOT go into the bag",
+      !p.bag.some((b) => b.defId === old),
+      `(bag: ${p.bag.map((b) => b.defId).join(",") || "empty"})`,
     );
     check(
       "the newly worn armor left the bag",
@@ -5290,21 +5553,22 @@ console.log("\n[60] Inventory, snapshots & altar costs");
     );
   }
 
-  // (b) `giveItem` auto-equips only an UPGRADE. Auto-equipping anything would
-  // downgrade you off a picked-up rusty dagger late in the run.
+  // (b) `giveItem` is the SHOP path, and it no longer second-guesses you: buying
+  // a piece wears it and trades in what it replaces. The old "only if an upgrade"
+  // test read `power` alone, which silently discarded a Frostbrand's chill for
+  // one point of axe — power is not the only axis a weapon has.
   {
     const p = createPlayer("warrior");
     equipWeapon(p, "w_sun"); // best weapon in the game
-    const power = p.weaponPower;
-    giveItem(p, "w_dagger"); // strictly worse
+    const displaced = giveItem(p, "w_dagger"); // a deliberate purchase
     check(
-      "picking up a WORSE weapon stows it rather than equipping it",
-      p.weaponId === "w_sun" && p.weaponPower === power,
-      `(wielding ${p.weaponId})`,
+      "buying a weapon wears it and hands back the one it replaced",
+      p.weaponId === "w_dagger" && displaced === "w_sun",
+      `(wielding ${p.weaponId}, displaced ${displaced})`,
     );
     check(
-      "the worse weapon is still kept (sellable)",
-      p.bag.some((b) => b.defId === "w_dagger"),
+      "the displaced weapon is not quietly bagged",
+      !p.bag.some((b) => b.defId === "w_sun"),
     );
   }
 
@@ -5543,13 +5807,15 @@ console.log("\n[62] Hotbar slots are stable");
     const p = createPlayer("wanderer");
     p.bag = [];
     p.slotMap = {};
-    giveItem(p, "a_plate"); // better than the starting armor → worn, not bagged
-    giveItem(p, "a_leather");
-    giveItem(p, "a_leather");
-    giveItem(p, "a_leather");
-    const rows = p.bag.filter((b) => b.defId === "a_leather");
+    // A CONSUMABLE is the fixture now: gear never reaches the bag, so it can no
+    // longer demonstrate stacking (`giveItem` wears it and hands the old one
+    // back). The rule under test is unchanged — one entry per def id.
+    giveItem(p, "p_heal");
+    giveItem(p, "p_heal");
+    giveItem(p, "p_heal");
+    const rows = p.bag.filter((b) => b.defId === "p_heal");
     check(
-      "picking up the same armor three times makes ONE stack of 3",
+      "picking up the same potion three times makes ONE stack of 3",
       rows.length === 1 && rows[0]?.count === 3,
       `(${rows.length} row(s): ${JSON.stringify(rows)})`,
     );
@@ -5558,14 +5824,18 @@ console.log("\n[62] Hotbar slots are stable");
       new Set(p.bag.map((b) => p.slotMap[b.defId])).size === p.bag.length,
       `(bag ${p.bag.map((b) => b.defId).join(",")}, ${JSON.stringify(p.slotMap)})`,
     );
-    // equipping pulls a single copy off the stack rather than the whole pile
-    equipArmor(p, "a_leather");
+    // Equipping still pulls a copy OUT of the bag when gear is in there — a
+    // legacy save or the dev jump can put it there even though pickups no
+    // longer do — and hands back what it replaced.
+    p.bag.push({ defId: "a_leather", count: 2 });
+    const off = equipArmor(p, "a_leather");
     check(
-      "equipping from a stack takes one copy and stows the old armor",
-      (p.bag.find((b) => b.defId === "a_leather")?.count ?? 0) === 2 &&
+      "equipping from a bagged stack takes one copy and hands back the old set",
+      (p.bag.find((b) => b.defId === "a_leather")?.count ?? 0) === 1 &&
         p.armorId === "a_leather" &&
-        p.bag.some((b) => b.defId === "a_plate"),
-      `(${JSON.stringify(p.bag)})`,
+        off !== null &&
+        !p.bag.some((b) => b.defId === off),
+      `(displaced ${off}, bag ${JSON.stringify(p.bag)})`,
     );
   }
 
@@ -5889,7 +6159,7 @@ console.log("\n[64] Log colour-coding");
     ["You recover a Sunblade.", "gain"],
     ["You gather 12 Arrows.", "gain"],
     // ordinary chatter
-    ["You stow the Chainmail.", "neutral"],
+    ["You take up the War Axe, setting down the Frostbrand.", "neutral"],
     ["You shove the door open.", "neutral"],
     ["The Skeleton drops a Healing Potion.", "neutral"],
     ["Your torch gutters out. The dark closes back in.", "neutral"],
@@ -5925,7 +6195,7 @@ console.log("\n[64] Log colour-coding");
       "The Wraith hits you for 5.",
       "You strike the Wraith for 8 (6 left).",
       "You are bleeding!",
-      "You stow the Chainmail.",
+      "You take up the War Axe, setting down the Frostbrand.",
     ];
     check(
       "cause of death is the LAST harm line, not the first or the newest",
@@ -6086,7 +6356,7 @@ console.log("\n[66] HUD chrome legibility");
     "You drink the Healing Potion. (+10 hp)",
     "You pick up 6 gold.",
     "You strike the Skeleton for 8 (4 left).",
-    "You stow the Chainmail.",
+    "You take up the War Axe, setting down the Frostbrand.",
   ];
   const cats = LOG_SAMPLES.map(classifyLog);
   checkOver(
@@ -6151,6 +6421,1045 @@ console.log("\n[66] HUD chrome legibility");
     colorDistance(MARK.mapBorder, BG.map) >= 60 &&
       colorDistance(MARK.mapBorder, BG.shell) >= 60,
     `(vs map ${Math.round(colorDistance(MARK.mapBorder, BG.map))}, vs gutter ${Math.round(colorDistance(MARK.mapBorder, BG.shell))})`,
+  );
+}
+
+// ─── 67. A natural wing looks GROWN; a built one stays BUILT ────────────────
+// `SubBiomeSpec.organic` exists because `genGrid("maze")` is a perfect
+// rectilinear lattice, which is right for masonry and wrong for vegetation: the
+// Mire's reed thicket used the same generator as the Sunken Crypt's bone
+// catacombs, so the bog's one NATURAL feature was the only thing on the level
+// generated as architecture — beside a temple and wayshrines whose straight
+// walls are deliberate.
+//
+// The metric is the share of a region's wall tiles that are PURE STRAIGHT
+// interior: two collinear wall neighbours and none perpendicular. A lattice is
+// made of those (the catacomb measures 47%); eroded reed banks are not (6%).
+// Deliberately NOT a run-length or right-angle count — both invert at high
+// density, because a thick bank has perpendicular neighbours too and so scores
+// as "not straight" for the wrong reason.
+//
+// The second half is the real regression guard. `organic` must stay OPT-IN:
+// flipping it on globally would sand the masonry off the catacomb, and nothing
+// else in the suite would notice.
+console.log("\n[67] Organic wings: reeds grown, catacombs built");
+{
+  const straightShare = (level: string, target: number) => {
+    const li = levelIndexBy(level, (l) => l.id === level);
+    let straight = 0;
+    let wall = 0;
+    for (const seed of ["a", "b", "c", "d", "e", "f"]) {
+      const g = beginLevel(seed, li, createPlayer());
+      const { width: w, height: h } = g.map;
+      const isW = (x: number, y: number) =>
+        x >= 0 &&
+        y >= 0 &&
+        x < w &&
+        y < h &&
+        g.map.region?.[idx(x, y, w)] === target &&
+        g.map.tiles[idx(x, y, w)] === "wall";
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (!isW(x, y)) continue;
+          wall++;
+          const hN = (isW(x - 1, y) ? 1 : 0) + (isW(x + 1, y) ? 1 : 0);
+          const vN = (isW(x, y - 1) ? 1 : 0) + (isW(x, y + 1) ? 1 : 0);
+          if ((hN === 2 && vN === 0) || (vN === 2 && hN === 0)) straight++;
+        }
+      }
+    }
+    return wall === 0 ? 0 : straight / wall;
+  };
+
+  // the Mire's reed thicket — region 2, `layout: "maze"` + `organic: true`
+  const reeds = straightShare("the_mire", 2);
+  check(
+    `the Mire's reeds read as grown, not built (${(100 * reeds).toFixed(0)}% straight wall < 15%)`,
+    reeds < 0.15,
+  );
+  // the Sunken Crypt's bone catacombs — region 1, `layout: "maze"`, no flag
+  const catacomb = straightShare("sunken_crypt", 1);
+  check(
+    `the crypt's catacombs stay masonry (${(100 * catacomb).toFixed(0)}% straight wall > 35%)`,
+    catacomb > 0.35,
+  );
+}
+
+// ─── 68. Where a run BEGINS — noStart regions and the start→exit floor ──────
+// Two rules about the first tile of a level, both narrative before mechanical.
+//
+// `SubBiomeSpec.noStart` marks regions you may never begin in: the level's
+// destination (the Mire's temple), a discovery it exists to reveal (the Great
+// Hall's undercroft, first sight of what Blackhall keeps underground), or ground
+// that is simply hostile to wake on (the Blackwood's briar, whose thorns snag).
+// It is matched by REGION ID, not biome, and this check is why that matters —
+// the Mire's reed maze is `marsh` and the crypt's catacomb is `crypt`, the same
+// as their base regions, so a biome-keyed rule could not express them at all.
+//
+// The floor on start→exit exists because `exitInBiome` picks the farthest cell
+// WITHIN a region, which is only far if the region is. A destination carved
+// beside the start left ~2% of Mire seeds finishable in under 20 steps.
+console.log("\n[68] Run starts: forbidden regions and a real journey");
+{
+  const seeds = Array.from({ length: 40 }, (_, k) => `start-${k}`);
+  const ORTHO4 = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+  const violations: string[] = [];
+  const tooClose: string[] = [];
+  const misplaced: string[] = [];
+  for (let li = 0; li < LEVELS.length; li++) {
+    const cfg = LEVELS[li];
+    const banned = new Set<number>();
+    (cfg.subBiomes ?? []).forEach((sp, k) => {
+      if (sp.noStart) banned.add(k + 1);
+    });
+    if (banned.size === 0 && cfg.goal.type === "survive") continue;
+    for (const seed of seeds) {
+      const g = beginLevel(seed, li, createPlayer());
+      const r = g.map.region?.[idx(g.player.x, g.player.y, g.map.width)] ?? 0;
+      if (banned.has(r))
+        violations.push(
+          `${cfg.id}/${seed}: started in region ${r} (${g.map.regionBiome?.[r]})`,
+        );
+      // The objective, whatever KIND this level's goal is. `collectX` is
+      // excluded on purpose: it scatters several, so "the nearest shard" has no
+      // floor worth holding — the run length there is the tour, not a distance.
+      const obj =
+        cfg.goal.type === "reachLocation"
+          ? g.map.exit
+          : cfg.goal.type === "killTarget"
+            ? g.monsters.find((m) => m.isGoalTarget)
+            : cfg.goal.type === "findItem"
+              ? g.items.find((it) => it.questTag)
+              : undefined;
+      if (obj) {
+        const d = Math.abs(g.player.x - obj.x) + Math.abs(g.player.y - obj.y);
+        if (d < CONFIG.minStartToExit)
+          tooClose.push(`${cfg.id}/${seed}: goal ${d} tiles from start`);
+      }
+      // …and it must be INSIDE the region the level says owns it.
+      const goalRid = (cfg.subBiomes ?? []).findIndex((sp) => sp.goalHere) + 1;
+      if (goalRid > 0 && obj) {
+        const r = g.map.region?.[idx(obj.x, obj.y, g.map.width)] ?? 0;
+        if (r !== goalRid)
+          misplaced.push(
+            `${cfg.id}/${seed}: goal in region ${r}, not ${goalRid}`,
+          );
+      }
+    }
+  }
+  check(
+    `never begin in a noStart region (${seeds.length} seeds × every level)`,
+    violations.length === 0,
+    violations.slice(0, 3).join("; "),
+  );
+  // The measured assertion reads the dial, so it cannot catch the dial being
+  // NEUTRALIZED — set `minStartToExit` to 0 and every distance trivially clears
+  // it. So the contract is pinned against a literal too: 20 is the number the
+  // Mire's tail was measured against, and lowering the dial below it reopens the
+  // 3-step seed rather than fixing anything.
+  check(
+    "the start→exit floor is not neutralized (CONFIG.minStartToExit >= 20)",
+    CONFIG.minStartToExit >= 20,
+  );
+  check(
+    `the objective is always >= ${CONFIG.minStartToExit} tiles from the start`,
+    tooClose.length === 0,
+    tooClose.slice(0, 3).join("; "),
+  );
+  // `goalHere` is what stops a region built to BE the destination from being a
+  // side room you may never enter. The Gate Warden — whose entire identity is
+  // holding the gatehouse — stood out on the open graves on 60% of seeds.
+  check(
+    "a `goalHere` region actually holds the level's objective",
+    misplaced.length === 0,
+    misplaced.slice(0, 3).join("; "),
+  );
+
+  // Constraining WHERE the goal sits necessarily loosens how FAR it is, and the
+  // 40-seed sweep above is too coarse to see the tail that opens: pinning the
+  // Gate Warden inside the gatehouse took the Iron Gate's shortest run from 43
+  // steps to 17, and 40 seeds caught none of it. So the levels that constrain
+  // their goal get a deeper sweep of their own — cheap, since there are only
+  // ever a couple of them.
+  const near: string[] = [];
+  for (let li = 0; li < LEVELS.length; li++) {
+    const cfg = LEVELS[li];
+    if (!(cfg.subBiomes ?? []).some((sp) => sp.goalHere)) continue;
+    for (let k = 0; k < 150; k++) {
+      const g = beginLevel(`reach-${k}`, li, createPlayer());
+      const o =
+        cfg.goal.type === "reachLocation"
+          ? g.map.exit
+          : g.monsters.find((m) => m.isGoalTarget);
+      if (!o) continue;
+      const d = Math.abs(g.player.x - o.x) + Math.abs(g.player.y - o.y);
+      if (d < CONFIG.minStartToExit) near.push(`${cfg.id}/reach-${k}: ${d}`);
+    }
+  }
+  check(
+    "a constrained goal is still a JOURNEY (150 seeds on each such level)",
+    near.length === 0,
+    near.slice(0, 4).join("; "),
+  );
+
+  // THE APPROACH — distance to the goal REGION, which is not the same distance.
+  // `minStartToExit` measures the goal TILE and can be satisfied entirely
+  // indoors: you may start 30 steps from the Gate Warden but three steps from
+  // the gatehouse door, walk in, and cross the interior, skipping the outdoor
+  // half the level is built around. Measured before the floor existed: 13% of
+  // Iron Gate seeds put the building within 10 steps, 19% within 15.
+  const shortApproach: string[] = [];
+  for (let li = 0; li < LEVELS.length; li++) {
+    const cfg = LEVELS[li];
+    const rid = (cfg.subBiomes ?? []).findIndex((sp) => sp.goalHere) + 1;
+    if (rid === 0) continue;
+    for (let k = 0; k < 60; k++) {
+      const g = beginLevel(`appr-${k}`, li, createPlayer());
+      const w = g.map.width;
+      const h = g.map.height;
+      // walk out from the player until the goal region is first touched
+      const seen = new Int32Array(w * h).fill(-1);
+      let front = [idx(g.player.x, g.player.y, w)];
+      seen[front[0]] = 0;
+      let reach = -1;
+      while (front.length && reach < 0) {
+        const next: number[] = [];
+        for (const i of front) {
+          if ((g.map.region?.[i] ?? 0) === rid) {
+            reach = seen[i];
+            break;
+          }
+          const x = i % w;
+          const y = Math.floor(i / w);
+          for (const [dx, dy] of ORTHO4) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const j = idx(nx, ny, w);
+            if (seen[j] >= 0 || !isWalkable(g.map, nx, ny)) continue;
+            seen[j] = seen[i] + 1;
+            next.push(j);
+          }
+        }
+        front = next;
+      }
+      if (reach >= 0 && reach < CONFIG.minStartToGoalRegion)
+        shortApproach.push(`${cfg.id}/appr-${k}: ${reach} steps`);
+    }
+  }
+  check(
+    `you must WALK to the building (>= ${CONFIG.minStartToGoalRegion} steps before the goal region)`,
+    shortApproach.length === 0,
+    shortApproach.slice(0, 4).join("; "),
+  );
+
+  // A freestanding structure must be TAGGED as one. Its region borrows the
+  // `dungeon` biome for that biome's plain `#` wall and lack of weather — and
+  // `dungeon` is also a SCONCE biome, so without the tag the renderer reads a
+  // woodcutter's cottage as a garrisoned room and hangs a burning bracket on it.
+  // On the Blackwood, Mire and Frostspine those were the ONLY eligible walls on
+  // the map, so 100% of the sconce budget landed on abandoned huts (42/42,
+  // 39/39, 11/11 candidate walls). The tag is what the renderer filters on.
+  const untagged: string[] = [];
+  for (let li = 0; li < LEVELS.length; li++) {
+    const cfg = LEVELS[li];
+    if (!cfg.structures?.length) continue;
+    for (const seed of ["s1", "s2", "s3", "s4"]) {
+      const g = beginLevel(seed, li, createPlayer());
+      const tagged = new Set(g.map.structureRegions ?? []);
+      // every region carrying a hut's borrowed `dungeon` tag on a level whose
+      // own biome isn't `dungeon` must be listed as a structure
+      (g.map.regionBiome ?? []).forEach((b, rid) => {
+        if (rid === 0 || b !== "dungeon" || cfg.biome === "dungeon") return;
+        if (!tagged.has(rid)) untagged.push(`${cfg.id}/${seed}: region ${rid}`);
+      });
+    }
+  }
+  check(
+    "freestanding structures are tagged, so sconces never light an empty hut",
+    untagged.length === 0,
+    untagged.slice(0, 3).join("; "),
+  );
+}
+
+// ─── 69. One glyph, one meaning (locked, and keyed by CATEGORY) ────────────
+// `/style` has a collision report, but it is read by eye — and that is exactly
+// how `∴` came to mean both a healing arcane mote and a cloud of poison gas, and
+// `*` both a guttering fire and the quest shards a level sends you to collect.
+// Two hazard/boon pairs, the precise case the uniqueness rule exists for, and
+// both survived because the report's INPUT was only terrain and monsters: items
+// and overlays were never fed in, so nothing compared a potion against a wall
+// sconce (`‼` — two of the `!` twelve potions share) or a mote against gas.
+//
+// What makes a collision a BUG is that it crosses categories. Within one
+// category it is a convention and always fine: twelve potions on `!`, seven
+// weapons on `/`, a cracked wall drawing as the wall it hides in, a hidden trap
+// drawing as floor. Across categories it is a lie — terrain that looks like
+// loot, scenery that looks like a potion.
+//
+// Keying on the category SET rather than on the glyph is load-bearing. A first
+// version listed allowed glyphs, and could not tell that fixing `*` had worked:
+// the two quest items still share it between themselves, so the glyph kept
+// colliding for an entirely different and harmless reason and the entry looked
+// live. Locking the set fails in both directions — a new cross-category
+// collision reddens, and so does fixing a listed one without delisting it,
+// which is what stops the list becoming a graveyard of accepted bugs.
+console.log("\n[69] Glyphs: one character, one meaning");
+{
+  type Cat = "tile" | "item" | "monster" | "class" | "overlay";
+  const uses = new Map<string, Set<Cat>>();
+  const what = new Map<string, Set<string>>();
+  const add = (g: string, cat: Cat, label: string) => {
+    if (!g) return;
+    uses.set(g, (uses.get(g) ?? new Set()).add(cat));
+    what.set(g, (what.get(g) ?? new Set()).add(label));
+  };
+  // the RENDERED glyph, not the raw table — `terrainGlyph` overrides several
+  for (const t of Object.keys(TERRAIN_GLYPH) as TileType[])
+    for (const b of BIOMES) add(terrainGlyph(t, b), "tile", `tile:${t}`);
+  for (const m of Object.values(MONSTERS))
+    add(m.glyph, "monster", `monster:${m.id}`);
+  for (const it of Object.values(ITEMS)) add(it.glyph, "item", `item:${it.id}`);
+  for (const c of CLASS_LIST)
+    if (c.glyph) add(c.glyph, "class", `class:${c.id}`);
+  for (const [g, label] of [
+    ["‡", "altar"],
+    ["¶", "lore"],
+    ["@", "player"],
+    ["▴", "fire"],
+    ["▵", "fire-guttering"],
+    ["∴", "gas"],
+    ["°", "gas-alt"],
+    ["✷", "barrage"],
+    ["Ω", "sconce"],
+    [SPORE_VENT_PRIMING_GLYPH, "vent-priming"],
+  ] as const)
+    add(g, "overlay", label);
+
+  // Cross-category collisions that are ACCEPTED, and why. Everything else that
+  // crosses is a bug; everything within one category never reaches this list.
+  const allowed: Record<string, string> = {
+    "✷": "class badge is HUD chrome — never drawn on the map beside a barrage",
+    // `*` used to sit here as KNOWN-OPEN (guttering fire vs. the quest shards).
+    // It was fixed by moving fire to `▵`, and the stale half of this check is
+    // what forced the delisting: the entry could not simply be left behind.
+  };
+  const crossing = [...uses.entries()]
+    .filter(([, c]) => c.size > 1)
+    .map(([g]) => g)
+    .sort();
+  const unexpected = crossing.filter((g) => !(g in allowed));
+  const stale = Object.keys(allowed).filter((g) => !crossing.includes(g));
+  check(
+    "no glyph crosses categories unless the collision is declared",
+    unexpected.length === 0,
+    unexpected
+      .map((g) => `"${g}" = ${[...(what.get(g) ?? [])].join(" + ")}`)
+      .join("; "),
+  );
+  check(
+    "…and no declared collision is stale (fixing one means delisting it)",
+    stale.length === 0,
+    stale.map((g) => `"${g}" no longer crosses — remove it`).join("; "),
+  );
+}
+
+// ─── 70. Light-gated sight is the model the GAME uses, not just the picture ──
+// Sight was a render-side probe for a while: the renderer drew a light-gated
+// view while `state.visible` stayed a disc of `player.lightRadius`. Everything
+// downstream of `visible` therefore disagreed with the screen — most sharply,
+// `shootAt` gates on it, so you could see a lit room and be refused the shot,
+// silently, with no message and no turn spent. These checks pin the promotion.
+console.log("\n[70] Light-gated sight drives state.visible");
+{
+  // A straight corridor with the player at one end and nothing else lit, so the
+  // only light in play is the one each case puts there deliberately.
+  const corridor = (len: number) => {
+    const g = beginLevel("lit-seed", 0, createPlayer());
+    const w = g.map.width;
+    const py = 5;
+    const px = 5;
+    for (let d = -1; d <= len + 1; d++) {
+      g.map.tiles[py * w + px + d] = "floor";
+      g.map.tiles[(py - 1) * w + px + d] = "wall";
+      g.map.tiles[(py + 1) * w + px + d] = "wall";
+    }
+    g.player.x = px;
+    g.player.y = py;
+    g.monsters = [];
+    g.items = [];
+    g.altars = [];
+    g.fireTiles = [];
+    g.map.sconces = [];
+    g.player.hasTorch = false;
+    g.player.torchFuel = 0;
+    g.player.baseLightRadius = 3;
+    recomputeLight(g.player);
+    recomputeFOV(g);
+    return { g, px, py, w };
+  };
+
+  const FAR = 6; // beyond baseLightRadius 3, inside CONFIG.sightRange
+  {
+    const { g, px, py, w } = corridor(FAR + 1);
+    const far = idx(px + FAR, py, w);
+    check(
+      "a dark tile beyond your own light is NOT visible",
+      !g.visible.includes(far),
+    );
+    // light it from a distance — the tile itself becomes readable
+    g.fireTiles = [{ i: far, life: 5 }];
+    recomputeFOV(g);
+    check(
+      "…and lighting it makes it visible, though it is past lightRadius",
+      g.visible.includes(far),
+      `(lightRadius ${g.player.lightRadius}, distance ${FAR})`,
+    );
+  }
+
+  // THE regression this promotion exists for. With a bow equipped and a target
+  // standing in firelight beyond your torch, the shot must connect. Under the
+  // render-only prototype `shootAt` returned false here — no message, no turn,
+  // the key simply did nothing.
+  {
+    const { g, px, py, w } = corridor(FAR + 1);
+    const tx = px + FAR;
+    g.fireTiles = [{ i: idx(tx, py, w), life: 5 }];
+    g.monsters = [
+      { id: "t", defId: "skeleton", x: tx, y: py, hp: 99, state: "idle" },
+    ];
+    g.player.weaponId = "w_bow";
+    g.player.weaponPower = ITEMS.w_bow.power ?? 0;
+    g.player.bag = [{ defId: "am_arrow", count: 5 }];
+    recomputeFOV(g);
+    check(
+      "(setup) the lit target is visible but outside your own light",
+      g.visible.includes(idx(tx, py, w)) && FAR > g.player.lightRadius,
+    );
+    const before = g.monsters[0].hp;
+    resolveTurn(g, { type: "shootAt", x: tx, y: py }, new Rng(5));
+    check(
+      "you can SHOOT what you can see (not just what your torch reaches)",
+      g.monsters[0] !== undefined && g.monsters[0].hp < before,
+      `(hp ${before} → ${g.monsters[0]?.hp})`,
+    );
+  }
+
+  // Visibility must not FLICKER. The renderer animates its light map at 60fps;
+  // the core computes it steady, once per turn. If the core ever picked up the
+  // animated one, tiles would wink in and out of `state.visible` between frames
+  // — and a monster could step out of existence mid-turn.
+  {
+    const { g } = corridor(FAR + 1);
+    const a = [...g.visible].sort((x, y) => x - y);
+    for (let i = 0; i < 5; i++) recomputeFOV(g);
+    const b = [...g.visible].sort((x, y) => x - y);
+    check(
+      "recomputing sight is stable — visibility never flickers",
+      a.length === b.length && a.every((v, i) => v === b[i]),
+    );
+  }
+
+  // Sconces are MAP data now, placed at generation. While they lived in the
+  // renderer the core could not see by them at all.
+  {
+    const gi = levelIndexBy("iron_gate", (l) => l.id === "iron_gate");
+    const g = beginLevel("sconce-seed", gi, createPlayer());
+    check(
+      "sconces are placed into the map, not derived in the renderer",
+      (g.map.sconces?.length ?? 0) > 0,
+      `(${g.map.sconces?.length ?? 0} placed)`,
+    );
+    check(
+      "every sconce sits on a wall tile",
+      (g.map.sconces ?? []).every((i) => g.map.tiles[i] === "wall"),
+    );
+  }
+
+  // WORLD light must not depend on what YOU carry. `ROT.Lighting` takes a single
+  // `range` and its falloff is `1 - r/range` measured FROM THE SOURCE, so while
+  // that range was the player's `lightRadius` every brazier on the level dimmed
+  // and shrank when you doused your torch. Two fields are computed now.
+  {
+    const gi = levelIndexBy("great_hall", (l) => l.id === "great_hall");
+    const litTiles = (torch: boolean) => {
+      const g = beginLevel("worldlight", gi, createPlayer());
+      g.player.hasTorch = torch;
+      g.player.torchId = torch ? "i_lantern" : null;
+      g.player.torchFuel = torch ? 200 : 0;
+      recomputeLight(g.player);
+      const lm = computeLightMap(g, 0, true);
+      // Count light well AWAY from the player so their own pool can't account
+      // for the difference. The cutoff must be a CONSTANT, not `lightRadius + k`
+      // — a lantern raises `lightRadius`, so a torch-relative cutoff excludes
+      // more tiles in the lit case and manufactures a difference out of the
+      // measurement itself (it read 343 vs 402 that way, and the fix was fine).
+      const FAR_OF_PLAYER = 12; // beyond any lightRadius in the game
+      let far = 0;
+      for (const [i, c] of lm) {
+        const d = Math.hypot(
+          (i % g.map.width) - g.player.x,
+          Math.floor(i / g.map.width) - g.player.y,
+        );
+        if (d < FAR_OF_PLAYER) continue;
+        if (
+          0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] >=
+          CONFIG.sightLightMin
+        )
+          far++;
+      }
+      return far;
+    };
+    const lit = litTiles(true);
+    const dark = litTiles(false);
+    check(
+      "distant light does not depend on your torch (dousing it can't dim a brazier)",
+      lit > 0 && dark > 0 && Math.abs(lit - dark) <= Math.max(2, lit * 0.05),
+      `(lit ${lit} vs doused ${dark} far-lit tiles)`,
+    );
+  }
+
+  // The carried flame flickers; nothing else does, and daylight drowns it.
+  {
+    const hall = levelIndexBy("great_hall", (l) => l.id === "great_hall");
+    const open = levelIndexBy(
+      "frostspine_pass",
+      (l) => l.id === "frostspine_pass",
+    );
+    const depth = (li: number, torch: boolean, fuel = 200) => {
+      const g = beginLevel("flick", li, createPlayer());
+      g.player.hasTorch = torch;
+      g.player.torchId = torch ? "i_torch" : null;
+      g.player.torchFuel = torch ? fuel : 0;
+      recomputeLight(g.player);
+      return torchFlickerDepth(g);
+    };
+    check(
+      "with no torch the light is perfectly steady (the ember is your own eyes)",
+      depth(hall, false) === 0 && depth(open, false) === 0,
+    );
+    check(
+      "a lit torch flickers indoors, and harder as it gutters",
+      depth(hall, true) > 0 && depth(hall, true, 4) > depth(hall, true),
+      `(full ${depth(hall, true).toFixed(2)}, guttering ${depth(hall, true, 4).toFixed(2)})`,
+    );
+    check(
+      "…but daylight drowns it — outdoors the flicker is imperceptible",
+      depth(open, true) < depth(hall, true) * 0.25,
+      `(open sky ${depth(open, true).toFixed(3)} vs indoors ${depth(hall, true).toFixed(3)})`,
+    );
+
+    // A LANTERN is a glassed flame. Before `ItemDef.flicker` its upgrade was
+    // purely numeric — one more tile and longer fuel, both read off the HUD and
+    // never felt — and it guttered exactly as wildly as a bare torch.
+    const src = (id: string, fuel: number) => {
+      const g = beginLevel("flick", hall, createPlayer());
+      g.player.hasTorch = true;
+      g.player.torchId = id;
+      g.player.torchFuel = fuel;
+      recomputeLight(g.player);
+      return torchFlickerDepth(g);
+    };
+    check(
+      "a lantern burns steadier than a torch",
+      src("i_lantern", 280) > 0 && src("i_lantern", 280) < src("i_torch", 150),
+      `(lantern ${src("i_lantern", 280).toFixed(3)} vs torch ${src("i_torch", 150).toFixed(3)})`,
+    );
+    check(
+      "…still falters as its oil runs out, just never as wildly",
+      src("i_lantern", 4) > src("i_lantern", 280) &&
+        src("i_lantern", 4) < src("i_torch", 150),
+      `(lantern guttering ${src("i_lantern", 4).toFixed(3)} vs healthy torch ${src("i_torch", 150).toFixed(3)})`,
+    );
+  }
+
+  // A LEVEL HAS ONE SKY. `SKYLIGHT` is keyed by biome, which is right until a
+  // level's biome lies about whether you are outdoors: the Ramparts is an open
+  // battlement whose biome is `castle`, so it inherited the sealed-interior
+  // value (3 tiles) while its own icy stretch — a `mountain` sub-region — gave
+  // 11. `LevelConfig.skylight` replaces the base value and CAPS sub-regions, so
+  // a level can't be pitch dark and blazing on two adjacent tiles.
+  {
+    const ri = levelIndexBy("ramparts", (l) => l.id === "ramparts");
+    const g = beginLevel("sky-a", ri, createPlayer());
+    const w = g.map.width;
+    const byRegion = new Map<number, number>();
+    for (let i = 0; i < g.map.tiles.length; i++) {
+      if (g.map.tiles[i] !== "floor") continue;
+      const r = g.map.region?.[i] ?? 0;
+      if (byRegion.has(r)) continue;
+      g.player.x = i % w;
+      g.player.y = Math.floor(i / w);
+      byRegion.set(r, unaidedSight(g));
+    }
+    const vals = [...byRegion.values()];
+    check(
+      `a level's declared skylight caps every region on it (saw ${vals.join("/")})`,
+      vals.length > 1 && Math.max(...vals) === Math.min(...vals),
+      "(an open wall-walk and the ice on it must not differ four-fold)",
+    );
+  }
+
+  // A BOSS AURA MUST LIGHT A ROOM, not just itself. `BOSS_LIGHT` was luma 58
+  // against a `sightLightMin` of 55: it cleared the bar by three, on the boss's
+  // own tile and nowhere else. So the boss revealed itself from anywhere in line
+  // of sight while illuminating zero tiles — the exact inverse of "a glow that
+  // precedes it into a room". Violet is dim by luma (blue weighs 0.0722), which
+  // is how it stayed that dark unnoticed, and it only started to matter when
+  // light began deciding visibility rather than just colour.
+  {
+    const bossLevels = ["frostspine_pass", "antechamber", "throne_of_dusk"];
+    const thin: string[] = [];
+    for (const id of bossLevels) {
+      const li = levelIndexBy(id, (l) => l.id === id);
+      for (const seed of ["aura-a", "aura-b", "aura-c"]) {
+        const g = beginLevel(seed, li, createPlayer());
+        const b = g.monsters.find((m) => m.isGoalTarget);
+        if (!b) continue;
+        const lm = computeLightMap(g, 0, true);
+        const w = g.map.width;
+        let lit = 0;
+        for (const [i, c] of lm) {
+          const x = i % w;
+          const y = Math.floor(i / w);
+          // near the boss, and far enough from the player that their own torch
+          // cannot be what is lighting it
+          if (Math.hypot(x - b.x, y - b.y) > 3) continue;
+          if (Math.hypot(x - g.player.x, y - g.player.y) < 8) continue;
+          if (
+            0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] >=
+            CONFIG.sightLightMin
+          )
+            lit++;
+        }
+        if (lit < 6) thin.push(`${id}/${seed}: ${lit} tiles`);
+      }
+    }
+    check(
+      "a boss's aura lights the ground around it, not only its own tile",
+      thin.length === 0,
+      thin.slice(0, 3).join("; "),
+    );
+  }
+
+  // Fog memory belongs to the STATE, so it saves and it resets per attempt. The
+  // renderer used to keep its own, which was never serialised (a resumed game
+  // showed an unexplored map) and was keyed only on the level index (so a
+  // death-restart handed you a level already mapped).
+  {
+    const g = beginLevel("mem-seed", 0, createPlayer());
+    check(
+      "a fresh level starts with only what you can see explored",
+      g.explored.length > 0 && g.explored.length === g.visible.length,
+    );
+    const again = beginLevel("mem-seed", 0, createPlayer());
+    check(
+      "re-entering a level does not inherit the last attempt's map",
+      again.explored.length === g.explored.length,
+    );
+  }
+}
+
+// ─── 71. Atmosphere holds up under light-gated sight ───────────────────────
+// Weather particles are drawn on the overlay and masked to `state.visible`,
+// which is no longer a torch disc — a tile can be visible on SKYLIGHT alone,
+// with nothing at all in the light map. Two things follow, and both were wrong.
+console.log("\n[71] Atmosphere: reflective motes obey the light");
+{
+  // (a) A reflective mote must not out-shine the ground it falls on, even where
+  // that ground is lit by nothing but ambient. Measured on the Frostspine before
+  // the scaling existed: snow at particle luma 130 over ground at 93, across the
+  // 57% of visible tiles that are dim or unlit — the snow was the brightest
+  // thing on screen. Emissive kinds are exempt BY DESIGN: a coal and a
+  // bioluminescent spore make their own light, and dimming them in the dark
+  // would delete the one thing they are for.
+  const luma = (c: [number, number, number]) =>
+    0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const hexLuma = (h: string) =>
+    luma([
+      parseInt(h.slice(1, 3), 16),
+      parseInt(h.slice(3, 5), 16),
+      parseInt(h.slice(5, 7), 16),
+    ]);
+  const tooBright: string[] = [];
+  for (const [b, atm] of Object.entries(BIOME_ATMOSPHERE)) {
+    if (!atm || ATMO_EMISSIVE.has(atm.kind)) continue;
+    // the darkest the ground gets while still visible: the ambient edge tint
+    const ground = luma(ambientForBiome(b as Biome).edge);
+    const scale = Math.min(1, Math.max(ATMO_MIN_SCALE, ground / ATMO_LIT_REF));
+    const mote = hexLuma(atm.color) * atm.alpha * scale;
+    if (mote >= ground)
+      tooBright.push(
+        `${b}: mote ${mote.toFixed(0)} vs ground ${ground.toFixed(0)}`,
+      );
+  }
+  check(
+    "no reflective mote out-shines the unlit ground it falls on",
+    tooBright.length === 0,
+    tooBright.join("; "),
+  );
+  // …and the exemption list is LOCKED, because the cheapest way to silence the
+  // check above is to declare the offending kind emissive. Only two things in
+  // the game make their own light: a coal and a bioluminescent spore. Snow does
+  // not, however brightly it reads.
+  // A threat READOUT has to be matchable to the thing on screen, and the glyph is
+  // the key you match on. The HP bars set `uppercase` on the whole label, which
+  // silently rewrote it: monster glyphs use BOTH cases and two pairs collide —
+  // a snow hare's `h` displayed as `H`, which is the HERALD, and a bat's `b` as
+  // `B`, the cave bear. This pins the collisions so nobody "tidies" the styling
+  // back; the render fix is a `normal-case` span around the glyph alone.
+  {
+    const byGlyph = new Map<string, string[]>();
+    for (const m of Object.values(MONSTERS))
+      byGlyph.set(m.glyph, [...(byGlyph.get(m.glyph) ?? []), m.id]);
+    const casePairs = [...byGlyph.keys()]
+      .filter((g) => g.toLowerCase() !== g.toUpperCase())
+      .filter((g) => g === g.toLowerCase() && byGlyph.has(g.toUpperCase()))
+      .map((g) => `${g}→${g.toUpperCase()}`);
+    check(
+      `monster glyph case is meaningful, so a readout must never transform it (${casePairs.length} colliding pairs)`,
+      casePairs.length > 0,
+      "(if this ever hits 0 the risk is gone, but the `normal-case` spans are still correct)",
+    );
+  }
+
+  check(
+    "only genuinely luminous motes are exempt from tracking the light",
+    [...ATMO_EMISSIVE].sort().join(",") === "embers,spores",
+    `(exempt: ${[...ATMO_EMISSIVE].sort().join(", ")})`,
+  );
+
+  // (b) Every biome a level actually PRESENTS needs something in its air, or it
+  // reads as a vacuum. `graveyard` became a base biome and had nothing — 74% of
+  // the Iron Gate, under an open sky, perfectly still. Mirrors the renderer's
+  // own `atmFor`: a level-wide `weather` covers the BASE biome, a sub-region
+  // must bring its own.
+  const NO_ATMOSPHERE_OK = new Set<Biome>([
+    // the Pit is a sealed cell with no sky and no draught; `dungeon` is also the
+    // tag a freestanding hut borrows for its walls, and a hut interior is still.
+    "dungeon",
+  ]);
+  const airless: string[] = [];
+  for (const l of LEVELS) {
+    const present: Biome[] = [
+      l.biome,
+      ...(l.subBiomes ?? []).map((sp) => sp.biome),
+    ];
+    for (const b of present) {
+      if (NO_ATMOSPHERE_OK.has(b)) continue;
+      const covered =
+        (b === l.biome && l.weather && WEATHER_ATMOSPHERE[l.weather]) ||
+        BIOME_ATMOSPHERE[b];
+      if (!covered) airless.push(`${l.id}/${b}`);
+    }
+  }
+  check(
+    "every biome a level presents has something in its air",
+    airless.length === 0,
+    [...new Set(airless)].join("; "),
+  );
+}
+
+// ─── 72. Status resistance (`MonsterDef.resist`) ────────────────────────────
+// Chill makes a monster forfeit its turn, so a weapon applying it faster than it
+// wears off does not damage a boss — it DELETES it. The Frostbrand (chance 0.5,
+// duration 3) refreshes the freeze while the target is still frozen, and Gorm —
+// the FROST TROLL — spent 55% of the fight unable to act, so the weaker
+// Frostbrand (power 7) left you on 22 HP where the War Axe (power 8) left 6.
+//
+// Behavioural on purpose: `tryAfflict` is private, and monkey-patching content
+// from a test does not reach the engine anyway (separate module instances under
+// tsx). So this plays the actual fight and reads the actual uptime.
+console.log("\n[72] A frost troll resists the cold");
+{
+  const chillUptime = (defId: string) => {
+    const li = levelIndexBy("frostspine", (l) => l.id === "frostspine_pass");
+    let frozen = 0;
+    let turns = 0;
+    for (let seed = 0; seed < 25; seed++) {
+      const g = beginLevel(`chill-${seed}`, li, createPlayer("warrior"));
+      const p = g.player;
+      p.weaponId = "w_frost";
+      p.weaponPower = ITEMS.w_frost.power ?? 0;
+      p.hp = p.maxHp = 500; // outlast the fight so the sample isn't truncated
+      const spot = (
+        [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const
+      )
+        .map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+        .find((c) => isWalkable(g.map, c.x, c.y))!;
+      const def = MONSTERS[defId];
+      // `isGoalTarget` matters: without it `isGoalComplete` fires on turn 1 and
+      // `resolveTurn` returns BEFORE the monster phase, so nothing ever acts —
+      // which silently made an earlier draft of this measurement meaningless.
+      g.monsters = [
+        {
+          id: "t",
+          defId,
+          x: spot.x,
+          y: spot.y,
+          hp: def.maxHp * 6,
+          state: "chase",
+          isGoalTarget: true,
+        },
+      ];
+      const rng = new Rng(700 + seed);
+      for (let t = 0; t < 40 && g.monsters.length; t++) {
+        const m = g.monsters[0];
+        if ((m.effects?.chill ?? 0) > 0) frozen++;
+        turns++;
+        const dx = m.x - p.x;
+        const dy = m.y - p.y;
+        if (Math.abs(dx) + Math.abs(dy) === 1)
+          resolveTurn(g, { type: "move", dx, dy }, rng);
+        else resolveTurn(g, { type: "wait" }, rng);
+      }
+    }
+    return frozen / Math.max(1, turns);
+  };
+
+  const gorm = chillUptime("frost_troll");
+  const plain = chillUptime(
+    "ice_wraith" in MONSTERS ? "ice_wraith" : "skeleton",
+  );
+  check(
+    `the Frostbrand cannot lock down a frost troll (${(100 * gorm).toFixed(0)}% frozen)`,
+    gorm < 0.3,
+    `(uptime ${(100 * gorm).toFixed(0)}% — this same probe reads 71% with \`resist\` removed)`,
+  );
+  // …and the weapon still works on everything else, so `resist` can't be read as
+  // "the Frostbrand is broken".
+  check(
+    `…but still chills an unresisting monster (${(100 * plain).toFixed(0)}% frozen)`,
+    plain > gorm * 1.5,
+    `(plain ${(100 * plain).toFixed(0)}% vs troll ${(100 * gorm).toFixed(0)}%)`,
+  );
+}
+
+// ─── 73. Light must remain OBTAINABLE all the way down ──────────────────────
+// Sight is light-gated, so running out of fuel is no longer an inconvenience —
+// it drops you to `CONFIG.unlitSight` of 3 tiles indoors. That makes "can the
+// player still get light here?" a real invariant, and it was quietly violated:
+// shop tiers 7, 8 and 9 stocked no light source at all and no back-half level
+// dropped one, so from the Sunken Crypt onward a run could not obtain light by
+// ANY means — across the four darkest levels in the game.
+console.log("\n[73] Light stays obtainable to the end");
+{
+  const isLight = (id: string) => ITEMS[id]?.category === "torch";
+  const rows = LEVELS.map((l) => {
+    const tier = l.shopTier != null ? (SHOP_TIERS[l.shopTier] ?? []) : [];
+    return {
+      id: l.id,
+      shop: tier.some((e) => isLight(e.itemId)),
+      drop: (l.dropTable ?? []).some((d) => isLight(d.itemId)),
+    };
+  });
+  // longest stretch of consecutive levels offering light by NEITHER channel
+  let worst = 0;
+  let run = 0;
+  let where = "";
+  for (const r of rows) {
+    if (r.shop || r.drop) {
+      run = 0;
+      continue;
+    }
+    run++;
+    if (run > worst) {
+      worst = run;
+      where = r.id;
+    }
+  }
+  check(
+    `no long stretch without any way to get light (worst run ${worst}, ending at ${where || "—"})`,
+    worst <= 2,
+    "(a run that loses its torch mid-stretch finishes the game at 3-tile sight)",
+  );
+  // …and the BACK HALF specifically, which is where it broke and where the
+  // levels are darkest — the front half was never the problem.
+  const back = rows.slice(Math.floor(rows.length / 2));
+  check(
+    "the back half of the game can still supply light",
+    back.filter((r) => r.shop || r.drop).length >= back.length - 1,
+    back
+      .map((r) => `${r.id}:${r.shop ? "shop" : r.drop ? "drop" : "NONE"}`)
+      .join(" "),
+  );
+}
+
+// ─── 74. The lore JOURNAL survives the run ──────────────────────────────────
+// `GameState.lore` is per-LEVEL: a fresh `beginLevel` generates new props, so a
+// fragment read on the Blackwood is gone by the Mire. The Lore tab therefore
+// records titles on the PLAYER, which carries across levels — and everything
+// below is a way that record can silently be lost.
+console.log("\n[74] The lore journal survives the run");
+{
+  // Every title must resolve, or the tab shows a fragment it cannot print. The
+  // index is keyed by title, so a DUPLICATE title silently drops one entry.
+  const all = Object.values(LORE_POOLS).flat();
+  const titles = all.map((e) => e.title);
+  check(
+    `every lore title is unique, so the journal index loses none (${titles.length} fragments)`,
+    new Set(titles).size === titles.length,
+    titles.filter((t, i) => titles.indexOf(t) !== i).join("; "),
+  );
+  checkOver(
+    "every fragment is reachable by title",
+    all,
+    (e) => loreByTitle(e.title)?.text === e.text,
+  );
+
+  // It must cross a level boundary — the entire reason it lives on the player.
+  {
+    const p = createPlayer();
+    p.loreSeen.push("A prisoner's remains");
+    const next = beginLevel("journal", 1, p);
+    check(
+      "the journal crosses a level boundary",
+      next.player.loreSeen.includes("A prisoner's remains"),
+    );
+    // …and `clonePlayer` must COPY it, not alias it. `entryPlayer` is a clone
+    // taken at level start; an aliased array would let play mutate the snapshot
+    // (exactly the `slotMap` bug from `[60]`).
+    next.player.loreSeen.push("Tally on the wall");
+    check(
+      "the entry snapshot does not share the journal array",
+      !next.entryPlayer.loreSeen.includes("Tally on the wall"),
+      `(snapshot: ${next.entryPlayer.loreSeen.join(", ")})`,
+    );
+  }
+}
+
+// ─── 75. Lore that gives ADVICE must not lie ────────────────────────────────
+// A fragment telling you how to fight something is only worth reading if it is
+// right, and prose drifts silently: "frost cannot touch it" is true exactly as
+// long as `MonsterDef.resist` says so. Change that dial and the game lies to the
+// player forever with nothing to catch it. `LoreEntry.claims` declares the
+// mechanical assertion so it can be held against the data.
+console.log("\n[75] Lore advice matches the game");
+{
+  const claiming = Object.values(LORE_POOLS)
+    .flat()
+    .filter((e) => e.claims);
+  check(
+    `at least one fragment carries mechanical advice (${claiming.length})`,
+    claiming.length > 0,
+    "(if this hits 0 the whole check is vacuous — see `[57]`'s lesson)",
+  );
+  checkOver(
+    "every claimed monster exists",
+    claiming.filter((e) => e.claims!.monsterId),
+    (e) => !!MONSTERS[e.claims!.monsterId!],
+  );
+  // The substance: a fragment saying a monster shrugs a status off is only
+  // honest while that monster actually resists it.
+  checkOver(
+    "a fragment claiming resistance is telling the truth",
+    claiming.filter((e) => e.claims!.resists),
+    (e) => {
+      const m = MONSTERS[e.claims!.monsterId!];
+      const r = m?.resist?.[e.claims!.resists!];
+      return r != null && r < 1;
+    },
+  );
+  // A VAULT hint is only useful if the level actually hides one, and only
+  // HONEST if the gate it names is the gate that is there — "breach the course,
+  // there isn't a door" sends you bashing walls, so a mismatch wastes turns and
+  // teaches the player to distrust the lore. Position is never claimed: it is
+  // generated per seed, so a directional hint would be wrong most of the time.
+  const vaultClues = claiming.filter((e) => e.claims!.vault);
+  checkOver(
+    "a vault hint names a level that HAS a vault, with the gate it really has",
+    vaultClues,
+    (e) =>
+      (e.levels ?? []).length > 0 &&
+      e.levels!.every((id) => {
+        const v = LEVELS.find((x) => x.id === id)?.secretVault;
+        if (!v) return false;
+        // `gate` defaults to "crackedWall" when a level omits it
+        return (v.gate ?? "crackedWall") === e.claims!.vault!.gate;
+      }),
+  );
+  checkOver(
+    "a hint that says something is caged in there is right about that too",
+    vaultClues,
+    (e) =>
+      e.levels!.every((id) => {
+        const v = LEVELS.find((x) => x.id === id)?.secretVault;
+        return !!e.claims!.vault!.guarded === !!v?.guardian;
+      }),
+  );
+
+  // COMPLETENESS: a vault with no hint is a room you find by luck. Every level
+  // that hides one should say so somewhere, or the clue system is decoration on
+  // whichever levels happened to get written first.
+  const unhinted = LEVELS.filter(
+    (l) =>
+      l.secretVault &&
+      !claiming.some((e) => e.claims!.vault && (e.levels ?? []).includes(l.id)),
+  ).map((l) => l.id);
+  check(
+    `every level hiding a vault drops a hint about it (${LEVELS.filter((l) => l.secretVault).length} vaults)`,
+    unhinted.length === 0,
+    unhinted.join(", "),
+  );
+
+  // ADVICE THAT NEVER ARRIVES IS NOT ADVICE. Props draw at random from a pool
+  // larger than `loreCount`, so before `placeLore` seeded one clue first the
+  // Great Hall's strongroom hint reached the player on 21% of runs and the
+  // Frostspine's on ~40% — the "read lore, learn something useful" loop mostly
+  // never happened. Seeding exactly one leaves room for flavour while making
+  // the edge dependable. Bar set at 70%: measured 81-100% now, 21-40% before,
+  // so it sits clear of both.
+  {
+    const byLevel = new Map<string, string[]>();
+    for (const e of claiming)
+      for (const id of e.levels ?? [])
+        byLevel.set(id, [...(byLevel.get(id) ?? []), e.title]);
+    const thin: string[] = [];
+    for (const [id, titles] of byLevel) {
+      const li = levelIndexBy(id, (l) => l.id === id);
+      let got = 0;
+      const N = 40;
+      for (let k = 0; k < N; k++) {
+        const g = beginLevel(`clue-${k}`, li, createPlayer());
+        if (g.lore.some((l) => titles.includes(l.title))) got++;
+      }
+      if (got / N < 0.7) thin.push(`${id}: ${Math.round((100 * got) / N)}%`);
+    }
+    check(
+      "a level carrying advice reliably delivers some of it (>= 70% of runs)",
+      thin.length === 0,
+      thin.join("; "),
+    );
+  }
+
+  // …and the advice has to reach you somewhere it is USABLE. A warning about
+  // the troll is worthless pinned to a level the troll never appears on.
+  checkOver(
+    "advice is pinned to a level where that monster is actually met",
+    claiming.filter((e) => e.levels?.length && e.claims!.monsterId),
+    (e) =>
+      e.levels!.every((id) => {
+        const l = LEVELS.find((x) => x.id === id);
+        if (!l) return false;
+        const inSpawn = (l.spawnTable ?? []).some(
+          (t) => t.monsterId === e.claims!.monsterId,
+        );
+        const isGoal =
+          l.goal.type === "killTarget" &&
+          l.goal.monsterId === e.claims!.monsterId;
+        const isGuard = l.secretVault?.guardian === e.claims!.monsterId;
+        return inSpawn || isGoal || isGuard;
+      }),
   );
 }
 

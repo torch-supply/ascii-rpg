@@ -39,6 +39,7 @@ import HelpModal from "@/components/overlays/HelpModal";
 import InventoryModal from "@/components/overlays/InventoryModal";
 import AltarModal from "@/components/overlays/AltarModal";
 import LoreModal from "@/components/overlays/LoreModal";
+import GearModal from "@/components/overlays/GearModal";
 
 /**
  * How long the world holds, drained, before the death card appears. Fed to the
@@ -327,6 +328,7 @@ export default function GameRoot() {
       {mode === "help" && <HelpModal />}
       {mode === "altar" && <AltarModal />}
       {mode === "lore" && <LoreModal />}
+      {mode === "gear" && <GearModal />}
     </div>
   );
 }

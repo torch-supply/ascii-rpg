@@ -22,8 +22,10 @@ export const HOTBAR_SLOTS = 9;
  * A claim is deliberately NOT released when its stack empties — that's the
  * whole point (see `PlayerState.slotMap`). It's released only under pressure:
  * if all slots are claimed and a new item needs one, the lowest-numbered claim
- * whose item is no longer carried is evicted. So spare gear frees its key when
- * you sell it, while a consumable you keep rebuying holds its own.
+ * whose item is no longer carried is evicted — so a potion you sold or a bundle
+ * of arrows you spent frees its key, while a consumable you keep rebuying holds
+ * its own. (Gear used to be the example here; it no longer reaches the bag at
+ * all, since you carry one weapon and one suit.)
  */
 export function syncBagSlots(p: PlayerState) {
   if (!p.slotMap) p.slotMap = {};

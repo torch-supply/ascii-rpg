@@ -155,6 +155,39 @@ function violations(g: GameState): string[] {
         bad.push(`lore at ${l.x},${l.y} can flood`);
   }
 
+  // 7. every structural WING must survive with walkable floor, and be reachable.
+  //
+  // A wing is carved as a rectangle and joined to the map by an artery. That
+  // artery is drawn before the wing's own hazards scatter, so a water clump can
+  // cut it; on an organic base it can dead-end in a one-tile pocket; and two
+  // wings used to stamp the same rectangle and destroy each other. In every case
+  // `sealUnreachable` then walls the wing away and the region stays TAGGED with
+  // no walkable tile — the level quietly loses a third of its content and every
+  // gate stays green.
+  //
+  // Count by REGION ID, never by biome: a wing whose biome matches its level's
+  // base (the reed maze in a marsh, the crypt maze in a crypt) otherwise counts
+  // base tiles and reads as a false 100%. Measuring it the wrong way is exactly
+  // how this went unnoticed — the Mire's maze was severed on 40% of seeds.
+  (LEVELS[g.currentLevel].subBiomes ?? []).forEach((spec, si) => {
+    if (!spec.layout) return;
+    const rid = si + 1;
+    let floor = 0;
+    let reachable = 0;
+    for (let i = 0; i < t.length; i++) {
+      if ((g.map.region?.[i] ?? 0) !== rid) continue;
+      if (!OPEN.has(t[i])) continue;
+      floor++;
+      if (open.has(i)) reachable++;
+    }
+    if (floor === 0)
+      bad.push(`${spec.biome}/${spec.layout} wing has NO walkable floor`);
+    else if (reachable === 0)
+      bad.push(
+        `${spec.biome}/${spec.layout} wing is sealed off (${floor} tiles)`,
+      );
+  });
+
   return bad;
 }
 

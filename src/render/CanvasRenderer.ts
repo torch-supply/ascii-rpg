@@ -1,5 +1,12 @@
 import { ITEMS } from "@/content/items";
 import { LEVELS } from "@/content/levels";
+import { isTransparent } from "@/game/core/grid";
+import { CONFIG } from "@/content/config";
+import {
+  unaidedSight,
+  torchFlickerDepth,
+  TORCH_FLICKER_AMP,
+} from "@/game/core/light";
 import { ELITE, MONSTERS } from "@/content/monsters";
 import type { GameEvent } from "@/game/core/events";
 import { idx } from "@/game/core/grid";
@@ -27,6 +34,8 @@ import {
   BIOME_ATMOSPHERE,
   WEATHER_ATMOSPHERE,
   CHASM_BG,
+  SCONCE_LIT,
+  SCONCE_COLD,
   CRACKED_WALL_CRACK_DIM,
   dim,
   GAS_COLOR,
@@ -34,6 +43,9 @@ import {
   SPORE_VENT_PRIMING_GLYPH,
   SPORE_VENT_PRIMING_COLOR,
   FOG_DIM,
+  ATMO_LIT_REF,
+  ATMO_MIN_SCALE,
+  ATMO_EMISSIVE,
   PLAYER_COLOR,
   PLAYER_GLYPH,
   terrainColor,
@@ -342,6 +354,7 @@ export class CanvasRenderer {
   // each render from the level's biome + any sub-biome
   private regionArr: number[] | null = null;
   private ambByRegion: BiomeAmbient[] = [];
+  private effR = 8; // last frame's ambient-falloff radius (shared with the overlay)
   // smooth-scroll: slide the canvas one cell when the camera follows the player
   private lastCamX = 0;
   private lastCamY = 0;
@@ -619,6 +632,52 @@ export class CanvasRenderer {
 
   /** Transient light sources from active cosmetic FX (bolts, explosions, hit
    * sparks), color/intensity-scaled for the current frame. */
+  /**
+   * PROTOTYPE — lit sconces on the walls.
+   *
+   * Light-gated sight is only as interesting as the lights in the level, and
+   * right now there are barely any static ones: measured from the spawn it
+   * reveals +0 tiles on three levels. Sconces give it something to show.
+   *
+   * Mounted on WALL tiles facing open floor, so nothing about walkability or the
+   * connectivity guarantees changes — the wall stays a wall, it just burns.
+   * Positions come from an integer hash of the level index, memoised, so there
+   * is no generation pass and nothing in the save.
+   */
+  /**
+   * Sconces as light sources — emitted from the floor tile the bracket FACES,
+   * not from the wall it's mounted on.
+   *
+   * A wall is opaque, so `ROT.Lighting`'s shadowcasting from a source inside one
+   * is blocked at its own cell: measured, a light on a wall lit **0** tiles,
+   * while the same light one step onto the floor lit **38**. The first version
+   * put it on the wall, so every sconce was a glyph that illuminated nothing —
+   * and the gains I measured were coming from glowcaps and altars, not sconces
+   * at all. Physically this is also just right: the flame throws its light out
+   * into the room, not into the masonry behind it.
+   */
+  private sconceLights(state: GameState, now: number): ExtraLight[] {
+    const map = state.map;
+    const w = map.width;
+    const out: ExtraLight[] = [];
+    for (const i of state.map.sconces ?? []) {
+      const f = this.reduceMotion
+        ? 1
+        : 0.82 + 0.18 * Math.abs(Math.sin(now * 0.011 + i));
+      // the open neighbour it faces; a bracket always has one (see sconceTiles)
+      const face = [i + 1, i - 1, i + w, i - w].find((j) =>
+        isTransparent(map, j % w, Math.floor(j / w)),
+      );
+      if (face === undefined) continue;
+      out.push({
+        x: face % w,
+        y: Math.floor(face / w),
+        color: [225 * f, 168 * f, 96 * f] as [number, number, number],
+      });
+    }
+    return out;
+  }
+
   private fxLights(now: number): ExtraLight[] {
     const out: ExtraLight[] = [];
     for (const f of this.fx) {
@@ -652,7 +711,26 @@ export class CanvasRenderer {
   private litVis(color: string, i: number, effR: number, entity = false) {
     const lm = this.lightMap;
     if (!lm) return color; // no light computed yet (pre-first-render); unreachable in practice
-    const L = lm.get(i);
+    const total = this.tileLight(i, effR, entity);
+    return ROT.Color.toHex(
+      ROT.Color.multiply(ROT.Color.fromString(color), total),
+    );
+  }
+
+  /**
+   * The light a tile is RENDERED under: the eased per-region ambient plus the
+   * computed light. ONE choke point, because both the glyph colour and the
+   * atmosphere read it — otherwise a snowflake can be brighter than the ground
+   * it is falling on, which is exactly what happened on the Frostspine once
+   * sight stopped being a torch disc.
+   */
+  private tileLight(
+    i: number,
+    effR: number,
+    entity = false,
+  ): [number, number, number] {
+    const lm = this.lightMap;
+    const L = lm?.get(i);
     // Fade ONLY the ambient floor with distance, leaving the computed light
     // (the torch pool + colored sources) intact — so the pool keeps its clean
     // falloff while the flat ambient no longer forms a lit plateau that meets
@@ -683,14 +761,11 @@ export class CanvasRenderer {
         e[2] + (c[2] - e[2]) * af,
       ];
     }
-    const total: [number, number, number] = [
+    return [
       Math.min(255, amb[0] + (L ? L[0] : 0)),
       Math.min(255, amb[1] + (L ? L[1] : 0)),
       Math.min(255, amb[2] + (L ? L[2] : 0)),
     ];
-    return ROT.Color.toHex(
-      ROT.Color.multiply(ROT.Color.fromString(color), total),
-    );
   }
 
   private renderBase(state: GameState) {
@@ -713,16 +788,37 @@ export class CanvasRenderer {
 
     const level = LEVELS[state.currentLevel];
     const palette = level.palette;
+    // Straight from state — the renderer no longer keeps a visibility model or a
+    // fog memory of its own. It had both while light-gating was a render-side
+    // probe, and they drifted: the private `explored` set was never saved (a
+    // resumed game showed an unexplored map) and was keyed only on the level
+    // index, so a death-restart handed you a level already mapped.
     const visible = new Set(state.visible);
     const explored = new Set(state.explored);
     const knownTraps = new Set(state.knownTraps);
 
     // Effective light radius wobbles slightly so the torchlight edge flickers.
     const now = performance.now();
-    const flicker = this.reduceMotion
-      ? 0
-      : Math.sin(now * 0.005) * 0.5 + Math.sin(now * 0.013) * 0.3;
-    const effR = Math.max(2, player.lightRadius + flicker);
+    // The torchlight EDGE wobbles on the same curve as the flame's colour, and
+    // under the same rule: a lit torch or lantern only, damped away outdoors
+    // (`torchFlickerDepth`). It was unconditional, so the rim of your vision
+    // breathed even when you carried no flame at all — nothing was flickering.
+    const depth = this.reduceMotion ? 0 : torchFlickerDepth(state);
+    const flicker =
+      depth === 0
+        ? 0
+        : ((Math.sin(now * 0.005) * 0.5 + Math.sin(now * 0.013) * 0.3) *
+            depth) /
+          TORCH_FLICKER_AMP;
+    const effR = Math.max(
+      2,
+      player.lightRadius + flicker,
+      // skylight has to widen the ambient falloff as well as the visible set —
+      // `litVis` eases ambient to its edge (fog-level) tint at effR, so a tile
+      // lit by sky but beyond effR would render as a ghost
+      CONFIG.sight === "lightGated" ? unaidedSight(state) : 0,
+    );
+    this.effR = effR;
 
     // colored multi-source light for this frame (see ./lighting). Ambient is
     // per-region so a sub-biome patch is lit in its own tint.
@@ -777,17 +873,25 @@ export class CanvasRenderer {
       }));
     }
 
-    this.lightMap = computeLightMap(
-      state,
-      now,
-      this.reduceMotion,
-      this.fxLights(now),
-    );
+    // COLOUR only. `state.visible` is already the light-gated set (computed
+    // steady, once per turn, in `recomputeFOV`); this pass adds flicker and
+    // transient FX on top so the picture breathes without the SET breathing —
+    // tiles must not wink in and out of visibility at 60fps in a turn game.
+    this.lightMap = computeLightMap(state, now, this.reduceMotion, [
+      ...this.fxLights(now),
+    ]);
+
     this.litPX = player.x;
     this.litPY = player.y;
     this.litW = map.width;
 
     this.display.clear();
+
+    // A sconce needs to be VISIBLE as the source of its own light — a glow with
+    // nothing making it is what made the light-shaft attempt read as a smudge.
+    // Drawn as a warm mark over its wall tile; the tiles come from the MAP now,
+    // placed at generation, because light decides `state.visible`.
+    const sconces = new Set(state.map.sconces ?? []);
 
     // terrain within the viewport window
     for (let sy = 0; sy < rows; sy++) {
@@ -836,6 +940,21 @@ export class CanvasRenderer {
         // featureless block of nothing; a wall is supposed to have surface.
         const bg =
           t === "chasm" ? (isVis ? CHASM_BG : dim(CHASM_BG, FOG_DIM)) : null;
+        if (sconces.has(i) && (isVis || isExp)) {
+          const flick = this.reduceMotion
+            ? 1
+            : 0.8 + 0.2 * Math.abs(Math.sin(now * 0.011 + i));
+          this.display.draw(
+            sx,
+            sy,
+            // Ω, not ‼ — a bracket shape, and unlike two stacked exclamation
+            // marks it can't be misread as the `!` twelve potions share.
+            "Ω",
+            isVis ? dim(SCONCE_LIT, flick) : dim(SCONCE_COLD, FOG_DIM), // remembered = cold iron, not a flame
+            bg,
+          );
+          continue;
+        }
         this.display.draw(sx, sy, glyph, color, bg);
       }
     }
@@ -852,7 +971,10 @@ export class CanvasRenderer {
         ? 0.85
         : 0.6 + 0.4 * Math.abs(Math.sin(now * 0.02 + f.i));
       const glyph =
-        !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? "*" : "▴";
+        // ▵/▴ — the hollow twin of the burning frame, so the alternation reads
+        // as ONE flame guttering. It was `*`, which the quest shards also use:
+        // a fire that looks like the thing a collect level sends you to pick up.
+        !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? "▵" : "▴";
       const base = f.life <= 1 ? "#ff5a3c" : "#ff9d3c";
       this.display.draw(sx, sy, glyph, dim(base, flick), null);
     }
@@ -1253,11 +1375,35 @@ export class CanvasRenderer {
       return map.regionBiome ? map.regionBiome[rid] : levelBiome;
     };
 
+    // How brightly a mote at this pixel should read. Snow, rain, ash, dust and
+    // mist REFLECT — they are lit by whatever lights the ground, so their alpha
+    // has to follow it. Embers and spores EMIT (a coal, a bioluminescent spore),
+    // so they keep full strength in the dark, which is the whole point of them.
+    //
+    // Alpha used to be a flat constant, which was safe only while `visible` WAS
+    // the torch radius — everything you could see was lit. Under light-gated
+    // sight a tile can be visible on skylight alone with nothing in the light
+    // map, and the Frostspine showed what that costs: 57% of visible tiles dim
+    // or unlit, with snow (particle luma 130) painting over ground at 93. The
+    // snow was the brightest thing on screen across half the view.
+    const lumaOf = (c: [number, number, number]) =>
+      0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    const groundScale = (px: number, py: number) => {
+      const tx = camX + Math.floor(px / cw);
+      const ty = camY + Math.floor(py / ch);
+      if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return 1;
+      const l = lumaOf(this.tileLight(ty * map.width + tx, this.effR));
+      return clamp(l / ATMO_LIT_REF, ATMO_MIN_SCALE, 1);
+    };
+
     const now = performance.now();
     ctx.save();
     for (const biome of present) {
       const atm = atmFor(biome);
       if (!atm) continue;
+      const emits = ATMO_EMISSIVE.has(atm.kind);
+      const scaleAt = (px: number, py: number) =>
+        emits ? 1 : groundScale(px, py);
       // The base biome fills most of the screen — keep the whole-screen drift,
       // gated per-particle. A SUB-biome covers only a patch, so scatter its
       // particles across the region's own cells (concentrated there) — otherwise
@@ -1285,7 +1431,7 @@ export class CanvasRenderer {
           }
           const r = cw * (3.5 + (i % 3));
           const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-          g.addColorStop(0, rgba(atm.color, atm.alpha));
+          g.addColorStop(0, rgba(atm.color, atm.alpha * scaleAt(x, y)));
           g.addColorStop(1, rgba(atm.color, 0));
           ctx.fillStyle = g;
           ctx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -1326,7 +1472,8 @@ export class CanvasRenderer {
             y = (((frac(i + 41) * H + drift) % H) + H) % H;
             if (biomeAtPx(x, y) !== biome) continue;
           }
-          ctx.globalAlpha = atm.alpha * (0.55 + 0.45 * frac(i + 13));
+          ctx.globalAlpha =
+            atm.alpha * (0.55 + 0.45 * frac(i + 13)) * scaleAt(x, y);
           // rain draws as a thin falling streak; everything else as a mote
           if (atm.kind === "rain") ctx.fillRect(x, y, 1.5, ch * 0.5);
           else ctx.fillRect(x, y, size, size);

@@ -287,6 +287,46 @@ const LEVEL_MOODS: Record<Biome, Track> = {
       tick: { chance: 0.14, freq: 1500, q: 12, dur: 0.16, peak: 0.045 }, // echoing drips
     },
   },
+  sanctum: {
+    root: 110.0, // A2 — a hymn pitched for a choir that isn't here
+    scale: DORIAN,
+    stepMs: 660,
+    density: 0.3,
+    wave: "sine",
+    peak: 0.055,
+    droneEvery: 6,
+    droneWave: "sine",
+    sparkle: 0.09, // light off standing water
+    cutoff: 900, // wet stone swallows the top end
+    motifChance: 0.1,
+    echo: { time: 0.52, feedback: 0.52, wet: 0.46 }, // a nave, and it still rings
+    choir: { peak: 0.02, formants: [420, 900] }, // the pilgrims, a long way off
+    voice: { attack: 0.22 }, // slow bowed swell, like something sung
+    texture: {
+      bed: { filter: "lowpass", freq: 170, q: 0.9, peak: 0.05, every: 6 },
+      tick: { chance: 0.16, freq: 1700, q: 11, dur: 0.14, peak: 0.04 }, // drips
+    },
+  },
+  graveyard: {
+    root: 97.999, // G2 — a low tolling
+    scale: NAT_MINOR,
+    stepMs: 780, // the slowest step in the game; nothing here hurries
+    density: 0.22,
+    wave: "sine",
+    peak: 0.05,
+    droneEvery: 8,
+    droneWave: "sine",
+    sparkle: 0.04,
+    cutoff: 620, // muffled, as if heard through earth
+    motifChance: 0.05, // the Ember, barely remembered
+    echo: { time: 0.44, feedback: 0.42, wet: 0.34 },
+    // a passing-bell over the graves — struck, with a long inharmonic tail
+    voice: { attack: 0.004, decay: 1.6, partials: [2.76, 5.4] },
+    texture: {
+      bed: { filter: "lowpass", freq: 150, q: 0.8, peak: 0.055, every: 6 },
+      tick: { chance: 0.1, freq: 900, q: 9, dur: 0.2, peak: 0.03 },
+    },
+  },
   ashen: {
     root: 103.83, // low, leaden (G#2)
     scale: MINOR_PENT,

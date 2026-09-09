@@ -38,6 +38,21 @@ export interface GameMap {
   region?: number[];
   regionBiome?: Biome[];
   regionPalette?: Palette[];
+  /** Region ids belonging to FREESTANDING structures (`LevelConfig.structures`)
+   * rather than to a sub-biome. Plain number[] so it JSON-roundtrips like the
+   * rest. A hut tags its region `dungeon` purely to borrow that biome's plain
+   * `#` wall and lack of weather — but `dungeon` is also a SCONCE biome, so the
+   * renderer read those walls as a lit interior and hung burning brackets on
+   * every hut in the woods and every wayshrine in the bog. On an outdoor level
+   * they were the ONLY eligible walls, so the entire sconce budget landed on
+   * them. This is what lets the renderer tell "tagged dungeon for its glyph"
+   * apart from "actually a dungeon". */
+  structureRegions?: number[];
+  /** Wall tiles carrying a lit sconce (`LevelConfig.sconces`). Placed at
+   * GENERATION rather than in the renderer, because light is no longer a render
+   * concern: a sconce is what makes a room down a dark hall visible at all, so
+   * `recomputeFOV` needs it. Plain number[] so it JSON-roundtrips like `tiles`. */
+  sconces?: number[];
 }
 
 /** A secondary biome region carved into a level: a distinct palette + biome tag
@@ -69,6 +84,51 @@ export interface SubBiomeSpec {
   layout?: GeneratorKind;
   /** wing size as a fraction of the map (w & h), for `layout` carves (default 0.42) */
   size?: number;
+  /**
+   * The player may never START in this region.
+   *
+   * Not a difficulty knob — a narrative one. Several levels are a journey INTO
+   * somewhere, and spawning past the threshold destroys the arc before it
+   * begins: the Iron Gate started you already inside the gatehouse on 12% of
+   * seeds, the Great Hall down in its undercroft — the level's first sight of
+   * what the castle keeps underground — on 11%.
+   *
+   * Matched by REGION ID, which is why it lives on the spec and not as a
+   * level-wide list of biomes. A biome blocklist cannot express the cases that
+   * matter most, because a sub-region often shares its level's base biome: the
+   * Mire's reed maze is `marsh`, the Sunken Crypt's catacomb is `crypt`, and the
+   * Blackwood's glade and briar are BOTH `forest`. Blocking by biome there would
+   * block the base region too, or fail to tell the two sub-regions apart — the
+   * same biome-vs-region-id trap that hid the severed-wing bug.
+   *
+   * Falls back to the unconstrained pick if the exclusions leave nothing, so a
+   * seed can never be stranded.
+   */
+  /**
+   * The level's OBJECTIVE belongs in this region — the `reachLocation` exit,
+   * the `killTarget` boss, or the `findItem` quest item, whichever the level
+   * has. Falls back to the normal farthest-cell pick if the region has no
+   * eligible floor, so a seed is never left without its goal.
+   *
+   * The mirror of `noStart`: that says where the journey can't begin, this says
+   * where it has to end. Without it the objective lands wherever the map
+   * happens to trail off, and a region built to BE the destination is just a
+   * side room you may never enter — the Gate Warden, who exists to hold the
+   * gatehouse, stood out on the open graves on 60% of seeds.
+   *
+   * Region-id keyed for the same reason as `noStart`: a biome-keyed version
+   * (`exitInBiome`, which this replaces) cannot name one of two regions that
+   * share a biome, and silently means "any of them".
+   */
+  goalHere?: boolean;
+  noStart?: boolean;
+  /** for `layout` carves: make the wing look GROWN rather than BUILT — the
+   * lattice is cut at half resolution and doubled, then its walls eroded, so
+   * banks vary in thickness and the straight runs and right angles go. Opt-in,
+   * because rectilinear is CORRECT for a built wing (the crypt's bone catacombs,
+   * the Mire's drowned temple) and wrong only for a natural one (a reed
+   * thicket). See `organicGrid` in generate.ts. */
+  organic?: boolean;
 }
 
 export interface Pos {
@@ -88,7 +148,9 @@ export type Biome =
   | "cavern" // dark bioluminescent grotto — glowing fungi light it, not a torch
   | "ashen" // scorched dead-ground: falling ash, ember glow, oil/scorch (sub-region only)
   | "grove" // fungal grove: luminous caps over rot — beautiful and poisonous (sub-region)
-  | "undercity"; // flooded sewers of green-stained stone beneath Blackhall (sub-region)
+  | "undercity" // flooded sewers of green-stained stone beneath Blackhall (sub-region)
+  | "graveyard" // Blackhall's burial ground — the approach, under an open sky
+  | "sanctum"; // a drowned pilgrim temple, nave half-flooded (sub-region only)
 export type GeneratorKind =
   | "digger"
   | "uniform"
@@ -201,6 +263,17 @@ export interface MonsterDef {
   armorPierce?: number;
   /** chance-on-hit affliction inflicted on the player (spider poison, etc.) */
   inflicts?: StatusApplication;
+  /** How strongly a status AFFECTS this monster, per kind. 1 (or omitted) is
+   * normal; 0 is immune. Scales both the chance to land AND how long it lasts,
+   * so it covers "resists it" and "shakes it off faster" with one number.
+   *
+   * Exists because the Frostbrand trivialised Gorm, the FROST TROLL: chill makes
+   * a monster skip its turn, and at `chance: 0.5, duration: 3` you refresh it
+   * while it is still frozen. Measured, he spent 55% of the fight unable to act,
+   * and the weaker Frostbrand (power 7) left you on 22 HP where the stronger War
+   * Axe (power 8) left you on 6. Freezing a creature made of ice should not be
+   * the answer to it. */
+  resist?: Partial<Record<StatusKind, number>>;
   /** loot dropped on death: `chance` (0–1) to drop one weighted item */
   loot?: { chance: number; table: { itemId: string; weight: number }[] };
 }
@@ -239,6 +312,11 @@ export interface ItemDef {
   questTag?: string; // quest / findItem
   lightBonus?: number; // torch
   fuel?: number; // torch: turns of light before it burns out
+  /** light source: how much this flame WAVERS, relative to an open one.
+   * 1 = a bare torch; lower = enclosed and steadier. Scales the whole flicker
+   * curve, guttering included, so a dying lantern falters less wildly than a
+   * dying torch. Omit for 1. See `torchFlickerDepth` in `core/light.ts`. */
+  flicker?: number;
   duration?: number; // potion: turns a timed effect (ward/might) lasts
   /** weapon: chance-on-hit affliction inflicted on the struck monster */
   onHit?: StatusApplication;
@@ -303,6 +381,27 @@ export interface LevelConfig {
    * lightning flashes. Purely render-side; mapped to an atmosphere in `tiles.ts`
    * (and `"storm"` gates `paintLightning`). */
   weather?: "rain" | "storm";
+  /** PROTOTYPE (light-gated sight) — lit wall sconces. Light tracks HABITATION:
+   * a garrisoned gatehouse burns, a sealed tomb doesn't. Omit to fall back to
+   * `CONFIG.sconces`; 0 means a level nobody has tended in a long time. */
+  /**
+   * The sky over THIS level, overriding what its base biome implies.
+   *
+   * `SKYLIGHT` is keyed by biome, which is right until a level's biome lies
+   * about whether you are outdoors. The Ramparts is that level: an exposed
+   * wall-walk under a thundering sky whose biome is `castle`, so it inherited
+   * the sealed-interior value and you saw **3 tiles** standing on an open
+   * battlement — while its own icy stretch, a `mountain` sub-region, gave 11.
+   * Same wall, same storm, and a four-fold jump between two adjacent tiles.
+   *
+   * Replaces the value for the BASE biome and CAPS every sub-region, because a
+   * level has one sky: snow can throw daylight back at you only if there is
+   * daylight, and on a storm-lashed night there is not. Levels that want the
+   * indoor/outdoor transition (the Iron Gate's graveyard → gatehouse) simply
+   * omit it.
+   */
+  skylight?: number;
+  sconces?: number;
   /** a boss-HP-keyed set-piece ambient beat (render-side only, in `renderBase`):
    * `"dawn"` warms + brightens the hall toward a rekindled sunrise as the boss
    * falls (the Throne); `"dusk"` dims + cools it as the boss falls (the
@@ -420,6 +519,13 @@ export interface PlayerState {
    * is exactly when you're least likely to be reading the panel. JSON-safe.
    */
   slotMap: Record<string, number>;
+  /** Titles of every lore fragment read this RUN, in the order found — the
+   * journal behind the log rail's Lore tab. Kept on the player because
+   * `GameState.lore` is per-level and a fresh `beginLevel` discards it, so
+   * anything you read two levels ago would otherwise be unrecoverable. Titles
+   * only (resolved via `loreByTitle`); copying prose into the save would bloat
+   * it for no gain, and all 44 titles are distinct. */
+  loreSeen: string[];
   // ── run-cumulative stats (carry across levels via clonePlayer) ──
   kills: number;
   totalTurns: number;

@@ -260,6 +260,7 @@ export const ITEMS: Record<string, ItemDef> = {
     category: "torch",
     lightBonus: 3,
     fuel: 150,
+    flicker: 1, // a bare flame in the open air — restless, and the baseline
   },
   i_lantern: {
     id: "i_lantern",
@@ -269,6 +270,11 @@ export const ITEMS: Record<string, ItemDef> = {
     category: "torch",
     lightBonus: 4,
     fuel: 280,
+    // A lantern is a GLASSED flame. Its upgrade was purely numeric — one more
+    // tile of reach and longer fuel, both of which you read on the HUD and
+    // never feel. Steadiness is the part you notice without being told, and it
+    // is what the extra coin should buy: the light stops fidgeting.
+    flicker: 0.35,
   },
 
   // ── quest items ──
@@ -311,6 +317,15 @@ export function itemDef(id: string): ItemDef {
  * which quietly defeats the lean-economy tuning the whole shop rests on. Test
  * `[63]` pins the general rule. To make ammo sellable, sell the STACK at a bundle
  * rate — don't just add the category back.
+ *
+ * `weapon`/`armor` must STAY here even though gear no longer reaches the bag
+ * (one weapon, one suit — a swap drops the old piece on the floor). They are
+ * load-bearing for the shop TRADE-IN: buying a piece credits
+ * `sellPrice(displaced)`, which returns 0 for a category outside this set, so
+ * dropping them would silently pay nothing for what you handed over. They also
+ * still cover gear sitting in a bag from an older save or the dev jump.
+ * `torch` has never been reachable — a light source goes to `torchId`/
+ * `torchFuel`, never into the bag — and is kept only for that same legacy case.
  */
 export const SELLABLE: ReadonlySet<ItemCategory> = new Set<ItemCategory>([
   "weapon",
@@ -405,6 +420,11 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
     { itemId: "i_lantern", price: 30 },
   ],
   7: [
+    // Light returns to the shelves here. Tiers 7-9 stocked NO light source at
+    // all, and no back-half level dropped one, so from the Sunken Crypt onward a
+    // run could not obtain light by ANY means — on the darkest levels in the
+    // game, which is exactly where light-gated sight bites hardest.
+    { itemId: "i_torch", price: 10 },
     { itemId: "a_plate", price: 48 },
     { itemId: "am_arrow", price: 8 },
     { itemId: "p_ward", price: 16, maxQty: 3 },
@@ -412,6 +432,10 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
     { itemId: "p_bomb", price: 20, maxQty: 3 },
   ],
   8: [
+    // A lantern before the Ramparts specifically: a bare flame on a storm-lashed
+    // wall is the wrong tool, and the glassed one is measurably steadier
+    // (`ItemDef.flicker` 0.35 vs 1) as well as longer-burning.
+    { itemId: "i_lantern", price: 30 },
     { itemId: "p_might", price: 16, maxQty: 3 },
     { itemId: "p_ruin", price: 22, maxQty: 2 },
     { itemId: "p_rime", price: 26, maxQty: 1 },
@@ -420,6 +444,8 @@ export const SHOP_TIERS: Record<number, ShopEntry[]> = {
     { itemId: "p_bomb", price: 20, maxQty: 3 },
   ],
   9: [
+    // the last shop in the game — a cheap top-up so the finale is never blind
+    { itemId: "i_torch", price: 10 },
     { itemId: "p_shadow", price: 24, maxQty: 1 },
     { itemId: "p_blink", price: 30, maxQty: 1 },
     { itemId: "p_ward", price: 16, maxQty: 3 },

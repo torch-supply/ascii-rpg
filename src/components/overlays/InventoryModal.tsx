@@ -144,8 +144,9 @@ export default function InventoryModal() {
                 </div>
               )}
               <p className="mt-1 text-[12px] leading-[1.5] text-[#5a5a64]">
-                Walk over items to pick them up. Numbers use or equip; upgrades
-                swap automatically.
+                Walk over supplies to pick them up. You carry one weapon and one
+                suit of armour, so stepping on a piece asks whether to swap —
+                what you set down stays where you dropped it.
               </p>
             </div>
           </div>

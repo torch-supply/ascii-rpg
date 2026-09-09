@@ -13,6 +13,7 @@ import type {
   TileType,
 } from "@/game/core/types";
 import { idx, manhattan, isWalkable } from "@/game/core/grid";
+import { biomeAtTile, SCONCE_BIOMES } from "@/game/core/light";
 import { seedMapGen, mapInt, mapWeighted } from "@/game/core/rng";
 import { ALTAR_KINDS } from "@/game/core/altar";
 import { loreForBiome } from "@/content/lore";
@@ -67,15 +68,33 @@ function genHall(w: number, h: number): TileType[] {
     for (let x = 5; x < w - 5; x += colStep) t[py * w + x] = "wall";
   }
 
-  // flanking chapels, above and below, connected to the nave by doorways
-  const roomW = 8 + mapInt(0, 3); // chapel width/count jitter
+  // Flanking chapels, above and below, each connected to the nave by a doorway.
+  //
+  // These used to floor their ENTIRE depth from the nave to the map border,
+  // separated by single-column dividers — which is why the hall carved 74% floor
+  // where every other level runs 18-40%, and why it was the sparsest level in
+  // the game at 1.11 POIs per 100 walkable tiles. A cathedral is mostly MASONRY.
+  // Each chapel is now a room of jittered depth cut into solid rock, with real
+  // wall between and behind them, and some bays left unbuilt entirely.
+  const roomW = 7 + mapInt(0, 3); // chapel width/count jitter
   const chapels: { rx: number; y0: number; y1: number }[] = [];
   for (const side of ["top", "bottom"] as const) {
-    const y0 = side === "top" ? 1 : ny1 + 2;
-    const y1 = side === "top" ? ny0 - 2 : h - 2;
-    if (y1 < y0) continue;
+    const slot0 = side === "top" ? 1 : ny1 + 2;
+    const slot1 = side === "top" ? ny0 - 2 : h - 2;
+    if (slot1 < slot0) continue;
+    const slotDepth = slot1 - slot0 + 1;
     const wallRow = side === "top" ? ny0 - 1 : ny1 + 1; // divider vs. the nave
-    for (let rx = 2; rx + roomW <= w - 2; rx += roomW + 1) {
+    for (let rx = 2; rx + roomW <= w - 2; rx += roomW + 2) {
+      // ~1 bay in 5 is never built — solid stone, so the colonnade has blind
+      // stretches and the nave isn't ringed by an unbroken corridor of rooms
+      if (mapInt(0, 9) < 2) continue;
+      // depth cut back from the border, so masonry remains behind the chapel
+      const depth = Math.max(
+        3,
+        Math.min(slotDepth, 3 + mapInt(0, Math.max(0, slotDepth - 3))),
+      );
+      const y0 = side === "top" ? slot1 - depth + 1 : slot0;
+      const y1 = side === "top" ? slot1 : slot0 + depth - 1;
       for (let y = y0; y <= y1; y++)
         for (let x = rx; x < rx + roomW; x++) carve(x, y);
       carve(rx + Math.floor(roomW / 2), wallRow); // doorway into the nave
@@ -199,6 +218,48 @@ function genGallery(w: number, h: number): TileType[] {
     }
   }
 
+  // NARTHEX + APSE — the two ENDS are rooms, not more corridor. Without them the
+  // gallery is one uniform band for its whole length: you enter mid-corridor, and
+  // the Herald (placed farthest-from-start) makes its stand in a stretch of hall
+  // identical to every other stretch. Each end swells a few rows into the dead
+  // rock above and below, so arrival reads as a vestibule and the far end as an
+  // apse worth fighting in. Only ever ADDS floor, so it cannot sever the hall.
+  for (const far of [false, true]) {
+    const endW = 6 + mapInt(0, 3);
+    const swell = 2 + mapInt(0, 2);
+    const x0 = far ? w - 2 - endW : 2;
+    for (let y = r0 - swell; y <= r1 + swell; y++)
+      for (let x = x0; x < x0 + endW; x++) carve(x, y);
+  }
+
+  // FLANKING CHAMBERS — side rooms cut into the dead rock BEYOND the outer wall,
+  // each reached by a single passage off a side aisle. Over half a `gallery` map
+  // is untouched rock (the hall band is ~17 of 40 rows), so these cost no map
+  // size; what they buy is a reason to leave the processional axis — loot and
+  // threats off the spine, in rooms whose count, size, side and position all
+  // jitter per seed. They may overlap into one larger chamber, which is its own
+  // variety. Kept out of the end bays' x-range so they never merge with the apse.
+  const chambers = 2 + mapInt(0, 2);
+  for (let c = 0; c < chambers; c++) {
+    const dir = mapInt(0, 1) === 0 ? -1 : 1; // above / below the hall
+    const cw = 5 + mapInt(0, 4);
+    const chH = 3 + mapInt(0, 2);
+    const cx0 = Math.floor(w * 0.2) + mapInt(0, Math.floor(w * 0.45));
+    const edgeRow = dir < 0 ? r0 : r1; // the hall's outer floor row on this side
+    // Stand the chamber off by 4 rows: the niches already reach 2 deep, so this
+    // leaves a course of masonry between room and aisle and the chamber reads as
+    // cut into rock rather than as the aisle bulging outward.
+    const near = edgeRow + dir * 4;
+    const y0 = dir < 0 ? near - chH + 1 : near;
+    if (y0 < 2 || y0 + chH > h - 2) continue; // no room on this side this seed
+    for (let y = y0; y < y0 + chH; y++)
+      for (let x = cx0; x < cx0 + cw && x < w - 2; x++) carve(x, y);
+    // the one doorway, punched through the intervening masonry to the aisle
+    const doorX = Math.min(w - 3, cx0 + 1 + mapInt(0, Math.max(0, cw - 3)));
+    for (let y = Math.min(near, edgeRow); y <= Math.max(near, edgeRow); y++)
+      carve(doorX, y);
+  }
+
   // an occasional COLLAPSED section — a stretch of the promenade floor has given
   // way into a bottomless chasm. Kept strictly interior (floor margins on every
   // side + between the colonnades) so you always route around it and it never
@@ -263,6 +324,95 @@ function genGrid(kind: GeneratorKind, w: number, h: number): TileType[] {
 }
 
 /**
+ * A wing that looks GROWN rather than BUILT.
+ *
+ * `genGrid("maze")` is a perfect rectilinear lattice. That is exactly right for
+ * the Sunken Crypt's bone catacombs, which are masonry — and exactly wrong for
+ * the Mire's reed thicket, where it put a hedge maze in a bog: the level's one
+ * NATURAL feature was the only one generated as architecture, next to a temple
+ * and wayshrines whose straight walls are deliberate. Hence the opt-in flag
+ * rather than a change to `maze` itself.
+ *
+ * Two operations, and it needs BOTH — either alone leaves the grid legible:
+ *
+ *  • the lattice is cut at HALF resolution and doubled. This is what kills the
+ *    uniform one-tile pitch, which erosion alone cannot touch (thinning a
+ *    1-thick wall only makes it gappy, never thicker, so the lattice survives as
+ *    a dotted lattice). It also makes the erosion below SAFE: channels are 2
+ *    tiles wide, so removing wall can never sever one, and the pass stays
+ *    monotone — floor only ever grows, so no connectivity guarantee can break.
+ *
+ *  • the walls are then eroded two ways. Any nub with 3+ open neighbours goes,
+ *    which is what removes the right angles and rounds the wing's own
+ *    rectangular outline into the surrounding bog; and a noise field punches
+ *    wandering channels through the banks, breaking the long straight runs into
+ *    segments of irregular length and thickness.
+ *
+ * Neighbour counts read the PRE-erosion grid on purpose. Reading the live grid
+ * makes erosion cascade — each removal opens its neighbour's third side — and
+ * the thicket dissolves into open water.
+ */
+const ORGANIC_LAYOUTS = new Set<GeneratorKind>(["maze", "cellular", "digger"]);
+
+function organicGrid(
+  kind: GeneratorKind,
+  w: number,
+  h: number,
+  scale = 0.22,
+  thresh = 0.42,
+): TileType[] {
+  // Only the layouts this is designed for. The room-based generators cannot take
+  // it — asked for a half-resolution grid, `ROT.Map.Rogue` throws inside
+  // `_createCorridors` — and they should not want to: a `rogue` warren, a `hall`
+  // nave and a `rampart` wall-walk are BUILDINGS, and their straight lines are
+  // the point. Failing here names the mistake; without it the same content error
+  // surfaces as a stack trace from inside rot.js.
+  if (!ORGANIC_LAYOUTS.has(kind))
+    throw new Error(
+      `subBiome organic: true supports layout ${[...ORGANIC_LAYOUTS].join("/")}, not "${kind}" — a built layout is rectilinear on purpose`,
+    );
+  const hw = Math.max(4, Math.ceil(w / 2));
+  const hh = Math.max(4, Math.ceil(h / 2));
+  const small = genGrid(kind, hw, hh);
+  const t: TileType[] = new Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const sx = Math.min(hw - 1, x >> 1);
+      const sy = Math.min(hh - 1, y >> 1);
+      t[y * w + x] = small[sy * hw + sx];
+    }
+  }
+
+  const before = t.slice();
+  // Off-grid counts as OPEN, so the wing's outer edge erodes too and the
+  // rectangle's corners round off into the base biome instead of reading as a
+  // stamped boundary. Only ever adds floor at the seam, which helps `connectWing`.
+  const openAt = (x: number, y: number) =>
+    x < 0 || y < 0 || x >= w || y >= h || before[y * w + x] !== "wall";
+  const noise = new ROT.Noise.Simplex();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (before[y * w + x] !== "wall") continue;
+      const open =
+        (openAt(x, y - 1) ? 1 : 0) +
+        (openAt(x, y + 1) ? 1 : 0) +
+        (openAt(x - 1, y) ? 1 : 0) +
+        (openAt(x + 1, y) ? 1 : 0);
+      // TWO octaves, and the fine one is not decoration. Doubling the lattice
+      // makes every row an exact copy of its pair, and a single low-frequency
+      // field barely changes over two tiles — so the pair erodes identically and
+      // the result carries visible 2-row banding, trading the old lattice for a
+      // subtler one. The finer term decorrelates the pair and ragged-edges the
+      // banks; at a third the weight it grains the edges without speckling.
+      const channel = noise.get(x * scale, y * scale);
+      const grain = noise.get(x * scale * 3.1 + 11, y * scale * 3.1 + 7);
+      if (open >= 3 || channel + grain * 0.45 > thresh) t[y * w + x] = "floor";
+    }
+  }
+  return t;
+}
+
+/**
  * Carve a sub-biome region + tag it with the sub-biome's biome/palette. Two
  * shapes: an organic Simplex-noise blob (default, cosmetic) or a rectangular
  * wing whose STRUCTURE is a secondary generator (`spec.layout`, e.g. a maze).
@@ -279,14 +429,125 @@ function carveSubBiome(map: GameMap, config: LevelConfig) {
   map.region = new Array(map.width * map.height).fill(0);
   map.regionBiome = [config.biome];
   map.regionPalette = [config.palette];
+  // Wings are anchored by their ORDINAL among wings, not by spec index, so two
+  // structural wings on one level never stamp the same rectangle (see
+  // `carveSubBiomeWing`). Blobs don't take an anchor — they're noise-shaped.
+  let wingOrdinal = 0;
+  const wingIds: number[] = [];
   specs.forEach((spec, i) => {
     const id = i + 1;
     map.regionBiome!.push(spec.biome);
     map.regionPalette!.push(spec.palette);
-    if (spec.layout) carveSubBiomeWing(map, spec, id);
-    else carveSubBiomeBlob(map, spec, id);
+    if (spec.layout) {
+      carveSubBiomeWing(map, spec, id, wingOrdinal++);
+      wingIds.push(id);
+    } else carveSubBiomeBlob(map, spec, id);
     scatterRegionHazards(map, spec, id);
   });
+  for (const id of wingIds) connectWing(map, id);
+}
+
+/**
+ * Guarantee a wing is reachable — carve a corridor from it to the map's largest
+ * floor mass if nothing already joins them.
+ *
+ * The artery `carveSubBiomeWing` draws is carved BEFORE that wing's hazards are
+ * scattered, so a water clump can cut it afterwards; and on an organic base it
+ * can dead-end in a pocket. Either way `sealUnreachable` then walls the whole
+ * wing off, leaving a region that is still TAGGED but has no walkable tile —
+ * a level silently losing a third of its content, on a third of its seeds.
+ *
+ * Measured by REGION ID (not by biome — a wing whose biome matches its level's
+ * base, like the reed maze in a marsh, otherwise counts base tiles and reads as
+ * a false 100%): the Mire's maze was severed on 40% of seeds and the Crypt's on
+ * 12%, both long before any of this rework.
+ */
+function connectWing(map: GameMap, id: number) {
+  const w = map.width;
+  const h = map.height;
+  const isFloor = (i: number) => map.tiles[i] === "floor";
+
+  const wing: number[] = [];
+  for (let i = 0; i < map.tiles.length; i++)
+    if ((map.region?.[i] ?? 0) === id && isFloor(i)) wing.push(i);
+  if (wing.length === 0) return; // nothing survived the carve; nothing to join
+
+  // the biggest floor mass OUTSIDE this wing — what the wing has to reach
+  const seen = new Uint8Array(map.tiles.length);
+  let best: number[] = [];
+  for (let start = 0; start < map.tiles.length; start++) {
+    if (seen[start] || !isFloor(start) || (map.region?.[start] ?? 0) === id)
+      continue;
+    const comp: number[] = [];
+    const stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      const cur = stack.pop()!;
+      comp.push(cur);
+      const cx = cur % w;
+      const cy = Math.floor(cur / w);
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 1 || ny < 1 || nx >= w - 1 || ny >= h - 1) continue;
+        const ni = ny * w + nx;
+        if (seen[ni] || !isFloor(ni) || (map.region?.[ni] ?? 0) === id)
+          continue;
+        seen[ni] = 1;
+        stack.push(ni);
+      }
+    }
+    if (comp.length > best.length) best = comp;
+  }
+  if (best.length === 0) return;
+
+  // already joined? (a wing tile orthogonally touching the main mass)
+  const inBest = new Set(best);
+  for (const i of wing) {
+    const x = i % w;
+    const y = Math.floor(i / w);
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const ni = (y + dy) * w + (x + dx);
+      if (inBest.has(ni)) return;
+    }
+  }
+
+  // otherwise dig the shortest L between the closest pair, clearing whatever is
+  // in the way (walls and water alike — a corridor to a marooned wing beats a
+  // wing nobody can enter)
+  let a = wing[0];
+  let b = best[0];
+  let bestD = Infinity;
+  for (const i of wing) {
+    const ix = i % w;
+    const iy = Math.floor(i / w);
+    for (const j of best) {
+      const d = Math.abs((j % w) - ix) + Math.abs(Math.floor(j / w) - iy);
+      if (d < bestD) {
+        bestD = d;
+        a = i;
+        b = j;
+      }
+    }
+  }
+  const ax = a % w;
+  const ay = Math.floor(a / w);
+  const bx = b % w;
+  const by = Math.floor(b / w);
+  for (let x = Math.min(ax, bx); x <= Math.max(ax, bx); x++)
+    if (x > 0 && x < w - 1) map.tiles[ay * w + x] = "floor";
+  for (let y = Math.min(ay, by); y <= Math.max(ay, by); y++)
+    if (y > 0 && y < h - 1) map.tiles[y * w + bx] = "floor";
 }
 
 /** Organic noise-blob region (cosmetic — never touches `tiles`). Tags the
@@ -337,15 +598,34 @@ function carveSubBiomeBlob(map: GameMap, spec: SubBiomeSpec, id: number) {
 
 /** A rectangular wing whose layout is a secondary generator (e.g. a maze),
  * stamped into the map and bridged to the main area by a central corridor. */
-function carveSubBiomeWing(map: GameMap, spec: SubBiomeSpec, id: number) {
+function carveSubBiomeWing(
+  map: GameMap,
+  spec: SubBiomeSpec,
+  id: number,
+  ordinal = 0,
+) {
   const w = map.width;
   const h = map.height;
   const frac = spec.size ?? 0.42;
   const rw = Math.max(8, Math.min(w - 3, Math.floor(w * frac)));
   const rh = Math.max(8, Math.min(h - 3, Math.floor(h * frac)));
-  const rx = Math.max(1, w - 1 - rw); // against the right edge…
-  const ry = Math.max(1, Math.floor((h - rh) / 2)); // …vertically centered
-  const grid = genGrid(spec.layout!, rw, rh);
+  // ANCHOR BY ORDINAL. Every wing used to stamp the right edge, vertically
+  // centred — fine while no level had two, but the Mire's temple then landed
+  // directly on top of its reed maze, destroying the maze and severing itself.
+  // Ordinal 0 keeps the old anchor exactly, so every existing single-wing level
+  // generates bit-identically.
+  const anchors: [number, number][] = [
+    [w - 1 - rw, Math.floor((h - rh) / 2)], // right, centred (the original)
+    [1, Math.floor((h - rh) / 2)], // left, centred
+    [Math.floor((w - rw) / 2), 1], // top, centred
+    [Math.floor((w - rw) / 2), h - 1 - rh], // bottom, centred
+  ];
+  const [ax, ay] = anchors[ordinal % anchors.length];
+  const rx = Math.max(1, ax);
+  const ry = Math.max(1, ay);
+  const grid = spec.organic
+    ? organicGrid(spec.layout!, rw, rh)
+    : genGrid(spec.layout!, rw, rh);
 
   const region = map.region!;
   for (let yy = 0; yy < rh; yy++) {
@@ -366,9 +646,34 @@ function carveSubBiomeWing(map: GameMap, spec: SubBiomeSpec, id: number) {
   const by = Math.min(h - 2, Math.max(1, ry + Math.floor(rh / 2)));
   for (let x = rx; x < rx + rw && x < w - 1; x++)
     map.tiles[by * w + x] = "floor";
+  // Tunnel LEFT until we reach real space. The stop condition used to be "the
+  // first floor tile", which is wrong on an organic base: a `cellular` marsh is
+  // full of one-tile pockets, so the artery would join the wing to a dead pocket
+  // and `sealUnreachable` would then wall BOTH away. Measured on the Mire's
+  // temple, that severed the whole wing on 35% of seeds — and it never showed up
+  // before because the existing wings (maze/cellular, which fill their rectangle
+  // densely) happened to overlap real floor anyway.
+  //
+  // "Real space" = a floor tile with an open neighbourhood, which a pocket
+  // fails and a cavern passes immediately, so levels that already worked are
+  // untouched.
+  const roomy = (i: number) => {
+    const cx = i % w;
+    const cy = Math.floor(i / w);
+    let open = 0;
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 1 || ny < 1 || nx >= w - 1 || ny >= h - 1) continue;
+        if (map.tiles[ny * w + nx] === "floor") open++;
+      }
+    return open >= 8;
+  };
   for (let x = rx - 1; x >= 1; x--) {
-    if (map.tiles[by * w + x] === "floor") break; // reached the main map
-    map.tiles[by * w + x] = "floor";
+    const i = by * w + x;
+    if (map.tiles[i] === "floor" && roomy(i)) break; // reached the main map
+    map.tiles[i] = "floor";
   }
   const bx = Math.min(w - 2, Math.max(1, rx + Math.floor(rw / 2)));
   for (let y = ry; y < ry + rh && y < h - 1; y++)
@@ -760,6 +1065,10 @@ function placeOneStructure(
       }
       const hutId = map.regionBiome!.length;
       map.regionBiome!.push("dungeon"); // no wall override → "#", no weather
+      // …but record that this is a STRUCTURE, not a dungeon. The biome tag is
+      // borrowed for its glyph; without this the renderer can't tell the two
+      // apart and lights the hut like a garrisoned room (see `structureRegions`).
+      (map.structureRegions ??= []).push(hutId);
       map.regionPalette!.push(
         spec.palette ?? {
           wall: "#9c6b3f",
@@ -1507,15 +1816,29 @@ function placeLore(
 
   const lore: LoreInstance[] = [];
   const usedTitles = new Set<string>(); // distinct fragments per level
+  // ONE clue is seeded first, then the rest draw normally.
+  //
+  // A fragment carrying `claims` is advice — which gate a vault is behind, what
+  // a boss shrugs off — and it is only worth writing if it reaches the player.
+  // Drawn purely at random it did not: measured, the Great Hall's strongroom
+  // hint landed on 21% of runs and the Frostspine's on ~40%, so the "read lore,
+  // learn something useful" loop mostly never happened. Seeding exactly ONE
+  // guarantees an edge without turning the level's whole allowance into advice
+  // — at `loreCount` 2 the Frostspine would otherwise have spent both props on
+  // clues and never shown its flavour at all.
+  let clueSeeded = false;
   let ci = 0;
   while (lore.length < count && ci < cells.length) {
     const i = cells[ci++];
-    const pool = loreForBiome(biomeAt(i));
+    const pool = loreForBiome(biomeAt(i), config.id);
     // an unused entry from THIS prop's own regional pool; skip the cell if the
     // pool is exhausted (another cell in a different region may still serve)
     const fresh = pool.filter((e) => !usedTitles.has(e.title));
     if (fresh.length === 0) continue;
-    const entry = fresh[mapInt(0, fresh.length - 1)];
+    const clues = clueSeeded ? [] : fresh.filter((e) => e.claims);
+    const from = clues.length > 0 ? clues : fresh;
+    const entry = from[mapInt(0, from.length - 1)];
+    if (entry.claims) clueSeeded = true;
     usedTitles.add(entry.title);
     occupied.add(i);
     lore.push({
@@ -1529,6 +1852,84 @@ function placeLore(
     });
   }
   return lore;
+}
+
+/**
+ * Lit wall sconces. Light tracks HABITATION, not floor area — a garrisoned
+ * gatehouse burns, a sealed tomb doesn't — so the count is per level.
+ *
+ * Moved here from the renderer when light became a CORE concern: a sconce is
+ * often the only reason a room down a dark hall is visible at all, so
+ * `recomputeFOV` has to know about it. Placement is unchanged and still
+ * deterministic from the level index (a hash, no RNG), so it consumes none of
+ * the map-gen stream and every existing level lights exactly as before.
+ */
+function placeSconces(
+  map: GameMap,
+  config: LevelConfig,
+  levelIndex: number,
+): number[] {
+  // per-level count: light tracks habitation, not floor area
+  const want = config.sconces ?? CONFIG.sconces;
+  if (want <= 0) return [];
+  const w = map.width;
+  const seed = (levelIndex + 1) * 0x9e3779b1;
+  const openTile = (i: number) => {
+    const t = map.tiles[i];
+    return t === "floor" || t === "oil" || t === "trap" || t === "trapSprung";
+  };
+  const cand: number[] = [];
+  for (let i = 0; i < map.tiles.length; i++) {
+    if (map.tiles[i] !== "wall") continue;
+    const x = i % w;
+    const y = Math.floor(i / w);
+    if (x < 1 || y < 1 || x >= w - 1 || y >= map.height - 1) continue;
+    // must face open floor, or the flame is buried inside solid rock
+    const faces =
+      openTile(i - 1) || openTile(i + 1) || openTile(i - w) || openTile(i + w);
+    if (!faces) continue;
+    // built places only, resolved PER REGION — a bracket belongs on a
+    // gatehouse wall, not on a graveyard wall two tiles outside it
+    if (!SCONCE_BIOMES.has(biomeAtTile(map, i, config.biome))) continue;
+    // …and never on a FREESTANDING structure. A hut tags its region `dungeon`
+    // to borrow that biome's plain `#` wall, which put it in SCONCE_BIOMES by
+    // accident: on the Blackwood and the Mire those hut/wayshrine walls were
+    // the only eligible ones on the map, so the whole budget burned on an
+    // abandoned woodcutters' cottage. Nobody is home to light them.
+    if (map.structureRegions?.includes(map.region?.[i] ?? 0)) continue;
+    // Prefer walls facing a ROOM over walls in a one-tile passage. A bracket
+    // was mounted where people gathered — a hall, a guard chamber — not in a
+    // crawlspace, and structurally it puts the light where it can actually
+    // pool. Openness dominates the sort; the hash only breaks ties, so the
+    // scatter stays deterministic and unclustered.
+    let room = 0;
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= map.height) continue;
+        if (openTile(ny * w + nx)) room++;
+      }
+    let h = (i ^ seed) >>> 0;
+    h = (h ^ (h >>> 16)) * 0x7feb352d;
+    h = (h ^ (h >>> 15)) >>> 0;
+    // sort key: openness descending, then hash — 24 is the max open count in a 5x5
+    cand.push((24 - Math.min(24, room)) * 1e10 + (h % 4096) * 1e6 + i);
+  }
+  cand.sort((a, b) => a - b);
+  const picked: number[] = [];
+  for (const key of cand) {
+    if (picked.length >= want) break;
+    const i = key % 1e6;
+    const x = i % w;
+    const y = Math.floor(i / w);
+    // spread them down a hall rather than clustering on one corner
+    if (
+      picked.every((j) => Math.hypot((j % w) - x, Math.floor(j / w) - y) >= 7)
+    )
+      picked.push(i);
+  }
+  return picked;
 }
 
 /** A tile the player could stand on or pass through. Cracked walls count —
@@ -1768,21 +2169,129 @@ export function generateLevel(
   let mCounter = 0;
   let iCounter = 0;
 
-  // Player start — a random floor cell.
+  // Player start — a random floor cell, minus any region a level says you must
+  // not begin in (`SubBiomeSpec.noStart`). Matched by REGION ID: a sub-region
+  // often shares its level's base biome (the Mire's reed maze is `marsh`, the
+  // crypt's catacomb is `crypt`), so a biome-keyed blocklist would take the base
+  // region with it. Falls back to the unconstrained pick if that leaves nothing,
+  // so a seed can never be stranded.
+  const noStart = new Set<number>();
+  (config.subBiomes ?? []).forEach((spec, k) => {
+    if (spec.noStart) noStart.add(k + 1); // ids are assigned 1,2,… in spec order
+  });
+  // Regions a level says its OBJECTIVE belongs in (`SubBiomeSpec.goalHere`).
+  // One set, honoured by the exit, the boss and the quest item alike, so a
+  // level that is a journey INTO somewhere reads that way whatever its goal is.
+  const goalRegions = new Set<number>();
+  (config.subBiomes ?? []).forEach((spec, k) => {
+    if (spec.goalHere) goalRegions.add(k + 1);
+  });
+  const inGoalRegion = (pool: number[]) =>
+    goalRegions.size > 0 && map.region
+      ? pool.filter((i) => goalRegions.has(map.region![i] ?? 0))
+      : [];
+
+  let startPool =
+    noStart.size > 0 && map.region
+      ? floors.filter((i) => !noStart.has(map.region![i] ?? 0))
+      : floors;
+
+  // THE APPROACH. `noStart` keeps you out of the destination region, but not
+  // AWAY from it — you could begin three steps from the gatehouse door and walk
+  // straight in, skipping the outdoor half the level is built around. A
+  // multi-source BFS out from the goal region gives the real walking distance;
+  // starts nearer than `minStartToGoalRegion` are dropped from the pool.
+  // Falls through if that would empty it, so a seed is never stranded.
+  if (goalRegions.size > 0 && map.region) {
+    const dist = new Int32Array(w * h).fill(-1);
+    let frontier: number[] = [];
+    for (let i = 0; i < map.tiles.length; i++) {
+      if (goalRegions.has(map.region[i] ?? 0) && isOpenTile(tiles[i])) {
+        dist[i] = 0;
+        frontier.push(i);
+      }
+    }
+    while (frontier.length) {
+      const next: number[] = [];
+      for (const i of frontier) {
+        for (const d of [1, -1, w, -w]) {
+          const j = i + d;
+          if (j < 0 || j >= dist.length || dist[j] >= 0) continue;
+          if (Math.abs(((i % w) - (j % w)) as number) > 1) continue; // no row wrap
+          if (!isOpenTile(tiles[j])) continue;
+          dist[j] = dist[i] + 1;
+          next.push(j);
+        }
+      }
+      frontier = next;
+    }
+    const far = startPool.filter(
+      (i) => dist[i] < 0 || dist[i] >= CONFIG.minStartToGoalRegion,
+    );
+    if (far.length > 0) startPool = far;
+  }
+
+  const pool = startPool.length > 0 ? startPool : floors;
   const startIdx =
-    floors.length > 0 ? floors[mapInt(0, floors.length - 1)] : idx(1, 1, w);
+    pool.length > 0 ? pool[mapInt(0, pool.length - 1)] : idx(1, 1, w);
   const playerStart: Pos = { x: startIdx % w, y: Math.floor(startIdx / w) };
   occupied.add(startIdx);
+
+  /**
+   * A DESTINATION REGION CAN BE CARVED NEXT TO THE START.
+   *
+   * `goalHere` takes the farthest cell WITHIN a region, which is only far if the
+   * region is — so on the Mire ~2% of seeds put the exit within 20 steps and the
+   * worst put it at 3, and pinning the Gate Warden inside the gatehouse took the
+   * Iron Gate's shortest run from 43 steps to 17. Constraining WHERE the goal
+   * goes necessarily loosens how far away it is; this puts the floor back.
+   *
+   * Corrected by moving the START, not the goal: the goal stays inside the region
+   * that makes it the destination, and the start is re-drawn from the SAME pool,
+   * so `noStart` and the component anchor still hold. A random eligible cell
+   * rather than the farthest one — on a triggering seed the farthest is always
+   * the opposite corner, which would swap a rare short run for a predictable one.
+   */
+  const pushStartAwayFrom = (gx: number, gy: number) => {
+    if (
+      manhattan(playerStart.x, playerStart.y, gx, gy) >= CONFIG.minStartToExit
+    )
+      return;
+    const eligible = pool.filter(
+      (i) =>
+        !occupied.has(i) &&
+        manhattan(i % w, Math.floor(i / w), gx, gy) >= CONFIG.minStartToExit,
+    );
+    const moved =
+      eligible.length > 0
+        ? eligible[mapInt(0, eligible.length - 1)]
+        : farthestCell(pool, occupied, w, { x: gx, y: gy });
+    if (moved === null || moved === undefined) return;
+    occupied.delete(idx(playerStart.x, playerStart.y, w));
+    playerStart.x = moved % w;
+    playerStart.y = Math.floor(moved / w);
+    occupied.add(moved);
+  };
 
   // Exit (reachLocation goal): the farthest floor cell that isn't a chokepoint
   // gating the only path to some area — stepping on the exit ends the level, so
   // it must never wall off a reachable region behind it.
   if (config.goal.type === "reachLocation") {
-    const exitIdx = farthestSafeCell(floors, occupied, w, playerStart, map);
+    // `goalHere` makes a region the DESTINATION — the farthest safe cell
+    // WITHIN it, so the level reads as a journey to somewhere rather than to
+    // wherever the map happened to trail off. Falls back to the whole map if
+    // that region has no eligible floor, so a seed always gets an exit.
+    const inRegion = inGoalRegion(floors);
+    const exitIdx =
+      (inRegion.length > 0
+        ? farthestSafeCell(inRegion, occupied, w, playerStart, map)
+        : null) ?? farthestSafeCell(floors, occupied, w, playerStart, map);
     if (exitIdx !== null) {
       tiles[exitIdx] = "exit";
       map.exit = { x: exitIdx % w, y: Math.floor(exitIdx / w) };
       occupied.add(exitIdx);
+
+      pushStartAwayFrom(map.exit.x, map.exit.y);
     }
   }
 
@@ -1798,11 +2307,19 @@ export function generateLevel(
     // matters mechanically: a corridor lets you fight it one-on-one, while an
     // open room lets its escort flank you. Forcing bosses into open ground
     // dropped the Iron Gate's bot floor 50%→17%.
+    // …and inside the region that OWNS the fight, when the level names one: the
+    // Gate Warden holds the gatehouse, so placing it at the farthest cell of the
+    // whole map put it out on the graves 60% of the time.
+    const inRegion = inGoalRegion(floors);
     const bossIdx =
+      (inRegion.length > 0
+        ? farthestCell(inRegion, occupied, w, playerStart)
+        : null) ??
       farthestCell(floors, occupied, w, playerStart) ??
       pickCell(floors, occupied, w);
     if (bossIdx !== null) {
       occupied.add(bossIdx);
+      pushStartAwayFrom(bossIdx % w, Math.floor(bossIdx / w));
       monsters.push({
         id: `m${levelIndex}_${mCounter++}`,
         defId: def.id,
@@ -1884,11 +2401,16 @@ export function generateLevel(
     // ground (see `farthestCell`), never a corridor stub: the strict farthest
     // tile is nearly always a dead-end, which reads as the item plugging a
     // passage and, on a flooding level, is a death trap.
+    const inRegion = inGoalRegion(floors);
     const cell =
+      (inRegion.length > 0
+        ? farthestCell(inRegion, occupied, w, playerStart, tiles)
+        : null) ??
       farthestCell(floors, occupied, w, playerStart, tiles) ??
       pickCell(floors, occupied, w);
     if (cell !== null) {
       occupied.add(cell);
+      pushStartAwayFrom(cell % w, Math.floor(cell / w));
       items.push({
         id: `it${levelIndex}_${iCounter++}`,
         defId: questItemId,
@@ -1903,12 +2425,52 @@ export function generateLevel(
   const dropWeights: Record<string, number> = {};
   for (const d of config.dropTable) dropWeights[d.itemId] = d.weight;
   const dropCount = Math.round(config.itemDropCount * CONFIG.lootScale);
+  // WHAT gets hidden is a design decision, not a placement detail.
+  //
+  // Ordinary loot used to scatter uniformly, so 49% of the game's items lay on
+  // open floor: you collected them by walking the route you were walking anyway,
+  // and loot rewarded traversal rather than exploration. Nooks-first fixes that —
+  // the same bias `placeForage` and `placeLore` already use.
+  //
+  // But it cannot apply to EVERYTHING. Hiding the lot took the carried-run gate
+  // from depth 3 to depth 2: the balance bot beelines and never detours for
+  // loot, so it models a player who explores nothing, and that player starved.
+  // The honest split is by what the item is FOR. TREASURE — gold, weapons,
+  // armour — goes in the dead ends, because wealth should be the reward for
+  // looking. SUPPLIES — potions, ammo, torches — stay on the route, because
+  // running dry on heals because you failed to search a corridor stub is a
+  // punishment for the wrong thing. Explore and you get rich; beeline and you
+  // stay alive but poor.
+  const TREASURE = new Set(["coin", "weapon", "armor"]);
+  const nookPool: number[] = [];
+  const openPool: number[] = [];
+  for (const i of floors) {
+    if (occupied.has(i) || tiles[i] !== "floor") continue;
+    if (!farFromPlayer(i % w, Math.floor(i / w))) continue;
+    (openOrthoCount(tiles, w, i) <= 2 ? nookPool : openPool).push(i);
+  }
+  for (const pool of [nookPool, openPool])
+    for (let k = pool.length - 1; k > 0; k--) {
+      const j = mapInt(0, k);
+      [pool[k], pool[j]] = [pool[j], pool[k]];
+    }
+  const takeFrom = (pools: number[][]) => {
+    for (const pool of pools) {
+      while (pool.length && occupied.has(pool[pool.length - 1])) pool.pop();
+      if (pool.length) return pool.pop()!;
+    }
+    return null;
+  };
+
   for (let n = 0; n < dropCount; n++) {
-    const cell = pickCell(floors, occupied, w, farFromPlayer);
-    if (cell === null) break;
     const itemId = mapWeighted(dropWeights);
     if (!itemId) break;
     const def = ITEMS[itemId];
+    // treasure prefers dead ends; supplies fall where they may
+    const cell = TREASURE.has(def.category)
+      ? takeFrom([nookPool, openPool])
+      : takeFrom([openPool, nookPool]);
+    if (cell === null) break;
     occupied.add(cell);
     const inst: ItemInstance = {
       id: `it${levelIndex}_${iCounter++}`,
@@ -1991,6 +2553,11 @@ export function generateLevel(
 
   // No teasing dead pockets: seal every open tile the player can't reach.
   sealUnreachable(map, playerStart);
+
+  // Lit wall sconces — AFTER sealing, so a bracket is never mounted on a wall
+  // facing a pocket that just got walled off. Light is core now (it decides
+  // `state.visible`), so this belongs to the map, not to the renderer.
+  map.sconces = placeSconces(map, config, levelIndex);
 
   // Flood plan (levels with a flood set-piece) — computed on the final geometry.
   let floodable: number[] | undefined;

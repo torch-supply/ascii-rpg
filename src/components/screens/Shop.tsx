@@ -275,8 +275,8 @@ export default function Shop() {
               <span className="ml-1 text-xs opacity-70">(Enter)</span>
             </MenuButton>
             <p className="m-0 text-center text-[11px] text-[#5a5a64]">
-              press a number (or click) to buy · sell spare gear from your
-              inventory · upgrades equip automatically
+              press a number (or click) to buy · buying a weapon or armour wears
+              it and trades in the old · sell spare items below
             </p>
           </div>
         </div>

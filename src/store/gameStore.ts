@@ -6,11 +6,12 @@ import type {
   PlayerAction,
   AltarInstance,
   LoreInstance,
+  ItemInstance,
   TurnResult,
   Biome,
 } from "@/game/core/types";
 import { Rng } from "@/game/core/rng";
-import { resolveTurn } from "@/game/core/actions";
+import { resolveTurn, takeGearAt, logMessage } from "@/game/core/actions";
 import { applyAltar } from "@/game/core/altar";
 import { beginLevel, createPlayer, clonePlayer } from "@/game/core/state";
 import { levelParBonus } from "@/game/core/goals";
@@ -50,6 +51,7 @@ export type UIMode =
   | "targeting"
   | "altar"
   | "lore"
+  | "gear"
   | "gameover"
   | "victory";
 
@@ -101,6 +103,8 @@ export interface GameStore {
   activeAltar: AltarInstance | null;
   /** the lore prop being read (null unless mode === "lore") */
   activeLore: LoreInstance | null;
+  /** the weapon/armour being weighed up (null unless mode === "gear") */
+  activeGear: ItemInstance | null;
   /**
    * Bumped on every death. PRESENTATION ONLY — the mode transition stays
    * synchronous (store tests `[S6]`/`[S7]` assert it on the lethal turn, and the
@@ -144,6 +148,8 @@ export interface GameStore {
   // altar / shrine interaction
   acceptAltar: () => void;
   declineAltar: () => void;
+  takeGear: () => void;
+  leaveGear: () => void;
 
   // lore prop interaction (read + dismiss)
   closeLore: () => void;
@@ -360,6 +366,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     targeting: null,
     activeAltar: null,
     activeLore: null,
+    activeGear: null,
     runResult: null,
     deathFlash: 0,
     soundOn: true,
@@ -485,10 +492,29 @@ export const gameStore = createStore<GameStore>((set, get) => {
       );
       if (lore) {
         lore.read = true;
+        // Record it in the run-long journal (the Lore tab). Titles only, and
+        // deduped: `GameState.lore` is per-level, so this is the only thing
+        // that survives to let you read a fragment back later.
+        if (!game.player.loreSeen.includes(lore.title))
+          game.player.loreSeen.push(lore.title);
         playSting("lore"); // a wistful fragment of the Ember motif
         set({ game: { ...game }, mode: "lore", activeLore: lore });
         persist();
+        return;
       }
+      // Stepping onto a weapon or suit of armour weighs it against what you
+      // carry — same "offer AFTER the move resolves" flow as an altar, so gear
+      // never blocks a route and declining just walks you over it. Only
+      // non-quest gear reaches here: the core takes quest gear automatically
+      // (the Sunblade IS an objective, so it must not be declinable).
+      const gear = game.items.find(
+        (i) =>
+          i.x === game.player.x &&
+          i.y === game.player.y &&
+          (ITEMS[i.defId].category === "weapon" ||
+            ITEMS[i.defId].category === "armor"),
+      );
+      if (gear) set({ mode: "gear", activeGear: gear });
     },
 
     continueNarration: () => {
@@ -524,6 +550,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
         case "restartLevel": {
           const player = clonePlayer(game!.entryPlayer);
           player.lives = game!.player.lives; // keep the decremented life count
+          // The journal is a record of what you READ, not of what you survived,
+          // and the level regenerates on restart — so a fragment found in the
+          // failed attempt would be unrecoverable for the rest of the run.
+          // Carried forward for the same reason `lives` is: it is a RUN fact.
+          player.loreSeen = [...game!.player.loreSeen];
           const ng = beginLevel(
             game!.masterSeed,
             game!.currentLevel,
@@ -553,7 +584,11 @@ export const gameStore = createStore<GameStore>((set, get) => {
       if (entry.maxQty != null && bought >= entry.maxQty) return;
       if (game.player.coins < entry.price) return;
       game.player.coins -= entry.price;
-      giveItem(game.player, entry.itemId);
+      // Buying gear puts it straight on; the piece it replaces is TRADED IN at
+      // the counter rather than vanishing, which is the shop-side answer to
+      // "one weapon, one armour" — there is no floor to drop it on here.
+      const displaced = giveItem(game.player, entry.itemId);
+      if (displaced) game.player.coins += sellPrice(ITEMS[displaced]);
       playSfx("coin"); // gold changing hands
       set({
         game: { ...game },
@@ -823,6 +858,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
       if (!game || !activeAltar) return;
       const result = applyAltar(game, activeAltar); // pays cost + grants boon in-place
       if (result == null) return; // can't afford — keep the modal open
+      logMessage(game, result); // it always returned this; nothing ever read it
       playSfx("altar");
       playSting("altar"); // a cold, unresolved shimmer over the music
       set({ game: { ...game }, mode: "playing", activeAltar: null });
@@ -830,6 +866,16 @@ export const gameStore = createStore<GameStore>((set, get) => {
     },
 
     declineAltar: () => set({ mode: "playing", activeAltar: null }),
+
+    takeGear: () => {
+      const { game, activeGear } = get();
+      if (!game || !activeGear) return;
+      takeGearAt(game, activeGear.id); // equips, and drops the displaced piece
+      playSfx("pickup");
+      set({ game: { ...game }, mode: "playing", activeGear: null });
+      persist();
+    },
+    leaveGear: () => set({ mode: "playing", activeGear: null }),
 
     closeLore: () => set({ mode: "playing", activeLore: null }),
 
@@ -902,6 +948,9 @@ export const gameStore = createStore<GameStore>((set, get) => {
           } else if (mode === "altar") {
             playSfx("uiBack");
             get().declineAltar();
+          } else if (mode === "gear") {
+            playSfx("uiBack");
+            get().leaveGear();
           } else if (mode === "lore") {
             playSfx("uiBack");
             get().closeLore();
@@ -960,6 +1009,8 @@ export const gameStore = createStore<GameStore>((set, get) => {
             get().confirmTarget(); // its own shoot/blast SFX
           } else if (mode === "altar") {
             get().acceptAltar(); // its own chime
+          } else if (mode === "gear") {
+            get().takeGear(); // its own pickup cue
           } else if (mode === "lore") {
             playSfx("uiBack");
             get().closeLore();

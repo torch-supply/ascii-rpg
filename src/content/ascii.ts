@@ -45,6 +45,10 @@ export const BIOME_GRADIENT: Record<Biome, string> = {
   // grove + undercity are sub-region-only too (unused; present for exhaustiveness)
   grove: "linear-gradient(180deg,#e2f79a 0%,#8fbe5a 45%,#3a2b48 100%)",
   undercity: "linear-gradient(180deg,#bfe6d2 0%,#4f8f76 45%,#16211d 100%)",
+  graveyard:
+    "linear-gradient(180deg,#d6dae4 0%,#8b93a6 42%,#3f4654 74%,#20242c 100%)",
+  sanctum:
+    "linear-gradient(180deg,#dff0e2 0%,#7fae9a 40%,#3d6058 72%,#1b2a28 100%)",
 };
 
 // ── Narrative set-pieces ────────────────────────────────────────────────────

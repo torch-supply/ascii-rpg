@@ -125,6 +125,20 @@ export const CRACKED_WALL_CRACK_DIM = 0.14;
 /** How much to darken remembered-but-not-visible (fog) tiles. */
 export const FOG_DIM = 0.34;
 
+/** PROTOTYPE sconces. Only BUILT places get wall brackets — a mounted torch in
+ * an open forest or a marsh is nonsense, which the first pass shipped by using a
+ * single global count for every level. */
+// `SKYLIGHT` and `SCONCE_BIOMES` moved to `@/game/core/light`: both decide what
+// is VISIBLE now, not merely how a visible thing looks, and the pure core cannot
+// import from `src/render/`.
+
+/** Lit: a live flame. Unlit: the iron bracket you remember seeing. A remembered
+ * sconce must NOT read as a flame — drawing the ember colour into fog dotted the
+ * whole explored map with orange marks, which is most of why the prototype felt
+ * like it had extended sight range. */
+export const SCONCE_LIT = "#ffb347";
+export const SCONCE_COLD = "#6b5a44";
+
 // ── Atmosphere / weather ────────────────────────────────────────────────────
 // Per-biome ambient particles drawn on the overlay canvas (clipped to the
 // visible area, off under reduced-motion). "mist" is a few drifting soft blobs;
@@ -137,6 +151,29 @@ export interface AtmosphereDef {
   count: number;
   alpha: number;
 }
+/**
+ * Atmosphere brightness tracking (applied in `paintAtmosphere`).
+ *
+ * A REFLECTIVE mote — snow, rain, ash, dust, mist — is lit by whatever lights
+ * the ground, so its alpha scales with the tile's rendered luma. An EMISSIVE one
+ * makes its own light (a coal, a bioluminescent spore) and keeps full strength
+ * in the dark, which is the entire point of it.
+ *
+ * Flat alpha was safe only while `visible` WAS the torch radius: everything you
+ * could see was lit. Under light-gated sight a tile can be visible on skylight
+ * alone with nothing in the light map, and the Frostspine showed the cost —
+ * 57% of visible tiles dim or unlit, with snow at particle luma 130 painting
+ * over ground at 93, making the snow the brightest thing on screen across half
+ * the view. It now scales to 63 there, and back to full inside a torch pool.
+ *
+ * `ATMO_LIT_REF` is the rendered luma that counts as fully lit (about a tile in
+ * your torch pool); `ATMO_MIN_SCALE` is the floor, so snow keeps falling faintly
+ * in the dark instead of switching off at the edge of the light.
+ */
+export const ATMO_LIT_REF = 190;
+export const ATMO_MIN_SCALE = 0.3;
+export const ATMO_EMISSIVE = new Set<WeatherKind>(["embers", "spores"]);
+
 export const BIOME_ATMOSPHERE: Partial<Record<Biome, AtmosphereDef>> = {
   marsh: { kind: "mist", color: "#8fb488", count: 7, alpha: 0.09 }, // bog vapor
   crypt: { kind: "mist", color: "#9098a8", count: 6, alpha: 0.05 }, // cold haze
@@ -147,6 +184,21 @@ export const BIOME_ATMOSPHERE: Partial<Record<Biome, AtmosphereDef>> = {
   ashen: { kind: "ash", color: "#9a9088", count: 46, alpha: 0.34 }, // grey ash sifting down
   grove: { kind: "spores", color: "#d7f06a", count: 34, alpha: 0.34 }, // sickly drifting spores
   undercity: { kind: "mist", color: "#7fb49a", count: 7, alpha: 0.08 }, // dank sewer vapor
+  // Blackhall's burial ground, and a BASE biome — 74% of the Iron Gate had
+  // nothing whatsoever in the air, under an open sky. Cold grey ground-mist
+  // rather than rain: rain is already the Blackwood's and the Ramparts' voice,
+  // and mist over graves keeps the level quiet enough for the ash blowing off
+  // the siege ground beside it to still read as a different place.
+  // Drifting seed-fluff and midges over grass. The Blackwood never needed this —
+  // its level-wide `weather: "rain"` covers the base biome — which is exactly
+  // why the gap hid: the Mire's dry hummocks are the same `forest` biome as a
+  // SUB-region, and sat perfectly still inside a bog full of moving vapour.
+  forest: { kind: "dust", color: "#cfe0a0", count: 18, alpha: 0.16 },
+  graveyard: { kind: "mist", color: "#aab4c4", count: 8, alpha: 0.1 },
+  // the drowned temple — vapour lifting off standing water in a roofless ruin.
+  // Paler and greener than the bog's mist outside it (`marsh`), so crossing the
+  // threshold reads as entering somewhere, not as more of the same fen.
+  sanctum: { kind: "mist", color: "#9fc4b4", count: 6, alpha: 0.11 },
 };
 
 // Level-wide weather (`LevelConfig.weather`) — overrides the base biome's

@@ -96,6 +96,44 @@ function itemAt(
   return state.items.find((i) => i.x === x && i.y === y);
 }
 
+/**
+ * Take the weapon/armour you are standing on, putting down what you had.
+ *
+ * Pure, and driven by the store the way `applyAltar` is: gear is a step-onto POI
+ * now, so the decision is a modal rather than an automatic `power >` comparison.
+ * Free action — equipping never cost a turn.
+ */
+export function takeGearAt(state: GameState, itemId: string): string | null {
+  const it = state.items.find((i) => i.id === itemId);
+  if (!it) return null;
+  const def = ITEMS[it.defId];
+  if (def.category !== "weapon" && def.category !== "armor") return null;
+  state.items = state.items.filter((i) => i.id !== it.id);
+  const displaced =
+    def.category === "weapon"
+      ? equipWeapon(state.player, it.defId)
+      : equipArmor(state.player, it.defId);
+  if (displaced) dropAtFeet(state, displaced);
+  logMessage(
+    state,
+    displaced
+      ? `You take up the ${def.name}, setting down the ${ITEMS[displaced].name}.`
+      : `You take up the ${def.name}.`,
+  );
+  return displaced;
+}
+
+/** Put an item down on the tile the player is standing on. Used when a swap
+ * displaces the piece you were wearing — it stays where you dropped it. */
+export function dropAtFeet(state: GameState, defId: string) {
+  state.items.push({
+    id: `drop${state.currentLevel}_${state.turnCount}_${state.items.length}`,
+    defId,
+    x: state.player.x,
+    y: state.player.y,
+  });
+}
+
 // ── pickups ────────────────────────────────────────────────────────────────
 function pickUp(state: GameState, events: GameEvent[]) {
   const p = state.player;
@@ -110,31 +148,27 @@ function pickUp(state: GameState, events: GameEvent[]) {
       msg(events, `You pick up ${v} gold.`);
       break;
     }
-    case "weapon": {
-      if ((def.power ?? 0) > p.weaponPower) {
-        equipWeapon(p, def.id);
-        msg(
-          events,
-          `You take up the ${def.name} and wield it (pow ${def.power}).`,
-        );
-      } else {
-        addToBag(p, def.id);
-        msg(events, `You stow the ${def.name}.`);
-      }
-      if (def.questTag) {
-        state.questProgress[def.questTag] =
-          (state.questProgress[def.questTag] ?? 0) + 1;
-      }
-      break;
-    }
+    // GEAR IS NOT AUTO-TAKEN. You carry one weapon and one suit of armour, so
+    // picking a piece up puts down what you were using — a decision the store
+    // surfaces as a prompt (`mode: "gear"`), the same step-onto-POI flow altars
+    // and lore props use. Auto-taking it on a bare `power >` test was already
+    // wrong (it silently discarded a Frostbrand's chill for one point of axe)
+    // and would now be irreversible, since the displaced piece hits the floor.
+    //
+    // QUEST gear is the exception and must stay automatic: the Sunblade is a
+    // `weapon` carrying `questTag: "sunblade"`, and it IS the Sunken Crypt's
+    // objective — prompting for it would let a player decline their own goal.
+    case "weapon":
     case "armor": {
-      if ((def.reduction ?? 0) > p.armorReduction) {
-        equipArmor(p, def.id);
-        msg(events, `You don the ${def.name} (armor ${def.reduction}).`);
-      } else {
-        addToBag(p, def.id);
-        msg(events, `You stow the ${def.name}.`);
-      }
+      if (!def.questTag) return; // left lying; the store opens the prompt
+      const displaced =
+        def.category === "weapon"
+          ? equipWeapon(p, def.id)
+          : equipArmor(p, def.id);
+      if (displaced) dropAtFeet(state, displaced);
+      msg(events, `You recover the ${def.name} and take it up.`);
+      state.questProgress[def.questTag] =
+        (state.questProgress[def.questTag] ?? 0) + 1;
       break;
     }
     case "potion": {
@@ -149,11 +183,18 @@ function pickUp(state: GameState, events: GameEvent[]) {
       break;
     }
     case "torch": {
+      // ADD the fuel and keep the brighter source — matching `giveItem`, which
+      // is what a shop purchase runs. These two disagreed: the floor path
+      // ASSIGNED `def.fuel`, so walking over a torch while carrying 200 fuel
+      // silently cut you to 150. Harmless while torches were nearly unfindable;
+      // a live trap now that the back half drops them.
+      const curBonus =
+        p.hasTorch && p.torchId ? (ITEMS[p.torchId].lightBonus ?? 0) : -1;
+      if ((def.lightBonus ?? 0) > curBonus) p.torchId = def.id;
       p.hasTorch = true;
-      p.torchId = def.id;
-      p.torchFuel = def.fuel ?? CONFIG.torchFuel;
+      p.torchFuel = (p.torchFuel ?? 0) + (def.fuel ?? CONFIG.torchFuel);
       recomputeLight(p);
-      msg(events, `You light a ${def.name}. The dark pulls back.`);
+      msg(events, `You take up a ${def.name}. The dark pulls back.`);
       break;
     }
     case "quest": {
@@ -278,10 +319,20 @@ function tryAfflict(
   rng: Rng,
   who: string,
   events: GameEvent[],
+  /** how strongly this target feels the status (`MonsterDef.resist`): 1 normal,
+   * 0 immune. Scales the chance to land AND the duration, so one number covers
+   * both "shrugs it off" and "thaws faster". A landed effect still lasts at
+   * least a turn — a resisted hit should be rarer and briefer, not silent. */
+  resist = 1,
 ) {
-  if (!spec || !rng.chance(spec.chance)) return;
+  if (!spec || resist <= 0) return;
+  if (!rng.chance(spec.chance * resist)) return;
   const had = (effects[spec.effect] ?? 0) > 0;
-  applyStatus(effects, spec.effect, spec.duration);
+  applyStatus(
+    effects,
+    spec.effect,
+    Math.max(1, Math.round(spec.duration * resist)),
+  );
   if (!had) msg(events, STATUS[spec.effect].onApply(who));
 }
 
@@ -410,12 +461,14 @@ function resolvePlayerAttack(
     );
     // the wielded weapon may sear/chill/poison what it strikes (player → monster)
     if (!target.effects) target.effects = {};
+    const onHit = ITEMS[state.player.weaponId].onHit;
     tryAfflict(
       target.effects,
-      ITEMS[state.player.weaponId].onHit,
+      onHit,
       rng,
       def.name,
       events,
+      onHit ? (def.resist?.[onHit.effect] ?? 1) : 1,
     );
     if (!ranged) knockBack(state, target, def, rng, events); // arrows don't shove
   }
@@ -1373,11 +1426,16 @@ function equipFromBag(
   events: GameEvent[],
 ): boolean {
   const def = ITEMS[defId];
+  // The displaced piece goes to the FLOOR, not back into the bag — that is the
+  // whole one-weapon rule. A bag can still hold gear from an older save or the
+  // dev jump, so this path stays reachable.
   if (def.category === "weapon") {
-    equipWeapon(state.player, defId);
+    const displaced = equipWeapon(state.player, defId);
+    if (displaced) dropAtFeet(state, displaced);
     msg(events, `You wield the ${def.name}.`);
   } else if (def.category === "armor") {
-    equipArmor(state.player, defId);
+    const displaced = equipArmor(state.player, defId);
+    if (displaced) dropAtFeet(state, displaced);
     msg(events, `You don the ${def.name}.`);
   }
   return false; // equipping is a free action
@@ -2266,6 +2324,21 @@ function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
 }
 
 // ── log ──────────────────────────────────────────────────────────────────
+/**
+ * Append one line to the log, trimming to `CONFIG.messageLogMax`.
+ *
+ * Exists because not everything that deserves a line happens inside a turn: the
+ * gear prompt and the altar both resolve from the STORE, outside `resolveTurn`,
+ * and had no way to reach the log. `applyAltar` has been returning a message
+ * that the store then dropped on the floor.
+ */
+export function logMessage(state: GameState, text: string) {
+  state.messageLog.push(text);
+  if (state.messageLog.length > CONFIG.messageLogMax) {
+    state.messageLog = state.messageLog.slice(-CONFIG.messageLogMax);
+  }
+}
+
 function pushLog(state: GameState, events: GameEvent[]) {
   for (const e of events)
     if (e.kind === "message") state.messageLog.push(e.text);

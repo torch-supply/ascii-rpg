@@ -25,6 +25,8 @@ function fieldBiome(b: Biome | undefined): FieldBiome {
   if (b === "ashen") return "throne"; // sub-region only; nearest field art (embers)
   if (b === "grove") return "marsh"; // sub-region only; nearest field art
   if (b === "undercity") return "crypt"; // sub-region only; nearest field art
+  if (b === "graveyard") return "crypt"; // headstones under a dead sky
+  if (b === "sanctum") return "marsh"; // a temple drowned in the bog
   return b;
 }
 

@@ -459,8 +459,8 @@ const MUTATIONS = [
   [
     "weapon on-hit effects (Frostbrand chill) never apply",
     F.act,
-    "    tryAfflict(\n      target.effects,\n      ITEMS[state.player.weaponId].onHit,",
-    "    tryAfflict(\n      target.effects,\n      undefined,",
+    "    const onHit = ITEMS[state.player.weaponId].onHit;",
+    "    const onHit = undefined;",
   ],
 
   // kill rewards
@@ -636,10 +636,10 @@ const MUTATIONS = [
 
   // ── inventory.ts — equip/acquire semantics (swap, never discard) ──
   [
-    "equipping a weapon DISCARDS the old one instead of stowing it",
+    "equipping a weapon LOSES the piece it displaced (never set down)",
     F.inv,
-    "  if (p.weaponId) addToBag(p, p.weaponId); // keep the old one",
-    "  if (false) addToBag(p, p.weaponId); // keep the old one",
+    "  const displaced = p.weaponId || null;",
+    "  const displaced = null;",
   ],
   [
     "equipping duplicates the weapon (never leaves the bag)",
@@ -648,16 +648,16 @@ const MUTATIONS = [
     "  p.weaponId = defId;",
   ],
   [
-    "equipping armor DISCARDS the old set",
+    "equipping armor LOSES the set it displaced",
     F.inv,
-    "  if (p.armorId) addToBag(p, p.armorId);",
-    "  if (false) addToBag(p, p.armorId);",
+    "  const displaced = p.armorId || null;",
+    "  const displaced = null;",
   ],
   [
-    "picking up a WORSE weapon auto-equips it",
-    F.inv,
-    "      if ((def.power ?? 0) > p.weaponPower) equipWeapon(p, defId);",
-    "      if (true) equipWeapon(p, defId);",
+    "gear is auto-taken on step again (no prompt, silent downgrade)",
+    F.act,
+    "      if (!def.questTag) return; // left lying; the store opens the prompt",
+    "      if (false) return; // left lying; the store opens the prompt",
   ],
   [
     "acquiring a duplicate pushes a second entry instead of stacking",

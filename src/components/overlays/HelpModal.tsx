@@ -14,6 +14,7 @@ const ROWS: [string, string, boolean?][] = [
   ["c", "Close an adjacent door"],
   ["i", "Open inventory"],
   ["1 – 9", "Use / equip a bag item"],
+  ["—", "Step on a weapon or armour to swap it (one of each)", true],
   ["m", "Mute / unmute sound"],
   ["p  ·  Esc", "Pause"],
   ["?", "This help"],
@@ -25,6 +26,13 @@ const LEGEND: [string, string, string][] = [
   ["g", "#3fbf3f", "monster"],
   ["$", "#ffd700", "gold"],
   ["!", "#ff5fa2", "potion"],
+  // Gear and light earn a slot: you carry ONE weapon and ONE suit, so stepping
+  // on `/` or `[` opens a swap prompt rather than quietly pocketing it, and a
+  // torch is now something you find rather than only buy.
+  ["/", "#e0e0e0", "weapon"],
+  ["[", "#cd7f32", "armour"],
+  ["(", "#ff8c00", "torch"],
+  ["Ω", "#ffb347", "wall sconce"],
   ["*", "#7fdfff", "quest"],
   [">", "#ffd700", "exit"],
   ["+", "#b07a3f", "door"],

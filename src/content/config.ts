@@ -13,10 +13,46 @@ export const CONFIG = {
    * shop becomes a real "what can I afford?" choice and HP attrition bites, so a
    * careless run costs a life. Tune these (with `coinPile` + monster
    * `coinReward`) rather than editing every level. */
-  lootScale: 0.67, // ground item drops (gold piles + potions/gear on the floor)
+  // 0.6, down from 0.67 — and the real leanness is WHERE loot sits, not how much
+  // of it there is. Treasure now prefers dead ends (see `placeItems`), which took
+  // gold and gear lying on open floor from 49% of the game's loot to 4%.
+  //
+  // 0.6 is a MEASURED floor, not a preference: with the treasure/supply split in
+  // place, 0.67 and 0.60 both keep the carried-run gate at depth 3 and 0.55 drops
+  // it to 2. Note that gate has no headroom — its baseline is 2/2/3, so exactly
+  // one of three runs reaches the bar — which is why every step down was swept
+  // rather than guessed.
+  lootScale: 0.6, // ground item drops (gold piles + potions/gear on the floor)
   forageScale: 0.5, // wild heal tiles — halved so healing isn't free-flowing
   /** keep monsters from spawning right on top of the player */
   minSpawnDistanceFromPlayer: 6,
+  /** Floor on how close a `reachLocation` exit may be to the start (manhattan).
+   * `exitInBiome` picks the farthest cell WITHIN a region, which is only far if
+   * the region itself is — and a destination region can be carved right next to
+   * the start. Measured on the Mire over 1000 seeds: ~2% put the exit within 20
+   * steps and the worst put it at 3, so a pilgrimage level was occasionally over
+   * before it began. Deliberately a modest ABSOLUTE floor rather than a fraction
+   * of map size: it should catch the broken tail and nothing else, and a
+   * size-scaled value (~34 on the Mire) would fire on a quarter of seeds and
+   * flatten the variety in where you start. */
+  minStartToExit: 20,
+  /**
+   * How far you must walk before you can first set foot in the region that
+   * holds the objective (`SubBiomeSpec.goalHere`) — the APPROACH.
+   *
+   * Distinct from `minStartToExit`, which measures the distance to the goal
+   * TILE and so can be satisfied entirely indoors: you may start 30 steps from
+   * the Gate Warden but three steps from the gatehouse door, walk in, and cross
+   * the interior. On levels built as an outside→inside journey that skips the
+   * half the level exists for. Measured before this: **13% of Iron Gate seeds
+   * put the building within 10 steps** (19% within 15), and 9%/19% on the Mire,
+   * against a median approach of 35.
+   *
+   * Applied by FILTERING the start pool, not by moving the start afterwards —
+   * the region is already carved when the start is picked, so a single
+   * multi-source BFS out from it gives the true walking distance.
+   */
+  minStartToGoalRegion: 18,
   /** message log lines kept in memory */
   messageLogMax: 50,
   /** damage a hidden spike trap deals when triggered (reduced by armor) */
@@ -89,7 +125,10 @@ export const CONFIG = {
   forage: {
     outdoorBiomes: ["forest", "marsh", "mountain"] as Biome[],
     outdoor: { heal: 1, glyph: "%", color: "#8fd45a", name: "wild growth" },
-    arcane: { heal: 2, glyph: "∴", color: "#c86bff", name: "arcane mote" },
+    // ❖, not ∴ — a three-dot cluster is what the POISON HAZE draws, so a
+    // healing mote and a cloud of gas were the same character. A hazard and a
+    // boon must never share a glyph; `/style`'s collision report is the check.
+    arcane: { heal: 2, glyph: "❖", color: "#c86bff", name: "arcane mote" },
   },
   /** while the Shadow effect is active, monsters can't detect you beyond this
    * many tiles (on top of the usual light-limited sight) */
@@ -137,10 +176,81 @@ export const CONFIG = {
     /** how long the poison lasts when you breathe the haze */
     poisonDuration: 4,
   },
+  /**
+   * Light-gated sight — the model the game runs on. Flip `sight` to compare.
+   *
+   *  "torch"     — shipped behaviour. FOV radius IS your light radius, so you
+   *                see exactly as far as your own torch reaches and a lit
+   *                brazier down a dark hall is invisible (it isn't in
+   *                `state.visible` at all).
+   *  "lightGated" — the classic roguelike model: line of sight out to
+   *                `sightRange`, and a tile you can see is DRAWN when something
+   *                lights it — your torch, a glowcap pool, a fire, an altar.
+   *
+   * PROMOTED from a render-side probe into the core (`game/core/light.ts`), so
+   * `state.visible` IS this set. While it was render-only the two disagreed
+   * everywhere it mattered — the sharpest case being that `shootAt` gates on
+   * `state.visible`, so you could see a lit room and be refused the shot with no
+   * message and no turn spent. Test `[70]` reproduces exactly that when flipped
+   * back to `"torch"`.
+   *
+   * STEALTH IS UNAFFECTED: detection reads `player.lightRadius` directly
+   * (`min(def.sightRadius, p.lightRadius, …)`), never `state.visible`, so
+   * dousing your torch still hides you while you can now see the lit room ahead.
+   */
+  sight: "lightGated" as "torch" | "lightGated",
+  /** how far line-of-sight reaches under "lightGated" (tiles) */
+  sightRange: 14,
+  /**
+   * Pool radius of light sources in the WORLD — sconces, fires, glowcaps,
+   * altars, the Sunblade, a boss aura.
+   *
+   * Separate from your own carried light on purpose, and this is the whole
+   * point of "light at a distance". `ROT.Lighting` takes ONE range and its
+   * falloff is `1 - r/range` measured FROM THE SOURCE, so a single shared range
+   * meant your torch governed the size and brightness of every other light on
+   * the level: douse it and a brazier forty tiles away dimmed and shrank with
+   * it. Two light fields are computed instead — this range for the world, your
+   * `lightRadius` for what you carry — and summed.
+   *
+   * 5 because it reproduces the old look in the case where the bug was DORMANT
+   * (torch out, so the shared range was just the base radius): measured over 8
+   * seeds the Antechamber reads 104 visible tiles either way, the Great Hall 95.
+   * What it removes is the inflation a lit torch used to apply to everything
+   * else — the Antechamber went 104 → 193 on striking a torch, and now goes
+   * 104 → 144, which is your own pool growing rather than every brazier in the
+   * castle brightening at once. Raise it if distant braziers read too weakly;
+   * it is the dial for how far a light carries.
+   */
+  worldLightRange: 5,
+  /** What your eyes give you in PITCH DARK, with nothing lit nearby.
+   * Today there's no such concept: `baseLightRadius` (4-8) means you always see
+   * a room's worth even carrying no light at all, which is why darkness has
+   * never been dangerous and the torch reads as a convenience. Your torch is
+   * already a light source in the light map, so its pool comes back through the
+   * lit test — this is only the floor beneath it. */
+  unlitSight: 3,
+  /**
+   * Minimum light (luma) for a tile in LOS to be drawn — the dial that decides
+   * how far you read a light, far more than `sightRange` does (most lights are
+   * near, so shortening the range barely bites).
+   *
+   * Started at 30, which let very weak bounce light through: the result was a
+   * broad field of barely-lit tiles that read as "I can see everything faintly"
+   * rather than as pools with dark between them. 100 is about half a torch's
+   * brightness at its source, so only genuinely lit ground registers.
+   */
+  sightLightMin: 55,
+  /** Lit wall sconces per level — often the only reason a room down a dark hall
+   * is visible at all. Placed at GENERATION (`placeSconces` → `GameMap.sconces`)
+   * on wall tiles that face open floor, deterministically from the level index,
+   * so they consume none of the map-gen RNG stream. The wall stays a wall; it
+   * just burns. 0 = off, and every level declares a value. */
+  sconces: 14,
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "55",
+  contentVersion: "59",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */
