@@ -359,7 +359,7 @@ export default function StyleGallery() {
             "♠": "by design — a cracked wall must look like the wall it hides in",
             "▲": "by design — a cracked wall must look like the wall it hides in",
             "/": "by design — one glyph per item CLASS (weapons)",
-            "[": "by design — one glyph per item CLASS (armor)",
+            "[": "by design — one glyph per item CLASS (armour)",
             "!": "by design — one glyph per item CLASS (potions)",
             "(": "by design — one glyph per item CLASS (light sources)",
             "✷": "harmless — the class badge is HUD chrome, never drawn on the map",

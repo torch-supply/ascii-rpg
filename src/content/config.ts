@@ -250,7 +250,7 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "60",
+  contentVersion: "62",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */

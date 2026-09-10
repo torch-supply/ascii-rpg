@@ -506,9 +506,56 @@ function connectWing(map: GameMap, id: number) {
   }
   if (best.length === 0) return;
 
-  // already joined? (a wing tile orthogonally touching the main mass)
+  // Connect the wing's BULK, not merely one of its tiles. A room-based layout
+  // (`hall`, `rogue`) leaves a margin between its outer wall and the wing
+  // rectangle, and those margin tiles are region-tagged floor too — so a single
+  // margin sliver touching the main mass satisfied "already joined", this
+  // function returned, and the hall's interior stayed marooned for
+  // `sealUnreachable` to wall away. It is the same mistake as an artery
+  // stopping at the first floor tile it meets, one level up: the wing was
+  // joined, just not the part of it anybody walks in.
+  //
+  // Measured on the Mire's temple (`sanctum`/`hall`, the level's whole
+  // destination, pinned by `goalHere`): on 6.5% of seeds the region kept 1-2
+  // walkable tiles out of a typical ~290 — carved, tagged, and then almost
+  // entirely walled. Nothing caught it. Soak check `7` tests `floor === 0`,
+  // which a surviving sliver passes, and the visible symptom was the EXIT
+  // (forced into the region, hence into the one reachable cell) sitting in a
+  // one-tile hole punched through a wall.
+  const wingSet = new Set(wing);
+  const seenW = new Uint8Array(map.tiles.length);
+  let bulk: number[] = [];
+  for (const start of wing) {
+    if (seenW[start]) continue;
+    const comp: number[] = [];
+    const stack = [start];
+    seenW[start] = 1;
+    while (stack.length) {
+      const cur = stack.pop()!;
+      comp.push(cur);
+      const cx = cur % w;
+      const cy = Math.floor(cur / w);
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 1 || ny < 1 || nx >= w - 1 || ny >= h - 1) continue;
+        const ni = ny * w + nx;
+        if (seenW[ni] || !wingSet.has(ni)) continue;
+        seenW[ni] = 1;
+        stack.push(ni);
+      }
+    }
+    if (comp.length > bulk.length) bulk = comp;
+  }
+
+  // already joined? (a tile of the wing's BULK orthogonally touching the mass)
   const inBest = new Set(best);
-  for (const i of wing) {
+  for (const i of bulk) {
     const x = i % w;
     const y = Math.floor(i / w);
     for (const [dx, dy] of [
@@ -525,10 +572,10 @@ function connectWing(map: GameMap, id: number) {
   // otherwise dig the shortest L between the closest pair, clearing whatever is
   // in the way (walls and water alike — a corridor to a marooned wing beats a
   // wing nobody can enter)
-  let a = wing[0];
+  let a = bulk[0];
   let b = best[0];
   let bestD = Infinity;
-  for (const i of wing) {
+  for (const i of bulk) {
     const ix = i % w;
     const iy = Math.floor(i / w);
     for (const j of best) {
@@ -1409,6 +1456,7 @@ function farthestSafeCell(
   w: number,
   from: Pos,
   map: GameMap,
+  tiles?: TileType[],
 ): number | null {
   const cands = floors
     .filter((i) => !occupied.has(i))
@@ -1418,9 +1466,35 @@ function farthestSafeCell(
   // A cell is "safe" if blocking it leaves every OTHER open tile still reachable
   // — i.e. the flood loses exactly that one cell (full − 1), not a whole region.
   const full = openFloodCount(map, from, -1);
-  for (const { i } of cands) {
-    if (openFloodCount(map, from, i) === full - 1) return i;
+  const safeMemo = new Map<number, boolean>();
+  const isSafe = (i: number) => {
+    let v = safeMemo.get(i);
+    if (v === undefined) {
+      v = openFloodCount(map, from, i) === full - 1;
+      safeMemo.set(i, v);
+    }
+    return v;
+  };
+
+  // SHAPE, not just distance — the same "a destination, not a cul-de-sac" rule
+  // `farthestCell` applies to quest items. Distance alone put the Mire's exit in
+  // a one-tile hole punched through a wall with open water behind it on 22% of
+  // seeds: such a cell is genuinely the farthest (it is at the region's
+  // extremity) AND it passes the safety test (nothing is gated behind it,
+  // because what is behind it is water), so it won on both counts and read as a
+  // generator fault. Prefer real space out at the far end, degrading through
+  // the thresholds so a cramped region still gets an exit rather than none.
+  if (tiles) {
+    const bestD = cands[0].d;
+    for (const want of [3, 2]) {
+      for (const { i, d } of cands) {
+        if (d < bestD - FAR_SLACK) break;
+        if (openOrthoCount(tiles, w, i) >= want && isSafe(i)) return i;
+      }
+    }
   }
+
+  for (const { i } of cands) if (isSafe(i)) return i;
   return cands[0].i;
 }
 
@@ -2284,8 +2358,9 @@ export function generateLevel(
     const inRegion = inGoalRegion(floors);
     const exitIdx =
       (inRegion.length > 0
-        ? farthestSafeCell(inRegion, occupied, w, playerStart, map)
-        : null) ?? farthestSafeCell(floors, occupied, w, playerStart, map);
+        ? farthestSafeCell(inRegion, occupied, w, playerStart, map, tiles)
+        : null) ??
+      farthestSafeCell(floors, occupied, w, playerStart, map, tiles);
     if (exitIdx !== null) {
       tiles[exitIdx] = "exit";
       map.exit = { x: exitIdx % w, y: Math.floor(exitIdx / w) };

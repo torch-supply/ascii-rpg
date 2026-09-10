@@ -89,8 +89,8 @@ export default function Splash() {
         <AccentDivider accent="#ffb347" />
 
         <p className="max-w-sm text-balance text-sm leading-relaxed text-dim">
-          Escape the pit. Cross the cursed land. Recover the Sunblade. End the
-          Lich-King Malachar — and rekindle the dawn.
+          Escape the pit. Cross the cursed land. Recover the Sunblade. End
+          Malachar the Lich-King — and rekindle the dawn.
         </p>
 
         <div className="flex flex-col items-center gap-3">

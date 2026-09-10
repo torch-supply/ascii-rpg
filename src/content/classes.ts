@@ -57,7 +57,7 @@ export const CLASSES: Record<string, ClassDef> = {
     name: "Warrior",
     glyph: "⚔",
     color: "#e0c060",
-    blurb: "Sword + armor, hardy. Shrugs off blows — a forgiving front-liner.",
+    blurb: "Sword + armour, hardy. Shrugs off blows — a forgiving front-liner.",
     weaponId: "w_short",
     armorId: "a_leather",
     bag: [{ defId: "p_heal", count: 1 }],

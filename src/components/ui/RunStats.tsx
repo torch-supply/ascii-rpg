@@ -65,7 +65,7 @@ export function RunStats({ animate = false }: { animate?: boolean }) {
     ["Gold gathered", String(cu(r.gold))],
     ["Turns taken", String(cu(r.turns))],
     ...(parBonus > 0
-      ? ([["Efficiency", `+${cu(parBonus)}`]] as [string, string, boolean?][])
+      ? ([["Under par", `+${cu(parBonus)}`]] as [string, string, boolean?][])
       : []),
     ["Time", fmtTime(r.timeMs * t)],
   ];

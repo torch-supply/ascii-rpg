@@ -64,11 +64,13 @@ export default function InventoryModal() {
               <div className="flex flex-col gap-[7px]">
                 <div className="flex justify-between border border-[#2c2c36] bg-[#0c0c10] px-3 py-1.5">
                   <span className="text-fg">⚔ {weapon.name}</span>
-                  <span className="text-[#6f7078]">pow {weapon.power}</span>
+                  <span className="text-[#6f7078]">power {weapon.power}</span>
                 </div>
                 <div className="flex justify-between border border-[#2c2c36] bg-[#0c0c10] px-3 py-1.5">
                   <span className="text-fg">▣ {armor.name}</span>
-                  <span className="text-[#6f7078]">red {armor.reduction}</span>
+                  <span className="text-[#6f7078]">
+                    armour {armor.reduction}
+                  </span>
                 </div>
                 {p.hasTorch && (
                   <div className="flex justify-between border border-[#3a3222] bg-[#100d06] px-3 py-1.5">

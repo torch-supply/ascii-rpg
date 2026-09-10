@@ -84,7 +84,7 @@ export const ITEMS: Record<string, ItemDef> = {
   },
   a_leather: {
     id: "a_leather",
-    name: "Leather Armor",
+    name: "Leather Armour",
     glyph: "[",
     color: "#cd7f32",
     category: "armor",
@@ -108,7 +108,7 @@ export const ITEMS: Record<string, ItemDef> = {
   },
   a_plate: {
     id: "a_plate",
-    name: "Plate Armor",
+    name: "Plate Armour",
     glyph: "[",
     color: "#e8e8f0",
     category: "armor",

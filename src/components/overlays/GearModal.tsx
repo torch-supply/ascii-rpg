@@ -70,7 +70,7 @@ export default function GearModal() {
   const held = ITEMS[isWeapon ? game.player.weaponId : game.player.armorId];
   const statOf = (d: ItemDef) =>
     isWeapon ? (d.power ?? 0) : (d.reduction ?? 0);
-  const label = isWeapon ? "power" : "armor";
+  const label = isWeapon ? "power" : "armour";
   const delta = statOf(found) - statOf(held);
 
   return (

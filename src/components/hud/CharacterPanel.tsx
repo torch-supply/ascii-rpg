@@ -94,13 +94,13 @@ export default function CharacterPanel() {
         <div className={ROW}>
           <span className="truncate text-fg">⚔ {weapon.name}</span>
           <span className="shrink-0 pl-2" style={{ color: TEXT.secondary }}>
-            pow {powerLabel}
+            power {powerLabel}
           </span>
         </div>
         <div className={ROW}>
           <span className="truncate text-fg">▣ {armor.name}</span>
           <span className="shrink-0 pl-2" style={{ color: TEXT.secondary }}>
-            def {armor.reduction ?? 0}
+            armour {armor.reduction ?? 0}
           </span>
         </div>
         {ammo !== null && (

@@ -185,7 +185,7 @@ export const LORE_POOLS: Record<Biome, LoreEntry[]> = {
     {
       kind: "remains",
       title: "A guardsman at his post",
-      text: "Armor rusted to the shape of a man still standing watch, halberd fused to bone. He never left his post. Perhaps he no longer could — perhaps he simply would not.",
+      text: "Armour rusted to the shape of a man still standing watch, halberd fused to bone. He never left his post. Perhaps he no longer could — perhaps he simply would not.",
     },
     {
       kind: "inscription",

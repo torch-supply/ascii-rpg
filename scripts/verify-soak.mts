@@ -174,8 +174,10 @@ function violations(g: GameState): string[] {
     const rid = si + 1;
     let floor = 0;
     let reachable = 0;
+    let tagged = 0; // the wing's whole footprint, walls included
     for (let i = 0; i < t.length; i++) {
       if ((g.map.region?.[i] ?? 0) !== rid) continue;
+      tagged++;
       if (!OPEN.has(t[i])) continue;
       floor++;
       if (open.has(i)) reachable++;
@@ -185,6 +187,24 @@ function violations(g: GameState): string[] {
     else if (reachable === 0)
       bad.push(
         `${spec.biome}/${spec.layout} wing is sealed off (${floor} tiles)`,
+      );
+    // …and a wing reduced to a SLIVER is severed in every way that matters,
+    // while passing both tests above. `connectWing` used to accept the wing as
+    // joined the moment any ONE of its tiles touched the main mass — and a
+    // room-based layout leaves margin tiles between its outer wall and the wing
+    // rectangle, so a margin sliver short-circuited it and left the interior
+    // marooned. `sealUnreachable` then turned that interior into WALL, which is
+    // why nothing could see it afterwards: there is no unreachable floor left
+    // to find, only a wing that looks small. The Mire's temple — the level's
+    // destination, pinned by `goalHere` — kept 1-2 walkable tiles out of ~290
+    // on 6.5% of seeds, and the exit had nowhere to go but a hole in a wall.
+    //
+    // So measure floor against the region's own TAGGED footprint, which is what
+    // survives the walling. Healthy wings bottom out at 11% (the Mire's eroded
+    // reed maze); the bug read 0.1-0.3%. 5% sits clear of both.
+    else if (tagged > 0 && floor / tagged < 0.05)
+      bad.push(
+        `${spec.biome}/${spec.layout} wing is a sliver — ${floor}/${tagged} tagged tiles walkable (${((100 * floor) / tagged).toFixed(1)}%)`,
       );
   });
 

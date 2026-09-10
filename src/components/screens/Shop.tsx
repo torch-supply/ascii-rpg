@@ -21,7 +21,7 @@ function statLabel(itemId: string): string {
     case "ammo":
       return `${d.value ?? 0} arrows`;
     case "armor":
-      return `armor ${d.reduction}`;
+      return `armour ${d.reduction}`;
     case "torch":
       return `+${d.lightBonus} light · ${d.fuel} fuel`;
     case "potion":
@@ -42,7 +42,7 @@ function statLabel(itemId: string): string {
         case "detect":
           return "reveals traps";
         case "levitate":
-          return `walk over water & traps · ${d.duration}t`;
+          return `cross water, chasms & traps · ${d.duration}t`;
         case "emberstep":
           return `fire immunity · ${d.duration}t`;
         case "frostwalk":
