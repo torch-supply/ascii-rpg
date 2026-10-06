@@ -3,6 +3,12 @@
 import { BoxFrame } from "@/components/ui/BoxFrame";
 import { MenuButton } from "@/components/ui/MenuButton";
 import { gameStore } from "@/store/gameStore";
+import {
+  ARMED_TRAP_COLOR,
+  KNOWN_TRAP_GLYPH,
+  SPRUNG_TRAP_COLOR,
+  TERRAIN_GLYPH,
+} from "@/render/tiles";
 
 // [keys, description, wide?] — `wide` rows span both columns (the movement row's
 // key is long, so it gets its own full-width line).
@@ -39,6 +45,9 @@ const LEGEND: [string, string, string][] = [
   ["‡", "#d6a4ff", "shrine"],
   ["¶", "#cbb488", "lore"],
   ["&", "#5f6f37", "bramble"],
+  // the two trap states now differ in SHAPE, so say which is which
+  [KNOWN_TRAP_GLYPH, ARMED_TRAP_COLOR, "trap (armed)"],
+  [TERRAIN_GLYPH.trapSprung, SPRUNG_TRAP_COLOR, "trap (sprung)"],
 ];
 
 export default function HelpModal() {
@@ -111,7 +120,7 @@ export default function HelpModal() {
           <MenuButton
             accent
             autoFocus
-            onClick={() => gameStore.getState().setMode("playing")}
+            onClick={() => gameStore.getState().closeHelp()}
           >
             ▸ Back
           </MenuButton>

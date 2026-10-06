@@ -8,8 +8,9 @@ export const TERRAIN_GLYPH: Record<TileType, string> = {
   door: "+", // closed
   doorOpen: "'", // ajar
   exit: ">",
-  trap: "·", // hidden — looks like floor until sprung
-  trapSprung: "^",
+  trap: "·", // hidden — looks like floor until sprung (or sensed: KNOWN_TRAP_GLYPH)
+  // spent: a flattened plate, dim. Deliberately NOT `^` — see KNOWN_TRAP_GLYPH
+  trapSprung: "_",
   oil: "≈", // a slick sheen on the floor
   water: "~",
   ice: "▒", // frozen water — a walkable bridge (Frostwalk)
@@ -50,7 +51,20 @@ export function terrainGlyph(t: TileType, biome: Biome): string {
 export const PLAYER_GLYPH = "@";
 export const PLAYER_COLOR = "#ffffff";
 export const EXIT_COLOR = "#ffd700";
-export const TRAP_COLOR = "#ff5a3c";
+/**
+ * A trap you KNOW is there and still armed (sensed, or revealed by a Draught of
+ * Seeing) draws as `^` in alarm red; a SPRUNG trap — harmless now — draws as a
+ * flattened `_` in dull bronze. Shape and colour both say which is which.
+ *
+ * They used to be the same `^`, told apart by colour alone (~122 apart, just
+ * over the 110 legibility bar) — and inverted: the harmless sprung trap wore the
+ * bright red while the live one was a muted orange, so the thing to avoid looked
+ * like the thing you could walk on. The armed colour also lived as a literal in
+ * the renderer, where `[54]` and `[69]` could not see it.
+ */
+export const KNOWN_TRAP_GLYPH = "^";
+export const ARMED_TRAP_COLOR = "#ff5a3c";
+export const SPRUNG_TRAP_COLOR = "#9a7a5a";
 export const WATER_COLOR = "#3a6ea5";
 export const OIL_COLOR = "#6b6f3a";
 export const GLOWCAP_COLOR = "#6ad6c2"; // soft luminous teal — reads as its own light
@@ -230,7 +244,7 @@ export function terrainColor(
     case "exit":
       return EXIT_COLOR;
     case "trapSprung":
-      return TRAP_COLOR;
+      return SPRUNG_TRAP_COLOR;
     case "oil":
       return OIL_COLOR;
     case "ice":

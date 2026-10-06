@@ -20,7 +20,7 @@ import type {
   StatusKind,
 } from "@/game/core/types";
 import * as ROT from "rot-js";
-import { createDisplay } from "./Display";
+import { createDisplay, destroyDisplay } from "./Display";
 import {
   AMBIENT_ENTITY,
   ambientForBiome,
@@ -50,6 +50,8 @@ import {
   PLAYER_GLYPH,
   terrainColor,
   terrainGlyph,
+  KNOWN_TRAP_GLYPH,
+  ARMED_TRAP_COLOR,
 } from "./tiles";
 
 // Aim to show roughly this many tiles vertically; cell size derives from it.
@@ -410,6 +412,7 @@ export class CanvasRenderer {
     if (container && container.parentNode === this.host) {
       this.host.removeChild(container);
     }
+    destroyDisplay(this.display);
     if (this.crack && this.crack.parentNode === this.host) {
       this.host.removeChild(this.crack);
     }
@@ -913,8 +916,8 @@ export class CanvasRenderer {
         let color = terrainColor(t, rPalette, rBiome);
         // a sensed/detected (but still armed) trap shows as a faint warning ^
         if (t === "trap" && knownTraps.has(i)) {
-          glyph = "^";
-          color = "#e0904a";
+          glyph = KNOWN_TRAP_GLYPH;
+          color = ARMED_TRAP_COLOR;
         }
         // a spore vent one turn from blowing swells + brightens, so an attentive
         // player can step out of the footprint before the haze lands

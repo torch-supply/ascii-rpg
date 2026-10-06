@@ -1,1 +1,5 @@
+# Whole-project type check first: tsx (the test runner) strips types without
+# checking them and lint-staged only sees staged files, so this is the one gate
+# before `next build`. A failure aborts the commit (husky runs this with -e).
+npm run typecheck
 npx lint-staged

@@ -492,7 +492,14 @@ export function LevelIntro() {
   // When the level changes, reveal the card by adjusting state DURING render
   // (React's recommended pattern) rather than in an effect — the timer effect
   // below then only mutates state from inside a callback, which is allowed.
-  const [prevLevel, setPrevLevel] = useState(level);
+  //
+  // Seeded with -1, NOT `level`: this component mounts with the map, and every
+  // real level start (leaving the shop, a restart, resume) sets `game` and
+  // `mode` in the same store update — so it mounts already ON the new level.
+  // Seeding with the current level made the mount look like "no change" and the
+  // card never appeared outside the dev level-skip. The map stays mounted under
+  // every overlay (`MODE_OVER_MAP`), so a remount means the level really began.
+  const [prevLevel, setPrevLevel] = useState(-1);
   if (level !== prevLevel) {
     setPrevLevel(level);
     if (level >= 0) setVisibleFor(level);

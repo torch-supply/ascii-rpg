@@ -571,8 +571,12 @@ export interface GameState {
   gasTiles: { i: number; life: number }[];
   /** melee-bash progress on cracked walls: tile index -> hits taken so far */
   crackedWallHits: Record<number, number>;
-  /** lasting floor stains: tile index -> decal kind (scorch / blood) */
+  /** lasting floor stains: tile index -> decal kind (scorch / blood / ash) */
   decals: Record<number, DecalKind>;
+  /** RUNTIME decals (blood, scorch) in the order they were made, oldest first —
+   * what the `CONFIG.maxDecals` cap evicts from. The ash a region is generated
+   * with is not in here, so it is never evicted. Optional for older saves. */
+  decalOrder?: number[];
   /** flooding set-piece (levels with `LevelConfig.flood`): floor tiles that MAY
    * flood (off the protected dry spine), the initial water origins, and how many
    * rings have risen so far. Absent on non-flooding levels. */

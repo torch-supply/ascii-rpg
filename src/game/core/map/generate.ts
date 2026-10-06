@@ -598,7 +598,15 @@ function connectWing(map: GameMap, id: number) {
 }
 
 /** Organic noise-blob region (cosmetic — never touches `tiles`). Tags the
- * largest noise component with region `id` in the shared `map.region`. */
+ * largest noise component with region `id` in the shared `map.region`.
+ *
+ * A blob only claims UNCLAIMED ground (region 0): built structure wins over an
+ * organic patch, whatever order the specs are listed in. Blobs used to tag
+ * unconditionally, so one listed after a wing painted over it — the Iron Gate's
+ * ashen wastes spilled into the gatehouse on 62% of seeds (~11 oil tiles inside,
+ * ash palette, lost to `goalHere`/`noStart`), and the Crypt's underworks dropped
+ * water into its 1-wide catacomb. Its region hazards follow the tag, so they
+ * now stay out of the wing too. */
 function carveSubBiomeBlob(map: GameMap, spec: SubBiomeSpec, id: number) {
   const w = map.width;
   const h = map.height;
@@ -609,7 +617,11 @@ function carveSubBiomeBlob(map: GameMap, spec: SubBiomeSpec, id: number) {
   const hot = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (noise.get(x * scale, y * scale) > thresh) hot[y * w + x] = 1;
+      if (
+        map.region![y * w + x] === 0 &&
+        noise.get(x * scale, y * scale) > thresh
+      )
+        hot[y * w + x] = 1;
     }
   }
 
@@ -890,6 +902,13 @@ function placeSecretVault(
 
   const anchors = shuffle(floors.slice());
   for (const ai of anchors) {
+    // The anchor is the tile you stand on to open the gate — the vault's ONLY
+    // way in, since the gate's flanks must be wall. `floors` was listed before
+    // the exit, traps and the rest were placed, so it has to be re-checked:
+    // anchored on the EXIT (the Pit, ~0.5% of seeds) the hoard was unreachable
+    // — stepping there to open the door ends the level — and anchored on a trap
+    // the only approach was a trap.
+    if (tiles[ai] !== "floor" || occupied.has(ai)) continue;
     const ax = ai % w;
     const ay = Math.floor(ai / w);
     for (const [dx, dy] of shuffle([
@@ -978,11 +997,14 @@ function placeSecretVault(
       // wall (blast/bash) by default, or a shut door you simply open.
       tiles[crackI] = spec.gate === "door" ? "door" : "crackedWall";
       for (const ri of room) tiles[ri] = "floor";
+      occupied.add(ai); // keep the approach clear of anything placed later
+      const lootCells = new Set<number>();
       let n = 0;
       for (const entry of spec.loot) {
         const cell =
           room[Math.min(room.length - 1, Math.floor(room.length / 2) + n)];
         occupied.add(cell);
+        lootCells.add(cell);
         const def = ITEMS[entry.itemId];
         const inst: ItemInstance = {
           id: `it${levelIndex}_v${n}`,
@@ -1001,7 +1023,10 @@ function placeSecretVault(
       // room from the gate, so breaking in doesn't drop you straight onto it
       if (spec.guardian) {
         const def = monsterDef(spec.guardian);
-        const far = room.reduce((a, b) =>
+        // ...and off the hoard: the room's far end is also where the loot runs
+        // out to, so the bear stood ON the gold on every Frostspine seed
+        const free = room.filter((c) => !lootCells.has(c));
+        const far = (free.length ? free : room).reduce((a, b) =>
           manhattan(
             b % w,
             Math.floor(b / w),
@@ -1612,6 +1637,7 @@ function placeOil(
   config: LevelConfig,
   tiles: TileType[],
   occupied: Set<number>,
+  reachable: Set<number>,
   w: number,
   h: number,
 ) {
@@ -1621,7 +1647,8 @@ function placeOil(
     guard++;
     const floors: number[] = [];
     for (let i = 0; i < tiles.length; i++) {
-      if (tiles[i] === "floor" && !occupied.has(i)) floors.push(i);
+      if (tiles[i] === "floor" && !occupied.has(i) && reachable.has(i))
+        floors.push(i);
     }
     if (floors.length === 0) break;
     let cur = floors[mapInt(0, floors.length - 1)];
@@ -1654,7 +1681,8 @@ function placeOil(
           nx < w - 1 &&
           ny < h - 1 &&
           tiles[ni] === "floor" &&
-          !occupied.has(ni)
+          !occupied.has(ni) &&
+          reachable.has(ni)
         ) {
           cur = ni;
           moved = true;
@@ -1676,6 +1704,7 @@ function placeSporeVents(
   config: LevelConfig,
   tiles: TileType[],
   occupied: Set<number>,
+  reachable: Set<number>,
   w: number,
 ) {
   let remaining = config.sporeVentCount ?? 0;
@@ -1685,7 +1714,8 @@ function placeSporeVents(
   while (remaining > 0 && guard++ < 400) {
     const floors: number[] = [];
     for (let i = 0; i < tiles.length; i++)
-      if (tiles[i] === "floor" && !occupied.has(i)) floors.push(i);
+      if (tiles[i] === "floor" && !occupied.has(i) && reachable.has(i))
+        floors.push(i);
     if (floors.length === 0) break;
     const cand = floors[mapInt(0, floors.length - 1)];
     const cx = cand % w;
@@ -1788,6 +1818,7 @@ function placeForage(
   config: LevelConfig,
   tiles: TileType[],
   occupied: Set<number>,
+  reachable: Set<number>,
   w: number,
   h: number,
   playerStart: Pos,
@@ -1799,7 +1830,8 @@ function placeForage(
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const i = y * w + x;
-      if (tiles[i] !== "floor" || occupied.has(i)) continue;
+      if (tiles[i] !== "floor" || occupied.has(i) || !reachable.has(i))
+        continue;
       if (manhattan(x, y, playerStart.x, playerStart.y) <= 2) continue; // not on the doorstep
       (openOrthoCount(tiles, w, i) <= 2 ? nooks : rest).push(i);
     }
@@ -1823,6 +1855,7 @@ function placeForage(
  * bumping; monsters ignore them. */
 function placeAltars(
   config: LevelConfig,
+  tiles: TileType[],
   floors: number[],
   occupied: Set<number>,
   w: number,
@@ -1834,7 +1867,10 @@ function placeAltars(
   while (altars.length < count && attempts < count * 20 + 20) {
     attempts++;
     const i = floors[mapInt(0, floors.length - 1)];
-    if (occupied.has(i)) continue;
+    // `floors` predates the oil, vents and forage, and only some passes mark
+    // `occupied` — so check the tile itself, as `placeLore` does. Without it an
+    // altar sat on an oil slick on ~4% of Great Hall and Crypt seeds.
+    if (occupied.has(i) || tiles[i] !== "floor") continue;
     occupied.add(i);
     const kind = ALTAR_KINDS[mapInt(0, ALTAR_KINDS.length - 1)];
     altars.push({
@@ -2066,7 +2102,23 @@ function sealUnreachable(map: GameMap, from: Pos) {
 }
 
 /** Tiles reachable from `from` WITHOUT stepping on an (armed) trap. */
-function trapFreeReachable(map: GameMap, from: Pos): Set<number> {
+/** How a reachability flood may move: on foot (the default — what monsters and
+ * the flood spine use), or also THROUGH gates (shut doors, cracked walls), which
+ * is what the player can do and what `ensureTrapsAvoidable` must reason about. */
+type Passable = (map: GameMap, x: number, y: number) => boolean;
+const onFoot: Passable = isWalkable;
+const throughGates: Passable = (map, x, y) =>
+  x >= 0 &&
+  y >= 0 &&
+  x < map.width &&
+  y < map.height &&
+  isOpenTile(map.tiles[y * map.width + x]);
+
+function trapFreeReachable(
+  map: GameMap,
+  from: Pos,
+  pass: Passable = onFoot,
+): Set<number> {
   const w = map.width;
   const seen = new Set<number>([idx(from.x, from.y, w)]);
   const q = [idx(from.x, from.y, w)];
@@ -2083,7 +2135,7 @@ function trapFreeReachable(map: GameMap, from: Pos): Set<number> {
     for (const [dx, dy] of dirs) {
       const nx = cx + dx;
       const ny = cy + dy;
-      if (!isWalkable(map, nx, ny)) continue;
+      if (!pass(map, nx, ny)) continue;
       const ni = idx(nx, ny, w);
       if (seen.has(ni) || map.tiles[ni] === "trap") continue;
       seen.add(ni);
@@ -2094,7 +2146,11 @@ function trapFreeReachable(map: GameMap, from: Pos): Set<number> {
 }
 
 /** Tiles reachable from `from` over walkable terrain WITH traps allowed. */
-function walkableReachable(map: GameMap, from: Pos): Set<number> {
+function walkableReachable(
+  map: GameMap,
+  from: Pos,
+  pass: Passable = onFoot,
+): Set<number> {
   const w = map.width;
   const seen = new Set<number>([idx(from.x, from.y, w)]);
   const q = [idx(from.x, from.y, w)];
@@ -2111,7 +2167,7 @@ function walkableReachable(map: GameMap, from: Pos): Set<number> {
     for (const [dx, dy] of dirs) {
       const nx = cx + dx;
       const ny = cy + dy;
-      if (!isWalkable(map, nx, ny)) continue;
+      if (!pass(map, nx, ny)) continue;
       const ni = idx(nx, ny, w);
       if (seen.has(ni)) continue;
       seen.add(ni);
@@ -2122,7 +2178,12 @@ function walkableReachable(map: GameMap, from: Pos): Set<number> {
 }
 
 /** Shortest walkable path (traps allowed) from `from` to `to`, as tile indices. */
-function walkablePath(map: GameMap, from: Pos, to: Pos): number[] {
+function walkablePath(
+  map: GameMap,
+  from: Pos,
+  to: Pos,
+  pass: Passable = onFoot,
+): number[] {
   const w = map.width;
   const start = idx(from.x, from.y, w);
   const goal = idx(to.x, to.y, w);
@@ -2144,7 +2205,7 @@ function walkablePath(map: GameMap, from: Pos, to: Pos): number[] {
     for (const [dx, dy] of dirs) {
       const nx = cx + dx;
       const ny = cy + dy;
-      if (!isWalkable(map, nx, ny)) continue;
+      if (!pass(map, nx, ny)) continue;
       const ni = idx(nx, ny, w);
       if (seen.has(ni)) continue;
       seen.add(ni);
@@ -2172,9 +2233,15 @@ function walkablePath(map: GameMap, from: Pos, to: Pos): number[] {
  */
 function ensureTrapsAvoidable(map: GameMap, from: Pos) {
   const w = map.width;
-  const walkable = walkableReachable(map, from); // traps → floor keeps this set the same
+  // Flood THROUGH gates: the player can open a shut door or break a cracked
+  // wall, so a hut, vault or niche is somewhere they go — and on foot alone
+  // these floods stopped at the gate, so a gate whose only approach was a trap
+  // was never seen (huts in the Blackwood and Mire, gallery niches in the
+  // Antechamber, ~1-2% of seeds each).
+  const pass = throughGates;
+  const walkable = walkableReachable(map, from, pass); // traps → floor keeps this set the same
   for (let guard = 0; guard <= walkable.size; guard++) {
-    const trapFree = trapFreeReachable(map, from);
+    const trapFree = trapFreeReachable(map, from, pass);
     let target = -1;
     for (const i of walkable) {
       if (map.tiles[i] === "trap") continue; // the trap tiles are the toll itself
@@ -2185,10 +2252,12 @@ function ensureTrapsAvoidable(map: GameMap, from: Pos) {
     }
     if (target < 0) return; // the whole walkable area is trap-free reachable — done
     let demoted = false;
-    for (const i of walkablePath(map, from, {
-      x: target % w,
-      y: Math.floor(target / w),
-    })) {
+    for (const i of walkablePath(
+      map,
+      from,
+      { x: target % w, y: Math.floor(target / w) },
+      pass,
+    )) {
       if (map.tiles[i] === "trap") {
         map.tiles[i] = "floor";
         demoted = true;
@@ -2607,14 +2676,24 @@ export function generateLevel(
   placeTraps(config, tiles, floors, occupied, w, playerStart);
 
   // Environmental terrain: oil slicks (walkable) + destructible cracked walls.
-  placeOil(config, tiles, occupied, w, h);
-  placeSporeVents(config, tiles, occupied, w); // isolated poison fumaroles
+  //
+  // Oil, vents and forage draw ONLY from the reachable component (`floors`),
+  // like every other placement here. They used to scan every floor tile on the
+  // map, so they landed in isolated pockets that `sealUnreachable` walls off
+  // later — and forage PREFERS nooks, and a 1-2 tile pocket always reads as a
+  // nook, so it lost the most: the Blackwood delivered 4.05 of its 7 forage
+  // (sometimes none), the Frostspine 2.43 of 4, the Mire 4.35 of 7 and 4.51 of
+  // its 7 vents. It also keeps them out of hut interiors, which sit behind a
+  // shut door and so outside `floors` — they had been landing on hut loot.
+  const reachable = new Set(floors);
+  placeOil(config, tiles, occupied, reachable, w, h);
+  placeSporeVents(config, tiles, occupied, reachable, w); // isolated poison fumaroles
   placeCrackedWalls(config, tiles, w, h);
   placeDoors(config, tiles, occupied, w, h, playerStart); // interactive doors (open)
-  placeForage(config, tiles, occupied, w, h, playerStart); // heal tiles in nooks
+  placeForage(config, tiles, occupied, reachable, w, h, playerStart); // heal tiles in nooks
 
   // Risk/reward shrines on open floor.
-  const altars = placeAltars(config, floors, occupied, w, levelIndex);
+  const altars = placeAltars(config, tiles, floors, occupied, w, levelIndex);
 
   // Environmental-storytelling props (readable lore), tucked into nooks.
   const lore = placeLore(config, map, floors, occupied, levelIndex);

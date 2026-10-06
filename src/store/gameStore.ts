@@ -37,6 +37,7 @@ import {
   peekSaveInfo,
   type SaveInfo,
 } from "@/save/storage";
+import { DEV } from "@/lib/env"; // dev-only tooling gate
 
 export type UIMode =
   | "splash"
@@ -54,6 +55,35 @@ export type UIMode =
   | "gear"
   | "gameover"
   | "victory";
+
+/**
+ * Which modes are drawn OVER the live map (the canvas + HUD stay mounted) and
+ * which replace it with a full screen. `GameRoot` mounts the map from this, and
+ * `saveOnExit` only saves from a map mode.
+ *
+ * A `Record` rather than a `Set` on purpose: adding a mode to `UIMode` without
+ * classifying it here is a compile error. As a hand-kept Set in `GameRoot` it
+ * silently missed `"gear"`, so stepping onto any weapon or armour unmounted the
+ * renderer and HUD — the translucent prompt showed over black — and rebuilt
+ * them from scratch on close.
+ */
+export const MODE_OVER_MAP: Record<UIMode, boolean> = {
+  splash: false,
+  classSelect: false,
+  mutators: false,
+  playing: true,
+  paused: true,
+  inventory: true,
+  help: true,
+  narration: false,
+  shop: false,
+  targeting: true,
+  altar: true,
+  lore: true,
+  gear: true,
+  gameover: false,
+  victory: false,
+};
 
 export interface TargetingData {
   /** "firebomb" throws the potion `defId`; "ranged" fires the equipped bow;
@@ -164,6 +194,10 @@ export interface GameStore {
   // input + ui
   handleCommand: (cmd: InputCommand) => void;
   setMode: (mode: UIMode) => void;
+  /** Open the help sheet from play or from the pause menu, and remember which. */
+  openHelp: () => void;
+  /** Close it back to wherever it was opened from. */
+  closeHelp: () => void;
   toggleSound: () => void;
   continueNarration: () => void;
   useBagSlot: (n: number) => void;
@@ -187,15 +221,25 @@ let sessionStartMs = 0;
 // both the keyboard path and native focused-button activation, since both route
 // through the store actions below.
 let inputSettleUntil = 0;
-function armInputSettle() {
-  inputSettleUntil = Date.now() + 250;
+
+// Where the help sheet returns to when closed (see `openHelp`).
+let helpReturn: "playing" | "paused" = "playing";
+function armInputSettle(ms = 250) {
+  inputSettleUntil = Date.now() + ms;
 }
+
+/**
+ * How long the world holds, drained, before the death card appears (the view
+ * side lives in `GameRoot`, which also feeds it to the CSS as `--death-ms`).
+ * Lives here so the store's input guard and the freeze are ONE number: on the
+ * LAST life the guard spans the whole freeze, because advancing from game over
+ * quits to the title — an Enter mashed during the freeze used to skip the run
+ * summary before it was ever drawn, and it can't be brought back.
+ */
+export const DEATH_FREEZE_MS = 1300;
 function inputSettling(): boolean {
   return Date.now() < inputSettleUntil;
 }
-
-// Dev-only tooling is dead-code-eliminated from the production/static build.
-export const DEV = process.env.NODE_ENV !== "production";
 
 /** Roll the current session's elapsed time into the accumulated total. */
 function flushPlaytime() {
@@ -262,11 +306,63 @@ export const gameStore = createStore<GameStore>((set, get) => {
   // (React HUD + canvas renderer) re-read it.
   const commit = () => set({ game: { ...get().game! } });
 
+  /** The level as it will be replayed after a death with lives left: rebuilt
+   * from the entry snapshot, keeping the run facts (lives, the lore journal).
+   * Pure in the game state, so the death SAVE and the "Rise" button produce the
+   * same level. */
+  const restartedLevel = (game: GameState): GameState => {
+    const player = clonePlayer(game.entryPlayer);
+    player.lives = game.player.lives; // keep the decremented life count
+    // The journal is a record of what you READ, not of what you survived,
+    // and the level regenerates on restart — so a fragment found in the
+    // failed attempt would be unrecoverable for the rest of the run.
+    // Carried forward for the same reason `lives` is: it is a RUN fact.
+    player.loreSeen = [...game.player.loreSeen];
+    return beginLevel(
+      game.masterSeed,
+      game.currentLevel,
+      player,
+      game.mutators,
+    );
+  };
+
+  /** The level-cleared card, shown after a clear and again on resuming a save
+   * taken on it. */
+  const clearedNarration = (game: GameState): NarrationData => {
+    const nextIdx = game.currentLevel + 1;
+    return {
+      title: `${LEVELS[game.currentLevel].title}\ncleared`,
+      body: LEVELS[game.currentLevel].narration,
+      artGradient: BIOME_GRADIENT[LEVELS[nextIdx].biome],
+      accent: LEVELS[nextIdx].palette.accent,
+      biome: LEVELS[nextIdx].biome,
+      onContinue: "nextLevel",
+      buttonLabel: `Onward — ${LEVELS[nextIdx].title}`,
+    };
+  };
+
+  /**
+   * Save the run. The PHASE is read off the current mode rather than passed in,
+   * so every call site saves the right thing by construction — the bug this
+   * replaces was two sites that never saved at all (a death with lives left,
+   * so reloading on "You Fall" undid it) and a save with no phase (so reloading
+   * at the shop resumed INTO the cleared level and cleared it again).
+   */
   const persist = () => {
     const s = get();
     if (!s.game || !s.rng) return;
     flushPlaytime();
-    writeSave(serialize(s.game, s.rng, runPlayMs));
+    if (s.mode === "shop") {
+      writeSave(serialize(s.game, s.rng, runPlayMs, "shop", s.shopPurchases));
+    } else if (s.narration?.onContinue === "nextLevel") {
+      writeSave(serialize(s.game, s.rng, runPlayMs, "cleared"));
+    } else if (s.narration?.onContinue === "restartLevel") {
+      // Dying spends the life NOW: save the level you will rise into, so
+      // quitting on the card can't hand the life back.
+      writeSave(serialize(restartedLevel(s.game), s.rng, runPlayMs));
+    } else {
+      writeSave(serialize(s.game, s.rng, runPlayMs));
+    }
     set({
       hasSave: true,
       saveInfo: {
@@ -302,20 +398,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
       });
       return;
     }
-    const nextIdx = game.currentLevel + 1;
     set({
       game: { ...game },
       mode: "narration",
-      narration: {
-        title: `${LEVELS[game.currentLevel].title}\ncleared`,
-        body: LEVELS[game.currentLevel].narration,
-        artGradient: BIOME_GRADIENT[LEVELS[nextIdx].biome],
-        accent: LEVELS[nextIdx].palette.accent,
-        biome: LEVELS[nextIdx].biome,
-        onContinue: "nextLevel",
-        buttonLabel: `Onward — ${LEVELS[nextIdx].title}`,
-      },
+      narration: clearedNarration(game),
     });
+    persist(); // as `cleared`: resuming returns here, never back into the level
   };
 
   const handleDeath = () => {
@@ -331,6 +419,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
     game.player.hp = Math.max(0, game.player.hp);
     game.player.lives -= 1;
     if (game.player.lives <= 0) {
+      armInputSettle(DEATH_FREEZE_MS); // the run summary can't be skipped unseen
       clearSave();
       set({
         game: { ...game },
@@ -355,6 +444,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
         buttonLabel: "Rise",
       },
     });
+    persist(); // saves the restarted level — the life is spent either way
   };
 
   return {
@@ -439,7 +529,28 @@ export const gameStore = createStore<GameStore>((set, get) => {
       const rng = new Rng(0, save.gameplayRngState);
       runPlayMs = save.playMs ?? 0;
       sessionStartMs = Date.now();
-      set({ game: save.game, rng, mode: "playing", narration: null });
+      const game = save.game;
+      switch (save.phase) {
+        case "cleared":
+          set({
+            game,
+            rng,
+            mode: "narration",
+            narration: clearedNarration(game),
+          });
+          break;
+        case "shop":
+          set({
+            game,
+            rng,
+            mode: "shop",
+            narration: null,
+            shopPurchases: save.shopPurchases,
+          });
+          break;
+        default:
+          set({ game, rng, mode: "playing", narration: null });
+      }
     },
 
     quitToTitle: () => {
@@ -536,6 +647,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
             // game state (for coins/gear) until the player leaves the shop.
             armInputSettle(); // and don't let the same key bounce out of the shop
             set({ mode: "shop", narration: null, shopPurchases: {} });
+            persist();
           } else {
             const player = clonePlayer(game!.player);
             const ng = beginLevel(
@@ -550,19 +662,7 @@ export const gameStore = createStore<GameStore>((set, get) => {
           break;
         }
         case "restartLevel": {
-          const player = clonePlayer(game!.entryPlayer);
-          player.lives = game!.player.lives; // keep the decremented life count
-          // The journal is a record of what you READ, not of what you survived,
-          // and the level regenerates on restart — so a fragment found in the
-          // failed attempt would be unrecoverable for the rest of the run.
-          // Carried forward for the same reason `lives` is: it is a RUN fact.
-          player.loreSeen = [...game!.player.loreSeen];
-          const ng = beginLevel(
-            game!.masterSeed,
-            game!.currentLevel,
-            player,
-            game!.mutators,
-          );
+          const ng = restartedLevel(game!);
           set({ game: ng, mode: "playing", narration: null });
           persist();
           break;
@@ -899,6 +999,20 @@ export const gameStore = createStore<GameStore>((set, get) => {
 
     setMode: (mode: UIMode) => set({ mode }),
 
+    // Help is reachable from live play (`?`) AND from the pause menu, and
+    // closing it always went to `playing` — so Pause → Help → Esc dropped you
+    // straight back into the level instead of the menu you came from.
+    openHelp: () => {
+      const from = get().mode;
+      if (from !== "playing" && from !== "paused") return;
+      helpReturn = from;
+      set({ mode: "help" });
+    },
+    closeHelp: () => {
+      if (get().mode !== "help") return;
+      set({ mode: helpReturn });
+    },
+
     toggleSound: () => {
       const on = !get().soundOn;
       setSoundOn(on); // persists to localStorage
@@ -972,13 +1086,12 @@ export const gameStore = createStore<GameStore>((set, get) => {
           } else if (mode === "lore") {
             playSfx("uiBack");
             get().closeLore();
-          } else if (
-            mode === "paused" ||
-            mode === "inventory" ||
-            mode === "help"
-          ) {
+          } else if (mode === "paused" || mode === "inventory") {
             playSfx("uiBack");
             set({ mode: "playing" });
+          } else if (mode === "help") {
+            playSfx("uiBack");
+            get().closeHelp();
           }
           break;
         case "fire":
@@ -1001,10 +1114,10 @@ export const gameStore = createStore<GameStore>((set, get) => {
         case "help":
           if (mode === "playing") {
             playSfx("uiSelect");
-            set({ mode: "help" });
+            get().openHelp();
           } else if (mode === "help") {
             playSfx("uiBack");
-            set({ mode: "playing" });
+            get().closeHelp();
           }
           break;
         case "confirm":

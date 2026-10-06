@@ -309,8 +309,13 @@ export const LEVELS: LevelConfig[] = [
     trapCount: 4,
     forageCount: 14,
     waterCount: 64,
-    oilCount: 16,
-    sporeVentCount: 7, // fumaroles seeping poison haze across the rotting bog
+    // Both were authored higher (16 / 7) but never ARRIVED: oil and vents used
+    // to draw from every floor tile, including pockets later walled off, so the
+    // level delivered ~11 / ~4.5 — and every balance pass on it was tuned
+    // against that. Once they arrived in full, the carried-run gate ([P4])
+    // fell 3 → 2, every run dying here. Authored now at what was delivered.
+    oilCount: 11,
+    sporeVentCount: 5, // fumaroles seeping poison haze across the rotting bog
     eliteChance: 0.15,
     altarCount: 1,
     loreCount: 4, // drowned pilgrims, a liar's signpost, and the temple itself

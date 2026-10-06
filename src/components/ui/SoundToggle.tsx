@@ -30,6 +30,13 @@ export function SoundToggle({
   return (
     <button
       onClick={toggleSound}
+      // In the HUD the button must never hold focus: `KeyboardInput` hands a
+      // focused button first claim on Space/Enter, so one click on it turned
+      // Space (wait) into "mute" for the rest of the level. `[m]` is the
+      // keyboard route, so it also leaves the tab order. The splash variant
+      // stays a normal focusable control — there it IS the menu.
+      onMouseDown={compact ? (e) => e.preventDefault() : undefined}
+      tabIndex={compact ? -1 : undefined}
       title={`Sound ${soundOn ? "on" : "off"} — click or press [m]`}
       aria-label={`Sound ${soundOn ? "on" : "off"}`}
       className={`shrink-0 border transition-colors ${size} ${tone} ${className}`}

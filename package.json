@@ -6,16 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:core": "npx --yes tsx scripts/verify-core.mts",
-    "test:play": "npx --yes tsx scripts/verify-playthrough.mts",
-    "test:store": "npx --yes tsx scripts/verify-store.mts",
+    "test:core": "tsx scripts/verify-core.mts",
+    "test:play": "tsx scripts/verify-playthrough.mts",
+    "test:store": "tsx scripts/verify-store.mts",
     "test:all": "npm run test:core && npm run test:play && npm run test:store",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "test:soak": "npx --yes tsx scripts/verify-soak.mts"
+    "test:soak": "tsx scripts/verify-soak.mts"
   },
   "lint-staged": {
     "*.{ts,tsx,mts,js,mjs,cjs}": [
@@ -45,6 +46,7 @@
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.9",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   }
 }

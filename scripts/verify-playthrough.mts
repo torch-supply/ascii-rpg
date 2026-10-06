@@ -4,7 +4,7 @@
 // many seeds, then asserts the levels are actually *beatable while under attack*
 // — plus reports a difficulty table (win-rate / turns / end-HP) for balancing.
 //
-// Run with: npx --yes tsx scripts/verify-playthrough.mts
+// Run with: npm run test:play
 //
 // The bot is deliberately a FLOOR: greedy, non-optimal, 4-directional — but it
 // is *tactically equipped* (heals + firebombs, the kit a player buys at the

@@ -206,7 +206,65 @@ function violations(g: GameState): string[] {
       bad.push(
         `${spec.biome}/${spec.layout} wing is a sliver — ${floor}/${tagged} tagged tiles walkable (${((100 * floor) / tagged).toFixed(1)}%)`,
       );
+
+    // 8. …and the wing keeps its OWN tag. An organic blob listed after a wing
+    // used to paint over it: the Iron Gate's ashen wastes took a median 11% of
+    // the gatehouse (oil and all), the Crypt's underworks 29% of the catacomb,
+    // worst seeds 45-73%. Measured as tagged / bounding box, healthy wings read
+    // ≥0.95 (a hut stamped inside one is the only legitimate hole).
+    if (tagged > 0) {
+      let x0 = Infinity,
+        y0 = Infinity,
+        x1 = -1,
+        y1 = -1;
+      for (let i = 0; i < t.length; i++) {
+        if ((g.map.region?.[i] ?? 0) !== rid) continue;
+        const x = i % w;
+        const y = Math.floor(i / w);
+        x0 = Math.min(x0, x);
+        y0 = Math.min(y0, y);
+        x1 = Math.max(x1, x);
+        y1 = Math.max(y1, y);
+      }
+      const fill = tagged / ((x1 - x0 + 1) * (y1 - y0 + 1));
+      if (fill < 0.9)
+        bad.push(
+          `${spec.biome}/${spec.layout} wing overwritten — only ${(100 * fill).toFixed(0)}% of its footprint still tagged`,
+        );
+    }
   });
+
+  // 9. every gate can be approached on foot by a tile that is neither the exit
+  // nor a trap. A vault anchored beside the exit (the Pit, ~0.5% of seeds) had
+  // the exit as its ONLY approach — stepping there to open it ends the level, so
+  // the hoard was unreachable; and huts, vaults and gallery niches could be
+  // gated behind a trap, because the trap-avoidance pass stopped at the gate.
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== "door" && t[i] !== "crackedWall") continue;
+    const approach = [1, -1, w, -w]
+      .map((d) => i + d)
+      .filter((n) => walkable.has(n));
+    if (approach.length === 0) continue; // nested behind another gate
+    if (approach.every((n) => t[n] === "exit" || t[n] === "trap"))
+      bad.push(
+        `${t[i]} at ${i % w},${Math.floor(i / w)} approachable only via ${approach.map((n) => t[n]).join("/")}`,
+      );
+  }
+
+  // 10. altars stand on plain floor — not oil, a vent or forage (placement
+  // checked `occupied` only, and oil/vents never mark it)
+  for (const a of g.altars)
+    if (t[idx(a.x, a.y, w)] !== "floor")
+      bad.push(`altar on ${t[idx(a.x, a.y, w)]} at ${a.x},${a.y}`);
+
+  // 11. no monster stands on loot (the Frostspine's den bear stood on the gold
+  // on every seed: its "farthest cell" was also where the loot ran out to)
+  for (const m of g.monsters)
+    if (
+      MONSTERS[m.defId].behavior !== "ambient" &&
+      g.items.some((it) => it.x === m.x && it.y === m.y)
+    )
+      bad.push(`${m.defId} spawned on loot at ${m.x},${m.y}`);
 
   return bad;
 }

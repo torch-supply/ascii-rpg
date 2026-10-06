@@ -7,7 +7,8 @@ import { MenuButton } from "@/components/ui/MenuButton";
 import { SoundToggle } from "@/components/ui/SoundToggle";
 import { G_DAWN_TITLE, G_EMBER, SUBTITLE } from "@/content/ascii";
 import { LEVELS } from "@/content/levels";
-import { DEV, gameStore, useGameStore } from "@/store/gameStore";
+import { gameStore, useGameStore } from "@/store/gameStore";
+import { DEV } from "@/lib/env";
 
 export default function Splash() {
   const hasSave = useGameStore((s) => s.hasSave);

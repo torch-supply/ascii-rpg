@@ -21,9 +21,7 @@ export default function PauseModal() {
           <MenuButton accent autoFocus onClick={() => s().setMode("playing")}>
             ▸ Resume <span className="text-xs opacity-70">(Esc)</span>
           </MenuButton>
-          <MenuButton onClick={() => s().setMode("help")}>
-            ? How to play
-          </MenuButton>
+          <MenuButton onClick={() => s().openHelp()}>? How to play</MenuButton>
           <MenuButton onClick={() => s().quitToTitle()}>
             ◂ Return to title
           </MenuButton>

@@ -1,5 +1,6 @@
 import {
   keyToCommand,
+  repeatsWhenHeld,
   shouldPreventDefault,
   type InputCommand,
 } from "./keymap";
@@ -37,7 +38,7 @@ export class KeyboardInput {
       const cmd = keyToCommand(e);
       if (!cmd) return;
       if (shouldPreventDefault(e)) e.preventDefault();
-      if (e.repeat && cmd.kind === "ui") return; // don't spam UI toggles on hold
+      if (e.repeat && !repeatsWhenHeld(cmd)) return;
       this.dispatch(cmd);
     };
   }

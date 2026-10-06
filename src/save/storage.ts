@@ -1,9 +1,9 @@
 import { CONFIG } from "@/content/config";
 import { LEVELS } from "@/content/levels";
 import { migrate } from "./serialize";
-import type { SaveV1 } from "./schema";
+import type { SaveV2 } from "./schema";
 
-export function writeSave(save: SaveV1): void {
+export function writeSave(save: SaveV2): void {
   try {
     localStorage.setItem(CONFIG.saveKey, JSON.stringify(save));
   } catch {
@@ -11,7 +11,7 @@ export function writeSave(save: SaveV1): void {
   }
 }
 
-export function readSave(): SaveV1 | null {
+export function readSave(): SaveV2 | null {
   try {
     const raw = localStorage.getItem(CONFIG.saveKey);
     if (!raw) return null;

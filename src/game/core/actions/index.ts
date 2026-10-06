@@ -7,6 +7,7 @@ import type {
   PlayerState,
   Pos,
   TurnResult,
+  TileType,
 } from "@/game/core/types";
 import type { GameEvent } from "@/game/core/events";
 import { Rng } from "@/game/core/rng";
@@ -17,6 +18,7 @@ import {
   manhattan,
   inBounds,
   tileAt,
+  walkableFrom,
 } from "@/game/core/grid";
 import { recomputeFOV, recomputeLight } from "@/game/core/state";
 import { equipWeapon, equipArmor, addToBag } from "@/game/core/inventory";
@@ -217,12 +219,28 @@ function eliteMod(m: MonsterInstance): EliteMod | null {
 
 /** Stamp a lasting floor decal (latest wins), bounded so a level can't grow an
  * unlimited number of stains. */
+/**
+ * Stain a tile, dropping the OLDEST runtime stain once `CONFIG.maxDecals` is
+ * reached. The age order is kept explicitly in `decalOrder`: the cap used to
+ * evict `Object.keys(decals)[0]`, which for integer keys is the LOWEST TILE
+ * INDEX, not the oldest — so a fresh kill near the top of the map could vanish
+ * the moment it landed while old stains further down lived forever, and the
+ * region's generated ash (also in `decals`) counted toward the cap and was
+ * eaten first. Ash never enters `decalOrder`, so it is never evicted (staining
+ * over it hands the tile to the runtime list).
+ */
 function addDecal(state: GameState, i: number, kind: "scorch" | "blood") {
-  if (!(i in state.decals)) {
-    const keys = Object.keys(state.decals);
-    if (keys.length >= CONFIG.maxDecals) delete state.decals[Number(keys[0])];
+  if (CONFIG.maxDecals <= 0) return;
+  const order = (state.decalOrder ??= []);
+  const at = order.indexOf(i);
+  if (at >= 0)
+    order.splice(at, 1); // re-stained: it is the newest again
+  else if (order.length >= CONFIG.maxDecals) {
+    const oldest = order.shift()!;
+    delete state.decals[oldest];
   }
   state.decals[i] = kind;
+  order.push(i);
 }
 
 /** Roll a monster's loot table and drop one item on its tile (if free).
@@ -293,8 +311,33 @@ function explodeOnDeath(
   }
 }
 
+/** Ambient wildlife (`behavior: "ambient"`) — ravens, frogs, wisps. Not an
+ * enemy: it is placed outside the combat budget and owes the player nothing. */
+function isAmbient(def: MonsterDef): boolean {
+  return def.behavior === "ambient";
+}
+
+/** Whatever would have harmed ambient wildlife just scatters it: it winks out
+ * with a small shimmer — no damage, no kill credit, no coins, loot or stain. */
+function disperseAmbient(
+  state: GameState,
+  m: MonsterInstance,
+  def: MonsterDef,
+  events: GameEvent[],
+  line = `The ${def.name} scatters.`,
+) {
+  state.monsters = state.monsters.filter((x) => x.id !== m.id);
+  events.push({ kind: "blast", x: m.x, y: m.y, radius: 0 });
+  msg(events, line);
+}
+
 /** Award a kill: coins, run/level counters, loot drop. Elites pay double and
- * always drop; volatile elites detonate. Does NOT remove `m` from the list. */
+ * always drop; volatile elites detonate. Does NOT remove `m` from the list.
+ *
+ * Ambient wildlife earns NOTHING, and this is the choke point that enforces
+ * it. Bumping one was the only path that knew the rule; arrows, Cleave, bombs,
+ * fire, spore haze and knockback all paid out on a wisp — a kill on the
+ * counter, `killCount` progress and a blood decal for scattering a frog. */
 function awardKill(
   state: GameState,
   m: MonsterInstance,
@@ -302,6 +345,7 @@ function awardKill(
   rng: Rng,
   events: GameEvent[],
 ) {
+  if (isAmbient(def)) return;
   const em = eliteMod(m);
   const coin = em ? def.coinReward * 2 : def.coinReward;
   if (coin > 0) addCoins(state, coin);
@@ -337,7 +381,12 @@ function tryAfflict(
 }
 
 /** Shove a struck monster back along the blow. Into water/chasm = a kill;
- * a wall or another body stops it short. */
+ * a wall or another body stops it short.
+ *
+ * A boss or the level's goal target BRACES at the brink instead: it is still
+ * driven back, but void stops it like a wall. Without this the mace — tier-2
+ * stock, in hand before either fight — ended Gorm over a Frostspine crevasse or
+ * the Herald over the Antechamber's pit in one swing, completing the level. */
 function knockBack(
   state: GameState,
   target: MonsterInstance,
@@ -356,6 +405,10 @@ function knockBack(
     const ny = target.y + dy;
     const shoveTile = tileAt(state.map, nx, ny);
     if (shoveTile === "water" || shoveTile === "chasm") {
+      if (def.isBoss || target.isGoalTarget) {
+        msg(events, `The ${def.name} braces at the brink and will not fall!`);
+        return;
+      }
       events.push({ kind: "hit", x: nx, y: ny });
       msg(events, `You hurl the ${def.name} into the depths!`);
       awardKill(state, target, def, rng, events);
@@ -411,6 +464,9 @@ function resolvePlayerAttack(
   ranged = false,
 ) {
   const def = monsterDef(target.defId);
+  // a shot, a Cleave or a bow-bump at wildlife scatters it, like bumping does
+  // (no damage number, no "silent kill — it never woke")
+  if (isAmbient(def)) return disperseAmbient(state, target, def, events);
   const em = eliteMod(target);
   let dmg = playerAttackDamage(state.player, def);
   if (em) dmg = Math.max(1, dmg - em.armorBonus); // brutes shrug off blows
@@ -491,6 +547,7 @@ function improvisedJab(
   rng: Rng,
 ) {
   const def = monsterDef(target.defId);
+  if (isAmbient(def)) return disperseAmbient(state, target, def, events);
   target.hp -= 1;
   events.push({ kind: "hit", x: target.x, y: target.y });
   events.push({
@@ -592,6 +649,7 @@ function resolveMonsterAttack(
       p.y = ty;
       events.push({ kind: "thud" });
       msg(events, `The ${def.name} throws you back.`);
+      arriveAt(state, events); // thrown onto a trap, it springs
     }
   }
 }
@@ -612,12 +670,14 @@ function movePlayer(
   if (target) {
     // ambient wildlife (a wisp) isn't an enemy — touching it just scatters it,
     // no attack/damage/loot/kill-credit. It winks out with a small shimmer.
-    if (monsterDef(target.defId).behavior === "ambient") {
-      state.monsters = state.monsters.filter((x) => x.id !== target.id);
-      events.push({ kind: "blast", x: nx, y: ny, radius: 0 });
-      msg(
+    const tdef = monsterDef(target.defId);
+    if (isAmbient(tdef)) {
+      disperseAmbient(
+        state,
+        target,
+        tdef,
         events,
-        `The ${monsterDef(target.defId).name} gutters out at your touch.`,
+        `The ${tdef.name} gutters out at your touch.`,
       );
       return true; // costs the turn
     }
@@ -673,11 +733,23 @@ function movePlayer(
   p.x = nx;
   p.y = ny;
   events.push({ kind: "step" }); // footfall SFX cue
+  arriveAt(state, events);
+  return true;
+}
+
+/**
+ * Everything that happens when the player comes to rest on a tile, however
+ * they got there: a trap underfoot bites, loot is picked up, forage is eaten,
+ * thorns snag. ONE place, because it was three copied blocks (step, Dash,
+ * Blink) and the two arrivals nobody copied it to — being thrown by a shover,
+ * and scrambling ashore when Levitation lapses — skipped all four, so a
+ * gargoyle could throw you onto a trap that never sprang.
+ */
+function arriveAt(state: GameState, events: GameEvent[]) {
   springTrap(state, events);
   pickUp(state, events);
   forageOnTile(state, events);
   brambleSnag(state, events);
-  return true;
 }
 
 /** Step onto a forage tile: a small heal (biome-flavored), then it's spent to
@@ -947,6 +1019,7 @@ function landFromLevitation(state: GameState, events: GameEvent[]) {
         p.x = nx;
         p.y = ny;
         msg(events, "You scramble to solid ground.");
+        arriveAt(state, events);
         return;
       }
       const t = tileAt(state.map, nx, ny);
@@ -957,12 +1030,28 @@ function landFromLevitation(state: GameState, events: GameEvent[]) {
 
 /** Set a tile alight: oil burns away to bare floor; floor/door/sprung-trap just
  * carry flame; walls/water won't take. Returns whether it ignited. */
+/** What fire does to each tile, in ONE place. It was spelled out three times
+ * (here, `spawnFires` and the spread in `tickFires`) and they had drifted: a
+ * firebomb only lit oil outright, so one thrown INTO a bramble thicket — the
+ * counter the game sells for bramble — lit nothing, and the thorns burned only
+ * by spillover from floor beside them.
+ *
+ * FUEL always catches when flame reaches it, is consumed, and carries the fire
+ * on to its neighbours. KINDLING can hold a lingering flame, but a blast only
+ * catches it by chance (`CONFIG.fire.spawnChance`) and fire never spreads to it
+ * on its own. Everything else does not burn. */
+const FUEL: ReadonlySet<TileType> = new Set<TileType>(["oil", "bramble"]);
+const KINDLING: ReadonlySet<TileType> = new Set<TileType>([
+  "floor",
+  "trapSprung",
+  "doorOpen",
+]);
+
 function igniteTile(state: GameState, i: number, life: number): boolean {
   const t = state.map.tiles[i];
-  if (t === "oil" || t === "bramble")
+  if (FUEL.has(t))
     state.map.tiles[i] = "floor"; // the slick / thicket is consumed
-  else if (t !== "floor" && t !== "trapSprung" && t !== "doorOpen")
-    return false;
+  else if (!KINDLING.has(t)) return false;
   const ex = state.fireTiles.find((f) => f.i === i);
   if (ex) ex.life = Math.max(ex.life, life);
   else state.fireTiles.push({ i, life });
@@ -1007,7 +1096,7 @@ function tickFires(state: GameState, events: GameEvent[]) {
       if (!inBounds(state.map, nx, ny)) continue;
       const ni = idx(nx, ny, w);
       const nt = state.map.tiles[ni];
-      if (nt === "oil" || nt === "bramble") spread.push(ni);
+      if (FUEL.has(nt)) spread.push(ni);
     }
   }
   let lit = false;
@@ -1246,6 +1335,7 @@ function tickMonsterStatus(state: GameState, rng: Rng, events: GameEvent[]) {
       if (m.hp <= 0) anyDead = true;
     }
     for (const k of Object.keys(e)) {
+      if (k === "chill") continue; // thaws AFTER the monster phase — see thawMonsters
       e[k] -= 1;
       if (e[k] <= 0) delete e[k];
     }
@@ -1255,6 +1345,12 @@ function tickMonsterStatus(state: GameState, rng: Rng, events: GameEvent[]) {
   for (const m of state.monsters) {
     if (m.hp <= 0) {
       const md = monsterDef(m.defId);
+      if (isAmbient(md)) {
+        // fire or haze drove it off; it isn't a kill (see `awardKill`)
+        events.push({ kind: "blast", x: m.x, y: m.y, radius: 0 });
+        msg(events, `The ${md.name} scatters.`);
+        continue;
+      }
       awardKill(state, m, md, rng, events);
       msg(events, `The ${md.name} succumbs.`);
     } else survivors.push(m);
@@ -1278,11 +1374,8 @@ function spawnFires(state: GameState, tx: number, ty: number, rng: Rng) {
       if (!inBounds(map, x, y)) continue;
       const i = idx(x, y, map.width);
       const t = map.tiles[i];
-      if (t === "oil") igniteTile(state, i, life);
-      else if (
-        (t === "floor" || t === "trapSprung" || t === "doorOpen") &&
-        rng.chance(CONFIG.fire.spawnChance)
-      )
+      if (FUEL.has(t)) igniteTile(state, i, life);
+      else if (KINDLING.has(t) && rng.chance(CONFIG.fire.spawnChance))
         igniteTile(state, i, life);
     }
   }
@@ -1357,7 +1450,9 @@ function detonateAt(
   const survivors: MonsterInstance[] = [];
   for (const m of state.monsters) {
     if (m.hp <= 0) {
-      awardKill(state, m, monsterDef(m.defId), rng, events);
+      const md = monsterDef(m.defId);
+      if (isAmbient(md)) continue; // scattered by the blast, not slain
+      awardKill(state, m, md, rng, events);
       slain++;
     } else {
       survivors.push(m);
@@ -1546,10 +1641,7 @@ function abilityDash(
   p.x = nx;
   p.y = ny;
   events.push({ kind: "step" });
-  springTrap(state, events); // you land fully — a trap underfoot bites
-  pickUp(state, events);
-  forageOnTile(state, events);
-  brambleSnag(state, events);
+  arriveAt(state, events); // you land fully — a trap underfoot bites
   msg(events, `You dash ${steps} tile${steps > 1 ? "s" : ""} in a blur.`);
   return true;
 }
@@ -1657,10 +1749,7 @@ function resolvePlayerBlink(
   events.push({ kind: "blast", x, y, radius: 1 }); // arrive poof
   events.push({ kind: "quaff" });
   msg(events, "You blink through the space between.");
-  springTrap(state, events); // you land on the tile — a trap underfoot bites
-  pickUp(state, events);
-  forageOnTile(state, events);
-  brambleSnag(state, events);
+  arriveAt(state, events); // you land on the tile — a trap underfoot bites
   return true;
 }
 
@@ -2212,11 +2301,17 @@ function spawnWave(
   const config = effectiveConfig(state);
   const siege = CONFIG.siege;
   const { map, player } = state;
+  // Only ground you can be walked to from. The ring is a Chebyshev band, so
+  // without this a wave landed behind shut doors — inside the Ramparts'
+  // door-gated vault on ~7% of seeds — where a monster that can't open doors
+  // sat for the rest of the siege, holding a cap slot and never arriving.
+  const reach = walkableFrom(map, player);
   const ring: number[] = [];
   const fallback: number[] = [];
   for (let i = 0; i < map.tiles.length; i++) {
     const t = map.tiles[i];
     if (t !== "floor" && t !== "trapSprung" && t !== "oil") continue;
+    if (!reach[i]) continue;
     const d = chebyshev(
       i % map.width,
       Math.floor(i / map.width),
@@ -2320,6 +2415,25 @@ function advanceMonsters(state: GameState, rng: Rng, events: GameEvent[]) {
     ) {
       actMonster(state, m, visible, rng, events);
     }
+  }
+  thawMonsters(state);
+}
+
+/**
+ * Count every monster's chill down — AFTER the monster phase, not in
+ * `tickMonsterStatus` with the other timers. Chill is read in `actMonster`, and
+ * the status tick runs before it, so decrementing there cost one turn of every
+ * freeze: chill 3 froze two monster phases, a resisted chill of 2 froze one, and
+ * chill 1 froze none — the "lasts at least a turn" floor in `tryAfflict` was a
+ * no-op. Ticking here means chill N forfeits exactly N turns. Once per TURN,
+ * not per action, so a swift elite doesn't thaw at double speed.
+ */
+function thawMonsters(state: GameState) {
+  for (const m of state.monsters) {
+    const e = m.effects;
+    if (!e || e.chill == null) continue;
+    e.chill -= 1;
+    if (e.chill <= 0) delete e.chill;
   }
 }
 

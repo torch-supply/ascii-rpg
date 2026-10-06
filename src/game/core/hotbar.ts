@@ -1,3 +1,4 @@
+import { ITEMS } from "@/content/items";
 import type { BagEntry, PlayerState } from "./types";
 
 /**
@@ -14,11 +15,10 @@ import type { BagEntry, PlayerState } from "./types";
  * claim used to be false: the sheet was read-only and the HUD panel renders a
  * fixed nine rows, so a tenth distinct item had no key, no row and no route —
  * it displayed as `[—]` and was carried, unusable, to the end of the run. It is
- * reachable in ordinary play: fourteen item types can occupy a slot (the
- * thirteen potions plus arrows — torches are fuel and quest items go to
- * `questProgress`, so neither ever lands here), and nine of the thirteen
- * potions are situational ones a careful player hoards. Store check `[S17]`
- * pins it. */
+ * reachable in ordinary play: thirteen item types can occupy a slot (the
+ * thirteen potions — torches are fuel, quest items go to `questProgress`, and
+ * arrows are skipped by `takesSlot`), and nine of the thirteen potions are
+ * situational ones a careful player hoards. Store check `[S17]` pins it. */
 export const HOTBAR_SLOTS = 9;
 
 /**
@@ -36,6 +36,15 @@ export const HOTBAR_SLOTS = 9;
  * its own. (Gear used to be the example here; it no longer reaches the bag at
  * all, since you carry one weapon and one suit.)
  */
+/** Whether a bag item earns a number key. Ammo does not: pressing it can do
+ * nothing (`useBagItem` acts on potions and gear), so a slot for arrows was a
+ * dead key that the panel nonetheless advertised under `PRESS 1–9` — and it
+ * spent one of only nine keys. The count you actually need reads off the
+ * EQUIPPED block whenever a bow is in hand. */
+export function takesSlot(defId: string): boolean {
+  return ITEMS[defId]?.category !== "ammo";
+}
+
 export function syncBagSlots(p: PlayerState) {
   if (!p.slotMap) p.slotMap = {};
   const held = new Set(p.bag.map((b) => b.defId));
@@ -44,13 +53,19 @@ export function syncBagSlots(p: PlayerState) {
   // (defensive: a hand-built or legacy player could carry a collision).
   const owner = new Map<number, string>();
   for (const [defId, slot] of Object.entries(p.slotMap)) {
-    if (slot >= 1 && slot <= HOTBAR_SLOTS && !owner.has(slot))
+    // `takesSlot` also releases a claim an older save made for arrows
+    if (
+      takesSlot(defId) &&
+      slot >= 1 &&
+      slot <= HOTBAR_SLOTS &&
+      !owner.has(slot)
+    )
       owner.set(slot, defId);
     else delete p.slotMap[defId];
   }
 
   for (const b of p.bag) {
-    if (p.slotMap[b.defId]) continue;
+    if (!takesSlot(b.defId) || p.slotMap[b.defId]) continue;
     let n = 0;
     for (let i = 1; i <= HOTBAR_SLOTS && !n; i++) if (!owner.has(i)) n = i;
     if (!n) {

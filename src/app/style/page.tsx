@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { DEV } from "@/store/gameStore";
+import { DEV } from "@/lib/env";
 
 // Dev-only visual reference at /style — every tile, biome, glyph and tint on one
 // screen with live contrast readings. `DEV` is a NODE_ENV compare, so the whole

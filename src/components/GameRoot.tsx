@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { gameStore, useGameStore, type GameStore } from "@/store/gameStore";
+import {
+  gameStore,
+  useGameStore,
+  MODE_OVER_MAP,
+  DEATH_FREEZE_MS,
+  type GameStore,
+} from "@/store/gameStore";
 import { KeyboardInput } from "@/game/input/KeyboardInput";
 import { LEVELS } from "@/content/levels";
 import { MONSTERS } from "@/content/monsters";
@@ -41,26 +47,14 @@ import AltarModal from "@/components/overlays/AltarModal";
 import LoreModal from "@/components/overlays/LoreModal";
 import GearModal from "@/components/overlays/GearModal";
 
-/**
- * How long the world holds, drained, before the death card appears. Fed to the
- * CSS as `--death-ms` so the animations and this timer are ONE number — split
- * across TS and a stylesheet they drift, and the card starts arriving mid-fade.
- *
- * The store's input-settle guard is only 250ms, so a player mashing Enter can
- * outrun this. That self-resolves (advancing returns the mode to a canvas mode,
- * which drops the hold) and is better than eating their input.
- */
-const DEATH_FREEZE_MS = 1300;
-
-const CANVAS_MODES = new Set([
-  "playing",
-  "paused",
-  "inventory",
-  "help",
-  "targeting",
-  "altar",
-  "lore",
-]);
+// `DEATH_FREEZE_MS` (from the store) is how long the world holds, drained,
+// before the death card appears. It is fed to the CSS as `--death-ms` so the
+// animations and this timer are ONE number — split across TS and a stylesheet
+// they drift, and the card starts arriving mid-fade. With lives left the
+// store's input guard is only 250ms, so a player mashing Enter can outrun the
+// hold; that self-resolves (rising returns to a map mode, which drops the hold)
+// and is better than eating their input. On the LAST life the guard spans the
+// whole freeze, since game over has no "rise" — skipping it loses the summary.
 
 /** Danger level (0–1) fed to the adaptive music: 0 anywhere but active play,
  * rising with low HP, a boss in view, and the survive-siege progress. */
@@ -158,7 +152,7 @@ export default function GameRoot() {
 
     const saveOnExit = () => {
       const s = gameStore.getState();
-      if (CANVAS_MODES.has(s.mode)) s.persist();
+      if (MODE_OVER_MAP[s.mode]) s.persist();
     };
     window.addEventListener("beforeunload", saveOnExit);
     document.addEventListener("visibilitychange", saveOnExit);
@@ -237,9 +231,9 @@ export default function GameRoot() {
   // Advancing early cancels the hold. DERIVED rather than synced in an effect:
   // an effect that calls setState on a mode change just triggers a second render
   // to reach a value this expression already knows.
-  const frozen = freezing && !CANVAS_MODES.has(mode);
+  const frozen = freezing && !MODE_OVER_MAP[mode];
 
-  const showCanvas = CANVAS_MODES.has(mode) || frozen;
+  const showCanvas = MODE_OVER_MAP[mode] || frozen;
 
   return (
     <div

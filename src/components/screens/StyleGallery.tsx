@@ -43,6 +43,9 @@ import {
   terrainColor,
   terrainGlyph,
   TERRAIN_GLYPH,
+  KNOWN_TRAP_GLYPH,
+  ARMED_TRAP_COLOR,
+  SPRUNG_TRAP_COLOR,
 } from "@/render/tiles";
 
 const INK = "#0d0d0d";
@@ -264,6 +267,16 @@ export default function StyleGallery() {
               // tile leaves view. Missing here entirely until now, which is how it
               // kept a glyph two exclamation marks wide while twelve potions use
               // one: nothing in the gallery ever put the two side by side.
+              // The two VISIBLE trap states, side by side because telling them
+              // apart is the whole job: one bites, the other is spent. The armed
+              // glyph is a renderer override on a "trap" tile; sprung is its own
+              // tile. They used to share `^` and differ only by an inverted tint.
+              [KNOWN_TRAP_GLYPH, ARMED_TRAP_COLOR, "trap — known & ARMED"],
+              [
+                TERRAIN_GLYPH.trapSprung,
+                SPRUNG_TRAP_COLOR,
+                "trap — sprung (harmless)",
+              ],
               ["Ω", SCONCE_LIT, "wall sconce — lit"],
               ["Ω", SCONCE_COLD, "wall sconce — remembered (cold iron)"],
             ] as const
@@ -397,6 +410,9 @@ export default function StyleGallery() {
           add("∴", "poison haze", GAS_COLOR);
           add("✷", "lich barrage telegraph", "#ff6a4a");
           add("Ω", "wall sconce", SCONCE_LIT);
+          // a sensed, still-ARMED trap is a renderer override on a "trap" tile,
+          // so it never appears in TILES (the sprung `_` does, as its own tile)
+          add(KNOWN_TRAP_GLYPH, "trap — known & armed", ARMED_TRAP_COLOR);
           add(
             SPORE_VENT_PRIMING_GLYPH,
             "spore vent priming",

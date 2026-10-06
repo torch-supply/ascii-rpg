@@ -21,6 +21,11 @@ export type InputCommand =
   | { kind: "bagSlot"; n: number };
 
 export function keyToCommand(e: KeyboardEvent): InputCommand | null {
+  // A chord with Cmd/Ctrl/Alt belongs to the browser or the OS, never the game:
+  // Cmd/Ctrl+C (copy) closed a door and spent a turn, Cmd+F (find) opened the
+  // aim cursor, Ctrl+D (bookmark) walked you right. Shift is NOT excluded —
+  // it is how `?` and `>` are typed.
+  if (e.ctrlKey || e.metaKey || e.altKey) return null;
   switch (e.key) {
     // ── movement (arrows / hjkl / wasd) ──
     case "ArrowUp":
@@ -80,6 +85,17 @@ export function keyToCommand(e: KeyboardEvent): InputCommand | null {
     return { kind: "bagSlot", n: parseInt(e.key, 10) };
   }
   return null;
+}
+
+/** Whether a HELD key (an OS auto-repeat) may dispatch this command again.
+ * Only turn actions repeat — holding a direction to walk a corridor is the
+ * point of auto-repeat. Everything else fires once per press: a UI toggle would
+ * flicker, and a bag slot is worse than a nuisance — in play it drinks potion
+ * after potion, and in the shop the same key is BUY, so holding `3` emptied the
+ * purse into arrows and holding `1` bought-and-traded-in the sword on every
+ * repeat. */
+export function repeatsWhenHeld(cmd: InputCommand): boolean {
+  return cmd.kind === "action";
 }
 
 /** Keys we should stop from scrolling the page. */

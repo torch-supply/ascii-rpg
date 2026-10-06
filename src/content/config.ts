@@ -71,7 +71,8 @@ export const CONFIG = {
   eliteExplodeDamage: 6,
   /** melee bumps needed to smash open a cracked wall (knockback breaks instantly) */
   crackedWallToughness: 4,
-  /** cap on persistent floor decals per level (drops oldest beyond this) */
+  /** cap on RUNTIME floor decals per level (blood/scorch — drops the oldest
+   * beyond this; a region's generated ash doesn't count and is never dropped) */
   maxDecals: 220,
   /** fraction of an item's base value the shop pays when you sell it */
   sellRate: 0.4,
@@ -250,7 +251,7 @@ export const CONFIG = {
   /** localStorage key for the single autosave slot */
   saveKey: "emberofdawn:save:v1",
   /** bump content version to invalidate incompatible saves */
-  contentVersion: "62",
+  contentVersion: "64",
 };
 
 /** Forage flavor + heal for a biome: outdoor growth vs. deeper arcane motes. */

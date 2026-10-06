@@ -114,6 +114,11 @@ export function beginLevel(
   p.y = data.playerStart.y;
   p.hp = p.maxHp; // fresh HP at the start of each level
   p.effects = {}; // a fresh start sheds any lingering ward/poison/etc.
+  // ...and the class ability is ready. Using it on the turn you cleared a level
+  // used to leave it cooling down on arrival at the next — the one per-level
+  // timer that wasn't reset — and since `entryPlayer` is snapshotted from `p`,
+  // a death-restart handed the stale cooldown back too.
+  p.abilityCooldown = 0;
   p.baseLightRadius = config.baseLightRadius;
   recomputeLight(p);
   // Safety net: catches a bag built by any path that bypassed `addToBag` (a
@@ -137,6 +142,7 @@ export function beginLevel(
     gasTiles: [],
     crackedWallHits: {},
     decals: { ...(data.decals ?? {}) }, // pre-seeded stains (ashen scorch); runtime adds more
+    decalOrder: [], // runtime stains only, oldest first (the cap evicts from here)
     floodable: data.floodable,
     floodSeeds: data.floodSeeds,
     floodStep: 0,

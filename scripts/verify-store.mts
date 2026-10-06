@@ -7,7 +7,7 @@
 // anti-skip input-settle guard, and save/resume. This drives the vanilla store
 // headlessly and asserts those transitions fire in the right order.
 //
-// Run with: npx --yes tsx scripts/verify-store.mts
+// Run with: npm run test:store
 //
 // Browser seams: `sound`/`effectBus` self-guard to no-ops under Node; `storage`
 // needs a localStorage shim (below) so the save/resume roundtrip is real.
@@ -398,6 +398,21 @@ console.log("\n[S7] Death (last life) → game over");
     "game over clears the save (no resuming a dead run)",
     st().hasSave === false,
   );
+  // The death freeze holds the drained map for DEATH_FREEZE_MS before the card
+  // draws, and advancing from game over quits to the title — so the input guard
+  // must span the whole freeze, or an Enter mashed through it discards the run
+  // summary unseen. A 300ms settle (enough everywhere else) is still inside it.
+  const { DEATH_FREEZE_MS } = await import("@/store/gameStore");
+  await settle();
+  st().quitToTitle();
+  check(
+    "an advance during the death freeze can't skip the game-over card",
+    st().mode === "gameover",
+    `(mode ${st().mode})`,
+  );
+  await sleep(DEATH_FREEZE_MS);
+  st().quitToTitle();
+  check("…and once the freeze is over it goes through", st().mode === "splash");
 }
 
 // ─── S8. Completing the final level → victory ───────────────────────────────
@@ -1113,9 +1128,9 @@ console.log("\n[S16] Bag hotkeys during play");
 
 // [S17] The tenth bag item — overflow past the nine hotkeys stays USABLE
 //
-// There are nine number keys and fourteen item types that can occupy a slot
-// (the thirteen potions plus arrows — a torch is FUEL and a quest item goes to
-// `questProgress`, so neither ever reaches the bag), and nine of the thirteen
+// There are nine number keys and thirteen item types that can occupy a slot
+// (the thirteen potions — a torch is FUEL, a quest item goes to
+// `questProgress`, and arrows hold no key at all), and nine of the thirteen
 // potions are situational ones a careful player hoards, so carrying more than
 // nine kinds at once is ordinary play, not a corner case. Everything
 // past the ninth gets NO slot: no number key, and no row on the HUD panel,
@@ -1146,12 +1161,22 @@ console.log("\n[S17] Overflow past the nine hotkeys");
     "p_levit",
     "p_rime",
     "p_shadow",
+    "p_ember",
     "p_ward",
   ])
     giveItem(g.player, id);
   g.player.hp = g.player.maxHp - 8;
 
-  const orphans = g.player.bag.filter((b) => !g.player.slotMap[b.defId]);
+  // Arrows are carried but hold no number key: pressing one could never do
+  // anything, and it spent one of only nine keys on a dead row.
+  check(
+    "arrows are carried but take no number key",
+    g.player.bag.some((b) => b.defId === "am_arrow") &&
+      !g.player.slotMap["am_arrow"],
+  );
+  const orphans = g.player.bag.filter(
+    (b) => !g.player.slotMap[b.defId] && b.defId !== "am_arrow",
+  );
   check(
     "a plausible bag really does overflow the nine keys",
     orphans.length > 0,
@@ -1210,6 +1235,242 @@ console.log("\n[S17] Overflow past the nine hotkeys");
       return st().game!.turnCount === t;
     })(),
   );
+}
+
+// ─── S18. Reloading mid-RUN, not just mid-level ─────────────────────────────
+// [S9]/[S12] only ever reloaded from live play. A run also passes through the
+// "You Fall" card, the cleared card and the shop, and the save had no notion of
+// any of them: dying with lives left was never saved (reload → the life came
+// back), and a save taken at the shop resumed INTO the cleared level, so one
+// step re-cleared it — par bonus paid twice, shop caps reset (a maxQty-2 heal
+// went 3 → 5 owned). Each case below reloads the page the way a player would:
+// drop the in-memory run, boot, Resume.
+console.log("\n[S18] Resume from every phase of a run");
+{
+  const reload = () => {
+    gameStore.setState({
+      game: null,
+      rng: null,
+      mode: "splash",
+      narration: null,
+      shopPurchases: {},
+    });
+    st().init();
+    st().resumeGame();
+  };
+
+  // (a) death with lives left, quit on the card
+  await bootToPlay("phase-death-seed");
+  {
+    const g = st().game!;
+    const level = g.currentLevel;
+    g.player.lives = 3;
+    g.player.hp = 1;
+    g.player.effects.bleed = 5; // a lethal end-of-turn tick
+    g.monsters = [];
+    st().submitAction({ type: "wait" });
+    check(
+      "(setup) died onto the You Fall card",
+      st().narration?.onContinue === "restartLevel",
+    );
+    reload();
+    check(
+      "reloading on You Fall resumes into play on the same level",
+      st().mode === "playing" && st().game!.currentLevel === level,
+    );
+    check(
+      "…with the life still spent (quitting can't hand it back)",
+      st().game!.player.lives === 2,
+      `(lives ${st().game!.player.lives})`,
+    );
+    check(
+      "…at full health, as rising would have left you",
+      st().game!.player.hp === st().game!.player.maxHp,
+    );
+  }
+
+  // (b) cleared card → (c) shop, reloading at each
+  await bootToPlay("phase-clear-seed");
+  clearReachLevelInvincible();
+  check(
+    "(setup) cleared onto the cleared card",
+    st().narration?.onContinue === "nextLevel",
+  );
+  const par = st().game!.player.parBonus ?? 0;
+  check("(setup) the clear paid a par bonus", par > 0);
+  reload();
+  check(
+    "reloading on the cleared card resumes ON the card, not in the level",
+    st().mode === "narration" && st().narration?.onContinue === "nextLevel",
+    `(mode ${st().mode})`,
+  );
+  check(
+    "…without paying the par bonus again",
+    (st().game!.player.parBonus ?? 0) === par,
+    `(${par} → ${st().game!.player.parBonus})`,
+  );
+
+  await settle();
+  st().continueNarration();
+  check("(setup) continued into the shop", st().mode === "shop");
+  const tier = LEVELS[st().game!.currentLevel].shopTier!;
+  const capped = SHOP_TIERS[tier].find(
+    (e) => e.maxQty != null && e.maxQty >= 2,
+  )!;
+  st().game!.player.coins = 500;
+  const owned = () =>
+    st().game!.player.bag.find((b) => b.defId === capped.itemId)?.count ?? 0;
+  st().buyShopEntry(capped);
+  const afterOne = owned();
+  reload();
+  check(
+    "reloading at the counter resumes AT the counter",
+    st().mode === "shop",
+    `(mode ${st().mode})`,
+  );
+  check(
+    "…with the purchase still counted against its cap",
+    st().shopPurchases[capped.itemId] === 1,
+    `(${JSON.stringify(st().shopPurchases)})`,
+  );
+  check(
+    "…and the par bonus still paid exactly once",
+    (st().game!.player.parBonus ?? 0) === par,
+  );
+  // The cap is the gate that matters: buy to it, reload, and try once more.
+  for (let i = 1; i < capped.maxQty!; i++) st().buyShopEntry(capped);
+  const atCap = owned();
+  check(
+    "(setup) bought up to the cap",
+    atCap === afterOne + capped.maxQty! - 1,
+  );
+  reload();
+  st().buyShopEntry(capped);
+  check(
+    "a reload doesn't reset the shop's cap",
+    owned() === atCap,
+    `(${atCap} → ${owned()})`,
+  );
+  const level = st().game!.currentLevel;
+  await settle();
+  st().leaveShop();
+  check(
+    "leaving a resumed shop still advances the level",
+    st().mode === "playing" && st().game!.currentLevel === level + 1,
+  );
+
+  // (d) the v1 → v2 migration: v1 had no phase, so a goal-met v1 save is one
+  // written on the card or at the shop, and must resume onto the card.
+  const KEY = CONFIG.saveKey;
+  st().submitAction({ type: "wait" });
+  const v2 = JSON.parse(localStorage.getItem(KEY)!);
+  check("(setup) saves are now written as v2", v2.version === 2);
+  const asV1 = (goalDone: boolean) => {
+    const { phase: _p, shopPurchases: _s, ...rest } = v2;
+    void _p;
+    void _s;
+    return { ...rest, version: 1, game: { ...v2.game, goalDone } };
+  };
+  localStorage.setItem(KEY, JSON.stringify(asV1(true)));
+  reload();
+  check(
+    "a goal-met v1 save migrates onto the cleared card",
+    st().mode === "narration" && st().narration?.onContinue === "nextLevel",
+    `(mode ${st().mode})`,
+  );
+  localStorage.setItem(KEY, JSON.stringify(asV1(false)));
+  reload();
+  check("an in-level v1 save migrates into play", st().mode === "playing");
+}
+
+// ─── S19. Input repeat + which screens keep the map ─────────────────────────
+// Two wiring rules with no behavioural seam the store can drive. Holding a
+// number key used to REPEAT it: in play that drank potion after potion, and in
+// the shop the same key is BUY, so holding `3` emptied the purse into arrows.
+// And the over-the-map set was a hand-kept list in GameRoot that missed
+// `"gear"`, so stepping onto any weapon unmounted the whole map and HUD.
+console.log("\n[S19] Held keys + screens that keep the map");
+{
+  const { repeatsWhenHeld, keyToCommand } = await import("@/game/input/keymap");
+  const { MODE_OVER_MAP } = await import("@/store/gameStore");
+  const cmd = (key: string) => keyToCommand({ key } as KeyboardEvent)!;
+  check("holding a direction keeps walking", repeatsWhenHeld(cmd("ArrowUp")));
+  check("holding wait keeps waiting", repeatsWhenHeld(cmd(".")));
+  check(
+    "holding a bag key does NOT repeat it (no drinking or buying on hold)",
+    ["1", "3", "9"].every((k) => !repeatsWhenHeld(cmd(k))),
+  );
+  check(
+    "holding a UI key does not repeat it",
+    ["p", "i", "f", "Enter"].every((k) => !repeatsWhenHeld(cmd(k))),
+  );
+  // Browser/OS chords are never game input: Cmd/Ctrl+C closed a door and spent
+  // a turn, Cmd+F opened the aim cursor. Shift stays live (it types `?`, `>`).
+  const chord = (key: string, mod: string) =>
+    keyToCommand({ key, [mod]: true } as unknown as KeyboardEvent);
+  check(
+    "Cmd/Ctrl/Alt chords are ignored (copy no longer closes a door)",
+    ["metaKey", "ctrlKey", "altKey"].every((mod) =>
+      ["c", "f", "d", "1"].every((k) => chord(k, mod) === null),
+    ),
+  );
+  check(
+    "…but Shift still reaches the game (`?` opens help)",
+    chord("?", "shiftKey")?.kind === "ui",
+  );
+  // Every step-onto prompt and overlay is drawn over a live map...
+  const overlays = [
+    "paused",
+    "inventory",
+    "help",
+    "targeting",
+    "altar",
+    "lore",
+    "gear",
+  ] as const;
+  check(
+    "every in-level overlay keeps the map mounted (incl. the gear prompt)",
+    overlays.every((m) => MODE_OVER_MAP[m]),
+    `(${overlays.filter((m) => !MODE_OVER_MAP[m]).join(", ")})`,
+  );
+  // ...and the full screens replace it (anchor: the table isn't all-true).
+  check(
+    "full screens (shop, narration, splash, end cards) replace it",
+    (["shop", "narration", "splash", "gameover", "victory"] as const).every(
+      (m) => !MODE_OVER_MAP[m],
+    ),
+  );
+}
+
+// ─── S20. Help returns to wherever it was opened from ───────────────────────
+// Help opens from live play (`?`) and from the pause menu. Closing it always
+// went to `playing`, so Pause → Help → Esc dropped you back into the level
+// instead of the menu you came from.
+console.log("\n[S20] Help closes back to where it was opened");
+{
+  await bootToPlay("help-seed");
+  const esc = () => st().handleCommand({ kind: "ui", cmd: "pause" });
+  st().handleCommand({ kind: "ui", cmd: "help" });
+  check("(setup) `?` opens help from play", st().mode === "help");
+  esc();
+  check(
+    "Esc from help opened in play returns to play",
+    st().mode === "playing",
+  );
+
+  esc(); // pause
+  check("(setup) paused", st().mode === "paused");
+  st().openHelp(); // the pause menu's Help button
+  check("(setup) help opened from the pause menu", st().mode === "help");
+  esc();
+  check(
+    "Esc from help opened in the pause menu returns to the MENU",
+    st().mode === "paused",
+    `(mode ${st().mode})`,
+  );
+  st().openHelp();
+  st().closeHelp(); // the sheet's own Back button
+  check("…and so does its Back button", st().mode === "paused");
 }
 
 console.log(

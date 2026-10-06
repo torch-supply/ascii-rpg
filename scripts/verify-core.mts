@@ -1,5 +1,5 @@
-// Temporary end-to-end verification of the pure game engine (no DOM).
-// Run with: npx tsx verify-core.mts   — deleted after verification.
+// End-to-end verification of the pure game engine (no DOM).
+// Run with: npm run test:core
 import { generateLevel } from "@/game/core/map/generate";
 import { LEVELS } from "@/content/levels";
 import {
@@ -54,6 +54,7 @@ import {
 } from "@/game/core/inventory";
 import {
   HOTBAR_SLOTS,
+  takesSlot,
   bagEntryForSlot,
   hotbar,
   syncBagSlots,
@@ -73,7 +74,10 @@ import {
   CHASM_BG,
   GAS_COLOR,
   SPORE_VENT_COLOR,
-  TRAP_COLOR,
+  ARMED_TRAP_COLOR,
+  SPRUNG_TRAP_COLOR,
+  KNOWN_TRAP_GLYPH,
+  luminance,
   WATER_COLOR,
   GLOWCAP_COLOR,
   PLAYER_COLOR,
@@ -1395,6 +1399,49 @@ console.log("\n[19] Status effects, cures & fire");
     );
   }
 
+  // Chill N forfeits exactly N turns — the shortest freeze included. The timer
+  // used to count down in the status tick, which runs BEFORE the monster phase
+  // reads it, so every freeze lost a turn and chill 1 (the floor a resisted
+  // chill rounds up to) froze nothing at all: logged "frozen stiff", then struck.
+  {
+    const game = beginLevel("status-seed", 0, createPlayer());
+    game.player.hp = game.player.maxHp = 500;
+    const spot = adjacentWalkable(game);
+    game.monsters = [
+      {
+        id: "brief",
+        defId: "spider",
+        x: spot.x,
+        y: spot.y,
+        hp: 6,
+        state: "chase",
+        effects: { chill: 1 },
+      },
+    ];
+    const rng = new Rng(1);
+    const frozenHp = game.player.hp;
+    resolveTurn(game, { type: "wait" }, rng);
+    check(
+      "a 1-turn chill still costs the monster its turn",
+      game.player.hp === frozenHp,
+      `(took ${frozenHp - game.player.hp} damage while it was meant to be frozen)`,
+    );
+    check(
+      "…and has thawed once that turn is spent",
+      game.monsters[0]?.effects?.chill === undefined,
+    );
+    // Anchor the premise: thawed, the same spider DOES attack, so the frozen
+    // turn above was the chill and not a monster that never swings.
+    let thawedHp = game.player.hp;
+    let struck = false;
+    for (let t = 0; t < 10 && !struck; t++) {
+      resolveTurn(game, { type: "wait" }, rng);
+      struck = game.player.hp < thawedHp;
+      thawedHp = game.player.hp;
+    }
+    check("…and attacks once thawed", struck);
+  }
+
   // a thrown firebomb sears monsters that survive the blast (player → monster)
   {
     const game = beginLevel("status-seed", 0, createPlayer());
@@ -1485,6 +1532,79 @@ console.log("\n[20] Environmental interplay");
       "the drowned monster counts as a kill",
       game.player.kills === killsBefore + 1,
     );
+  }
+
+  // …but a boss or the level's goal target BRACES at the brink. The mace is
+  // tier-2 stock, so without this it ended Gorm over a Frostspine crevasse (or
+  // the Herald over the Antechamber pit) in one swing and cleared the level.
+  // The lane is built so the void is TWO tiles out: the shove itself must still
+  // land (an absolute anchor — a guard that simply disabled knockback for these
+  // monsters would pass "didn't fall" too), and only the second step is refused.
+  {
+    const bossId = Object.keys(MONSTERS).find(
+      (id) => MONSTERS[id].isBoss && MONSTERS[id].maxHp > 20,
+    );
+    if (!bossId) throw new Error("no boss monster to shove");
+    for (const [label, defId, goal] of [
+      ["a boss", bossId, false],
+      ["the goal target", "skeleton", true],
+    ] as const) {
+      const game = beginLevel("env-seed", 0, createPlayer());
+      const w = game.map.width;
+      const h = game.map.height;
+      const { x: px, y: py } = game.player;
+      game.player.weaponId = "w_mace"; // knockback 1
+      game.player.weaponPower = 6;
+      let lane: { dx: number; dy: number } | null = null;
+      for (const [dx, dy] of DIRS) {
+        const ok = [1, 2].every((k) =>
+          isWalkable(game.map, px + k * dx, py + k * dy),
+        );
+        const vx = px + 3 * dx;
+        const vy = py + 3 * dy;
+        if (ok && vx > 0 && vy > 0 && vx < w - 1 && vy < h - 1) {
+          lane = { dx, dy };
+          break;
+        }
+      }
+      if (!lane) throw new Error("no brink lane found");
+      const { dx, dy } = lane;
+      game.map.tiles[idx(px + 3 * dx, py + 3 * dy, w)] = "chasm";
+      game.monsters = [
+        {
+          id: "brink",
+          defId,
+          x: px + dx,
+          y: py + dy,
+          hp: 999, // survives the blow, so only the shove can end it
+          state: "chase",
+          // frozen, so its own turn can't walk it back and blur where the
+          // shove left it
+          effects: { chill: 9 },
+          isGoalTarget: goal || undefined,
+        },
+      ];
+      // first blow: shoved one tile, onto the brink
+      resolveTurn(game, { type: "move", dx, dy }, new Rng(1));
+      const m = game.monsters.find((mm) => mm.id === "brink");
+      check(
+        `knockback still drives ${label} back`,
+        !!m && m.x === px + 2 * dx && m.y === py + 2 * dy,
+        `(at ${m?.x},${m?.y}; expected ${px + 2 * dx},${py + 2 * dy})`,
+      );
+      // walk up and strike again, now with the void directly behind it
+      if (m) {
+        game.player.x = px + dx;
+        game.player.y = py + dy;
+        m.x = px + 2 * dx;
+        m.y = py + 2 * dy;
+        resolveTurn(game, { type: "move", dx, dy }, new Rng(2));
+      }
+      check(
+        `${label} braces at the brink instead of falling`,
+        game.monsters.some((mm) => mm.id === "brink"),
+      );
+    }
   }
 
   // a firebomb blows open a cracked wall
@@ -4327,9 +4447,19 @@ console.log("\n[54] Color legibility: contrast floors for glyphs on terrain");
   // Only compare a hazard against terrain it can ACTUALLY appear on — generate
   // each level and read which tiles are really there. (Comparing every hazard
   // against every level flagged water on the waterless Pit: a false alarm.)
-  const SIGNAL_OF: Partial<Record<TileType, { what: string; hex: string }>> = {
+  const SIGNAL_OF: Partial<
+    Record<TileType, { what: string; hex: string; floorOnly?: boolean }>
+  > = {
     sporeVent: { what: "spore vent", hex: SPORE_VENT_COLOR },
-    trap: { what: "trap", hex: TRAP_COLOR },
+    // a KNOWN armed trap is drawn over a "trap" tile; a sprung one is its own
+    // tile. Both are signals, so both must read — see (e2) for which is louder.
+    trap: { what: "armed trap", hex: ARMED_TRAP_COLOR },
+    // a sprung trap IS a floor tile, so walls are never its background
+    trapSprung: {
+      what: "sprung trap",
+      hex: SPRUNG_TRAP_COLOR,
+      floorOnly: true,
+    },
     water: { what: "water", hex: WATER_COLOR },
     glowcap: { what: "glowcap", hex: GLOWCAP_COLOR },
   };
@@ -4340,9 +4470,14 @@ console.log("\n[54] Color legibility: contrast floors for glyphs on terrain");
     const present = new Set(g.map.tiles);
     // a spore vent seeps the gas haze, so the haze shares its levels
     if (present.has("sporeVent")) present.add("gas" as TileType);
+    // a sprung trap never exists at generation — only once one fires — so a
+    // level with traps is a level that can show one
+    if (present.has("trap")) present.add("trapSprung");
     for (const [tile, sig] of Object.entries(SIGNAL_OF)) {
       if (!present.has(tile as TileType)) continue;
-      for (const c of [l.palette.floor, l.palette.wall])
+      for (const c of sig.floorOnly
+        ? [l.palette.floor]
+        : [l.palette.floor, l.palette.wall])
         signalPairs.push({ what: sig.what, hex: sig.hex, on: l.id, tc: c });
     }
     if (present.has("sporeVent"))
@@ -4353,6 +4488,24 @@ console.log("\n[54] Color legibility: contrast floors for glyphs on terrain");
     `no hazard signal is invisible against terrain (${signalPairs.length} pairs)`,
     signalPairs,
     (p) => colorDistance(p.hex, p.tc) >= 110,
+  );
+  check(
+    "(premise) sprung traps are among the measured signals",
+    signalPairs.some((p) => p.what === "sprung trap"),
+  );
+
+  // (e2) An ARMED trap must out-shout a SPRUNG one, in shape AND colour. They
+  // shared `^`, told apart only by tint — and the tint was inverted: the
+  // harmless sprung trap wore the bright red, the live one a muted orange.
+  check(
+    "an armed trap and a sprung one never share a glyph",
+    KNOWN_TRAP_GLYPH !== TERRAIN_GLYPH.trapSprung,
+  );
+  check(
+    "the ARMED trap is the brighter, louder of the two",
+    luminance(ARMED_TRAP_COLOR) > luminance(SPRUNG_TRAP_COLOR) &&
+      colorDistance(ARMED_TRAP_COLOR, SPRUNG_TRAP_COLOR) >= 110,
+    `(armed ${luminance(ARMED_TRAP_COLOR).toFixed(3)} vs sprung ${luminance(SPRUNG_TRAP_COLOR).toFixed(3)}, Δ ${colorDistance(ARMED_TRAP_COLOR, SPRUNG_TRAP_COLOR).toFixed(0)})`,
   );
 }
 
@@ -6037,6 +6190,8 @@ console.log("\n[62] Hotbar slots are stable");
     (p) =>
       p.bag.every((b) => {
         const n = p.slotMap[b.defId];
+        // arrows hold no key (`takesSlot`): pressing it could never do anything
+        if (!takesSlot(b.defId)) return n === undefined;
         return n !== undefined && n >= 1 && n <= HOTBAR_SLOTS;
       }),
   );
@@ -6161,6 +6316,11 @@ console.log("\n[64] Log colour-coding");
     // ordinary chatter
     ["You take up the War Axe, setting down the Frostbrand.", "neutral"],
     ["You shove the door open.", "neutral"],
+    // wildlife scattered by a blow is NOT a kill (`awardKill` refuses ambients),
+    // and a boss bracing at a brink is not harm — both must stay neutral
+    ["The Carrion Raven scatters.", "neutral"],
+    ["The Will-o'-Wisp gutters out at your touch.", "neutral"],
+    ["The Gate Warden braces at the brink and will not fall!", "neutral"],
     ["The Skeleton drops a Healing Potion.", "neutral"],
     ["Your torch gutters out. The dark closes back in.", "neutral"],
     ["The water rises higher.", "neutral"],
@@ -6738,6 +6898,7 @@ console.log("\n[69] Glyphs: one character, one meaning");
     ["✷", "barrage"],
     ["Ω", "sconce"],
     [SPORE_VENT_PRIMING_GLYPH, "vent-priming"],
+    [KNOWN_TRAP_GLYPH, "trap-known-armed"],
   ] as const)
     add(g, "overlay", label);
 
@@ -7461,6 +7622,295 @@ console.log("\n[75] Lore advice matches the game");
         return inSpawn || isGoal || isGuard;
       }),
   );
+}
+
+// ─── 76. What a level authors actually ARRIVES ──────────────────────────────
+// Forage, oil and spore vents used to pick from every floor tile on the map,
+// including isolated pockets that `sealUnreachable` later walls off — so their
+// counts quietly fell short. Forage prefers nooks, and a 1-2 tile pocket always
+// reads as a nook, so it lost the most: the Blackwood delivered 4.05 of its 7
+// (minimum 0), the Frostspine 2.43 of 4, the Mire 4.35 of 7 and 4.51 of its 7
+// vents — and every balance figure tuned on those levels was tuned against a
+// count the player never got. `[57]`'s bound (placed ≤ budget) was satisfied
+// the whole time, which is why this asserts the floor too.
+console.log("\n[76] Authored forage, oil and vents all arrive");
+{
+  const SEEDS = 8;
+  const short: string[] = [];
+  LEVELS.forEach((l, i) => {
+    const want = {
+      forage: Math.round((l.forageCount ?? 0) * CONFIG.forageScale),
+      oil: l.oilCount ?? 0,
+      sporeVent: l.sporeVentCount ?? 0,
+    };
+    for (let s = 0; s < SEEDS; s++) {
+      const g = beginLevel(`arrive-${s}`, i, createPlayer());
+      const got = { forage: 0, oil: 0, sporeVent: 0 };
+      for (const t of g.map.tiles) if (t in got) got[t as keyof typeof got]++;
+      // forage has ONE source, so it must match exactly; oil and vents can
+      // also come from a region's hazard kit, so the authored count is a floor
+      if (got.forage !== want.forage)
+        short.push(`${l.id}#${s} forage ${got.forage}/${want.forage}`);
+      if (got.oil < want.oil)
+        short.push(`${l.id}#${s} oil ${got.oil}/${want.oil}`);
+      if (got.sporeVent < want.sporeVent)
+        short.push(`${l.id}#${s} vents ${got.sporeVent}/${want.sporeVent}`);
+    }
+  });
+  check(
+    "every level delivers its authored forage, oil and spore vents",
+    short.length === 0,
+    `(${short.length} short: ${short.slice(0, 6).join("; ")})`,
+  );
+  // Anchor: the premise needs levels that author each of these at all.
+  check(
+    "(premise) some level authors forage, oil and vents",
+    LEVELS.some((l) => (l.forageCount ?? 0) > 0) &&
+      LEVELS.some((l) => (l.oilCount ?? 0) > 0) &&
+      LEVELS.some((l) => (l.sporeVentCount ?? 0) > 0),
+  );
+}
+
+// ─── 77. Rules that held on one path and not the others ─────────────────────
+// Four rules that were each enforced at ONE site and silently skipped at the
+// rest — the duplication bug class. Every case pairs the fixed path with an
+// anchor proving the setup really reaches the code (a scenario that never fires
+// the rule would pass "no kill credit" or "nothing spawned" vacuously).
+console.log("\n[77] One rule, every path: ambients, fire, siege, arrival");
+{
+  const px = 6;
+  const py = 6;
+  /** A small open arena around (px,py) on level `li`, monsters cleared. */
+  const arena = (li = 0, seed = "rules-77") => {
+    const g = beginLevel(seed, li, createPlayer("warrior"));
+    const w = g.map.width;
+    for (let y = py - 4; y <= py + 4; y++)
+      for (let x = px - 4; x <= px + 4; x++) g.map.tiles[y * w + x] = "floor";
+    g.player.x = px;
+    g.player.y = py;
+    g.player.hp = g.player.maxHp = 500;
+    g.monsters = [];
+    g.decals = {};
+    return { g, w };
+  };
+  const credit = (g: GameState) => ({
+    kills: g.player.kills,
+    level: g.levelKills,
+    coins: g.player.coins,
+  });
+
+  // (a) Ambient wildlife earns nothing, by ANY route. Only bumping knew the
+  // rule; Cleave, arrows, bombs, fire and haze all paid out on a raven.
+  for (const [route, act] of [
+    [
+      "Cleave",
+      (g: GameState) => resolveTurn(g, { type: "ability" }, new Rng(3)),
+    ],
+    [
+      "a firebomb",
+      (g: GameState) => {
+        g.player.bag = [{ defId: "p_bomb", count: 1 }];
+        resolveTurn(
+          g,
+          { type: "throwAt", defId: "p_bomb", x: px + 1, y: py },
+          new Rng(3),
+        );
+      },
+    ],
+  ] as const) {
+    for (const [what, defId] of [
+      ["a raven", "raven"],
+      ["a skeleton (anchor)", "skeleton"],
+    ] as const) {
+      const { g, w } = arena();
+      g.monsters = [{ id: "t", defId, x: px + 1, y: py, hp: 1, state: "idle" }];
+      const before = credit(g);
+      act(g);
+      const after = credit(g);
+      const gone = !g.monsters.some((m) => m.id === "t");
+      const counted = after.kills > before.kills;
+      const stained = g.decals[py * w + px + 1] === "blood";
+      if (defId === "raven")
+        check(
+          `${route} scatters ${what} — gone, but no kill, coins or stain`,
+          gone &&
+            !counted &&
+            after.level === before.level &&
+            after.coins === before.coins &&
+            !stained,
+          `(gone ${gone}, kills ${before.kills}→${after.kills}, stain ${stained})`,
+        );
+      else
+        check(
+          `…while ${route} on ${what} still counts as a kill`,
+          gone && counted,
+        );
+    }
+  }
+
+  // (b) A firebomb thrown INTO bramble burns it. Oil always caught; bramble —
+  // the thicket fire is sold as the answer to — only caught by spillover.
+  {
+    const { g, w } = arena();
+    const tx = px + 2;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++)
+        g.map.tiles[(py + dy) * w + tx + dx] = "bramble";
+    g.player.bag = [{ defId: "p_bomb", count: 1 }];
+    resolveTurn(
+      g,
+      { type: "throwAt", defId: "p_bomb", x: tx, y: py },
+      new Rng(3),
+    );
+    let left = 0;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++)
+        if (g.map.tiles[(py + dy) * w + tx + dx] === "bramble") left++;
+    check(
+      "a firebomb thrown into bramble burns the whole thicket it lands on",
+      left === 0,
+      `(${left}/9 still bramble)`,
+    );
+  }
+
+  // (c) Siege waves land only where you can be walked to. The ring is a
+  // Chebyshev band, so a wave could spawn behind a shut door (inside the
+  // Ramparts' door-gated vault) and sit there for the rest of the hold.
+  {
+    const li = levelIndexBy(
+      "a survive level",
+      (l) => l.goal.type === "survive",
+    );
+    const sealed = (gate: TileType) => {
+      const g = beginLevel("siege-77", li, createPlayer("warrior"));
+      const w = g.map.width;
+      const h = g.map.height;
+      // everything is open ground, except a walled 3x3 cell around you whose
+      // ONLY opening is `gate` — so every ring tile lies beyond it
+      for (let i = 0; i < g.map.tiles.length; i++) {
+        const x = i % w;
+        const y = Math.floor(i / w);
+        const edge = x === 0 || y === 0 || x === w - 1 || y === h - 1;
+        g.map.tiles[i] = edge ? "wall" : "floor";
+      }
+      const cx = Math.floor(w / 2);
+      const cy = Math.floor(h / 2);
+      for (let y = cy - 2; y <= cy + 2; y++)
+        for (let x = cx - 2; x <= cx + 2; x++)
+          g.map.tiles[y * w + x] =
+            Math.abs(x - cx) === 2 || Math.abs(y - cy) === 2 ? "wall" : "floor";
+      g.map.tiles[(cy - 2) * w + cx] = gate;
+      g.player.x = cx;
+      g.player.y = cy;
+      g.player.hp = g.player.maxHp = 10000;
+      g.monsters = [];
+      const rng = new Rng(9);
+      let arrived = 0;
+      for (let t = 0; t < 12; t++) {
+        resolveTurn(g, { type: "wait" }, rng);
+        arrived = Math.max(arrived, g.monsters.length);
+      }
+      return arrived;
+    };
+    const shut = sealed("door");
+    const open = sealed("doorOpen");
+    check(
+      "no siege wave spawns where a shut door walls it off from you",
+      shut === 0,
+      `(${shut} spawned)`,
+    );
+    check("…while the same cell with the door OPEN does draw waves", open > 0);
+  }
+
+  // (d) Arriving on a tile springs what's there, however you arrived. Being
+  // THROWN by a shover skipped it: a gargoyle could hurl you onto a trap that
+  // never went off.
+  {
+    const shover = Object.keys(MONSTERS).find((id) => MONSTERS[id].knockback);
+    if (!shover) throw new Error("no knockback monster");
+    const { g, w } = arena();
+    g.map.tiles[py * w + px - 1] = "trap"; // behind you, opposite the shover
+    g.monsters = [
+      { id: "s", defId: shover, x: px + 1, y: py, hp: 999, state: "chase" },
+    ];
+    const rng = new Rng(4);
+    for (let t = 0; t < 10 && g.player.x === px; t++)
+      resolveTurn(g, { type: "wait" }, rng);
+    check(
+      "(setup) the shover threw you back onto the trap tile",
+      g.player.x === px - 1,
+    );
+    check(
+      "a trap you are THROWN onto springs",
+      g.map.tiles[py * w + px - 1] === "trapSprung",
+      `(tile is ${g.map.tiles[py * w + px - 1]})`,
+    );
+  }
+}
+
+// ─── 78. Housekeeping that silently drifted ────────────────────────────────
+console.log("\n[78] Decal cap evicts the oldest; abilities start ready");
+{
+  // (a) The decal cap drops the OLDEST runtime stain. It used to evict
+  // `Object.keys(decals)[0]` — for integer keys the LOWEST TILE INDEX — so a
+  // fresh kill near the top of the map vanished first, and a region's
+  // generated ash (also in `decals`) counted toward the cap and was eaten.
+  {
+    const g = beginLevel("decal-78", 0, createPlayer("warrior"));
+    const w = g.map.width;
+    const px = 6;
+    const py = 2; // near the TOP: a low tile index, which the old rule evicted
+    for (let y = py - 1; y <= py + 1; y++)
+      for (let x = px - 1; x <= px + 2; x++) g.map.tiles[y * w + x] = "floor";
+    g.player.x = px;
+    g.player.y = py;
+    g.monsters = [
+      { id: "k", defId: "skeleton", x: px + 1, y: py, hp: 1, state: "chase" },
+    ];
+    // generated ash at the very lowest indices, and a full cap of OLD runtime
+    // stains at the highest, oldest first
+    g.decals = {};
+    for (let i = 0; i < 5; i++) g.decals[i] = "ash";
+    const n = g.map.tiles.length;
+    g.decalOrder = [];
+    for (let k = 0; k < CONFIG.maxDecals; k++) {
+      const i = n - 1 - k;
+      g.decals[i] = "blood";
+      g.decalOrder.push(i);
+    }
+    const oldest = g.decalOrder[0];
+    const killAt = py * w + px + 1;
+    resolveTurn(g, { type: "move", dx: 1, dy: 0 }, new Rng(5));
+    check(
+      "(setup) the kill landed and left a stain",
+      !g.monsters.some((m) => m.id === "k") && g.decals[killAt] === "blood",
+    );
+    check(
+      "at the cap, the OLDEST stain is the one dropped",
+      !(oldest in g.decals) && g.decalOrder.length === CONFIG.maxDecals,
+      `(oldest ${oldest} still present: ${oldest in g.decals})`,
+    );
+    check(
+      "…and a region's generated ash is never evicted",
+      [0, 1, 2, 3, 4].every((i) => g.decals[i] === "ash"),
+    );
+  }
+
+  // (b) A class ability starts every level ready — on arrival AND on a
+  // death-restart (which replays `entryPlayer`, snapshotted at level start).
+  {
+    const p = createPlayer("warrior");
+    p.abilityCooldown = 7; // used on the turn the last level was cleared
+    const g = beginLevel("cooldown-78", 1, p);
+    check(
+      "a new level starts with the class ability ready",
+      g.player.abilityCooldown === 0,
+    );
+    check(
+      "…and so does a restart from the entry snapshot",
+      g.entryPlayer.abilityCooldown === 0,
+    );
+  }
 }
 
 console.log(
