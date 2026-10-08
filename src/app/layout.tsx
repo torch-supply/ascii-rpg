@@ -1,4 +1,5 @@
 import { LEVELS } from "@/content/levels";
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -79,6 +80,10 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <body className="h-full bg-ink text-fg font-mono antialiased select-none">
         {children}
+        {/* Vercel Web Analytics: page views only (enable it in the Vercel
+            project's Analytics tab). It's a no-op in development, and the
+            game is one route, so this counts visits, not play. */}
+        <Analytics />
       </body>
     </html>
   );
