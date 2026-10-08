@@ -144,6 +144,15 @@ export default function Splash() {
           v1 · {LEVELS.length} levels · move with arrows or wasd · bump to
           attack · find the way, then live to tell it
         </p>
+
+        <a
+          href="https://github.com/torch-supply/ascii-rpg"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="-mt-3 text-[11px] tracking-[0.2em] text-dim transition-colors hover:text-gold focus-visible:text-gold"
+        >
+          source on github ↗
+        </a>
       </BoxFrame>
     </div>
   );
