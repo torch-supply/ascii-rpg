@@ -31,7 +31,7 @@ import { BG, MARK, TEXT } from "@/components/hud/palette";
 // skip the image, which is how this requirement was found.
 export const dynamic = "force-static";
 
-export const alt = "Ember of Dawn — an ASCII roguelike RPG";
+export const alt = "Ember of Dawn — an ASCII RPG";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

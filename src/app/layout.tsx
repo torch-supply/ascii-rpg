@@ -4,7 +4,7 @@ import "./globals.css";
 
 const TITLE = "Ember of Dawn — an ASCII RPG";
 const DESCRIPTION =
-  `A single-player ASCII roguelike that runs entirely in your browser. Wake a captive in the Lich-King's pit, ` +
+  `A single-player ASCII RPG that runs entirely in your browser. Wake a captive in the Lich-King's pit, ` +
   `fight up through ${LEVELS.length} procedurally generated levels of cursed wood, flooding crypt and storm-lashed rampart, ` +
   `recover the Sunblade, and rekindle the dawn. No install, no account, no backend.`;
 
