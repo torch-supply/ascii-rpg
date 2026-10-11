@@ -1,8 +1,8 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────
-// DEV-ONLY visual reference. Every tile in every biome, every monster, item,
-// status tint and atmosphere — on one screen.
+// Visual reference (public, at /style). Every tile in every biome, every
+// monster, item, status tint and atmosphere — on one screen.
 //
 // Why this exists: the visual bugs that actually shipped (a spore haze that
 // vanished into the foliage, a chasm that read as off-map black) were caught by
@@ -11,14 +11,17 @@
 // — so make the eyeball pass instant and systematic instead of a playthrough.
 // Contrast numbers are shown inline so a weak pairing is obvious, not guessed.
 // ─────────────────────────────────────────────────────────────────────────
-import type { TileType } from "@/game/core/types";
+import type { Biome, Palette, TileType } from "@/game/core/types";
 import { LEVELS } from "@/content/levels";
 import { ELITE, MONSTERS } from "@/content/monsters";
 import { CLASS_LIST } from "@/content/classes";
 import { ITEMS } from "@/content/items";
 import { STATUS } from "@/game/core/status";
 import { classifyLog } from "@/components/hud/logStyle";
+import { LOG_CORPUS } from "@/components/hud/logCorpus";
+import { BUFFS } from "@/components/hud/buffs";
 import { BG, MARK } from "@/components/hud/palette";
+import { SITE_NAME } from "@/lib/site";
 import { ambientForBiome, BIOMES } from "@/render/lighting";
 import { SKYLIGHT } from "@/game/core/light";
 import {
@@ -46,6 +49,21 @@ import {
   KNOWN_TRAP_GLYPH,
   ARMED_TRAP_COLOR,
   SPRUNG_TRAP_COLOR,
+  ALTAR_GLYPH,
+  ALTAR_COLOR,
+  ALTAR_SPENT_COLOR,
+  LORE_GLYPH,
+  LORE_COLOR,
+  FIRE_GLYPHS,
+  FIRE_COLOR,
+  FIRE_DYING_COLOR,
+  GAS_GLYPHS,
+  GAS_BRIGHTNESS,
+  BARRAGE_GLYPH,
+  BARRAGE_COLOR,
+  BARRAGE_BG,
+  BARRAGE_PULSE,
+  RETICLE,
 } from "@/render/tiles";
 
 const INK = "#0d0d0d";
@@ -55,7 +73,7 @@ const DECALS = Object.entries(DECAL_STYLE);
 
 /** The darkest floor in the game, including sub-biome palettes — the worst case for a
  * decal's legibility, and the backdrop the decal swatches use. Derived rather than
- * hard-coded: the ashen wastes are darkest today, but that shouldn't be baked in. */
+ * hard-coded, because which floor that is moves as palettes are retuned. */
 const DARKEST_FLOOR = [
   ...LEVELS.map((l) => l.palette.floor),
   ...LEVELS.flatMap((l) => (l.subBiomes ?? []).map((sb) => sb.palette?.floor)),
@@ -63,19 +81,32 @@ const DARKEST_FLOOR = [
   .filter((c): c is string => !!c)
   .reduce((a, b) => (luminance(b) < luminance(a) ? b : a));
 
-/** One line per log kind, taken from the real message templates with their
- * interpolations filled in — the same corpus test [64] asserts against. Keeping
- * them here rather than inventing prose is the point: the classifier is a
- * heuristic OVER THIS TEXT, so a sample that isn't real proves nothing. */
-const LOG_SAMPLES = [
-  "You strike the Skeleton for 8 (4 left).",
-  "You slay the Skeleton.",
-  "The Skeleton hits you for 2.",
-  "A hidden spike trap! You take 4 damage.",
-  "You drink the Healing Potion. (+10 hp)",
-  "You pick up 6 gold.",
-  "You take up the War Axe, setting down the Frostbrand.",
-];
+type PaletteSource = { key: string; label: string; palette: Palette };
+
+/** Every distinct palette a biome is actually drawn in — a level whose base
+ * biome it is, or a sub-region of one — in level order. One biome is several
+ * palettes (the castle alone is four), and showing just one hid the rest: the
+ * Ramparts' cold slate and the Antechamber's umber never appeared here. */
+function palettesFor(b: Biome): PaletteSource[] {
+  const out: PaletteSource[] = [];
+  const seen = new Set<string>();
+  const push = (label: string, palette: Palette) => {
+    const key = `${palette.wall}${palette.floor}${palette.accent}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ key, label, palette });
+  };
+  for (const l of LEVELS) {
+    if (l.biome === b) push(l.title, l.palette);
+    // numbered by the level's region order (its region ids are 1, 2, …), since
+    // one level can carve several regions of the same biome — the Blackwood
+    // has two forest wings in different greens
+    (l.subBiomes ?? []).forEach((sb, i) => {
+      if (sb.biome === b) push(`${l.title} · region ${i + 1}`, sb.palette);
+    });
+  }
+  return out;
+}
 
 /** `#rrggbb` + alpha → rgba(), so a swatch can show a decal at its REAL opacity. */
 function withAlpha(hex: string, alpha: number): string {
@@ -137,11 +168,12 @@ export default function StyleGallery() {
       }}
     >
       <h1 style={{ fontSize: 26, letterSpacing: "0.2em", color: "#ffb347" }}>
-        EMBER OF DAWN — STYLE GALLERY
+        {SITE_NAME.toUpperCase()} — STYLE GALLERY
       </h1>
       <p style={{ fontSize: 14, color: "#889", maxWidth: 860 }}>
-        Dev-only visual reference. Numbers are perceptual contrast against the
-        surrounding terrain —{" "}
+        The game&apos;s visual reference: every glyph and colour it draws, built
+        from the same tables the game reads, so it can&apos;t drift from what
+        ships. Numbers are perceptual contrast against the surrounding terrain —{" "}
         <span style={{ color: "#ff6a6a" }}>red &lt;110</span> (likely
         invisible), <span style={{ color: "#e0b050" }}>amber &lt;200</span>{" "}
         (thin), <span style={{ color: "#5aa86a" }}>green</span> (comfortable).
@@ -181,17 +213,11 @@ export default function StyleGallery() {
               <tr key={t} style={{ borderTop: "1px solid #1c1c22" }}>
                 <td style={{ padding: "4px 8px", color: "#9aa" }}>{t}</td>
                 {BIOMES.map((b) => {
-                  // a representative palette for this biome (first level using it)
-                  const lvl =
-                    LEVELS.find((l) => l.biome === b) ??
-                    LEVELS.find((l) =>
-                      l.subBiomes?.some((s) => s.biome === b),
-                    ) ??
-                    LEVELS[0];
-                  const pal =
-                    LEVELS.flatMap((l) => l.subBiomes ?? []).find(
-                      (s) => s.biome === b,
-                    )?.palette ?? lvl.palette;
+                  // the biome's FIRST palette — the same one its card below
+                  // leads with (every other one it wears is listed there)
+                  const pal = (
+                    palettesFor(b)[0] ?? { palette: LEVELS[0].palette }
+                  ).palette;
                   const fg = terrainColor(t, pal, b);
                   const bg = t === "chasm" ? CHASM_BG : INK;
                   return (
@@ -232,28 +258,56 @@ export default function StyleGallery() {
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
         {
-          // HAND-MAINTAINED — these are drawn OVER the cell grid by CanvasRenderer
-          // (search `state.altars`, `state.lore`, `state.fireTiles`, `state.gasTiles`,
-          // `state.barrage`), so they aren't `TileType`s and there's no table to
-          // enumerate. Every colour below was checked against those draw calls; if you
-          // retint a POI, change it here too. The 4th slot is the BACKGROUND the glyph
-          // really sits on, which matters for the contrast reading: the barrage is
-          // painted over a dark-red cell, not over floor.
+          // Drawn OVER the cell grid by CanvasRenderer, so they aren't
+          // `TileType`s — but every glyph and colour is the renderer's own export
+          // from `tiles.ts` (they were literals copied from its draw calls once).
+          // The 4th slot is the BACKGROUND the glyph really sits on, which
+          // matters for the contrast reading: the barrage is painted over a
+          // dark-red cell, not over floor.
           (
             [
               ["@", PLAYER_COLOR, "you"],
-              ["‡", "#d6a4ff", "altar — unspent"],
-              ["‡", "#6a6a6a", "altar — spent"],
-              ["¶", "#cbb488", "lore — inscription"],
-              ["¶", "#b0a890", "lore — remains"],
-              ["¶", "#6a6a66", "lore — already read"],
-              ["▴", "#ff9d3c", "fire — burning"],
-              ["▵", "#ff5a3c", "fire — guttering out"],
-              // fire and gas each ALTERNATE two glyphs frame to frame (the flicker /
-              // drift), so both shapes have to read — not just the one you'd screenshot
-              ["∴", GAS_COLOR, "poison haze"],
-              ["°", GAS_COLOR, "poison haze — alt frame"],
-              ["✷", "#ff6a4a", "lich barrage telegraph", "#7a1512"],
+              [ALTAR_GLYPH, ALTAR_COLOR, "altar — unspent"],
+              [ALTAR_GLYPH, ALTAR_SPENT_COLOR, "altar — spent"],
+              [LORE_GLYPH, LORE_COLOR.inscription, "lore — inscription"],
+              [LORE_GLYPH, LORE_COLOR.remains, "lore — remains"],
+              [LORE_GLYPH, LORE_COLOR.read, "lore — already read"],
+              // Fire flickers between two FRAMES and, separately, burns red on
+              // its last turn — so all four combinations really appear.
+              ...FIRE_GLYPHS.flatMap((g, f) =>
+                (
+                  [
+                    [FIRE_COLOR, "burning"],
+                    [FIRE_DYING_COLOR, "dying (last turn)"],
+                  ] as const
+                ).map(
+                  ([c, state]) =>
+                    [g, c, `fire — ${state}, frame ${f + 1}`] as const,
+                ),
+              ),
+              // Gas is NEVER drawn at full colour: it swirls between these two
+              // brightnesses, and both of its drift frames have to read at the
+              // dim end — the haze is the overlay that has failed this before.
+              ...GAS_GLYPHS.flatMap((g, f) =>
+                (["min", "max"] as const).map(
+                  (k) =>
+                    [
+                      g,
+                      dim(GAS_COLOR, GAS_BRIGHTNESS[k]),
+                      `poison haze — frame ${f + 1}, ${k === "min" ? "faintest" : "brightest"}`,
+                    ] as const,
+                ),
+              ),
+              // the barrage telegraph pulses glyph AND cell together
+              ...(["min", "max"] as const).map((k) => {
+                const pulse = BARRAGE_PULSE[k];
+                return [
+                  BARRAGE_GLYPH,
+                  dim(BARRAGE_COLOR, 0.6 + 0.4 * pulse),
+                  `lich barrage — pulse ${k === "min" ? "low" : "peak"}`,
+                  dim(BARRAGE_BG, pulse),
+                ] as const;
+              }),
               // a spore vent's WARNING state: one turn before it seeps it swells and
               // brightens. Shown here beside the idle vent because the whole point is
               // that the two are tellable apart at a glance mid-play.
@@ -263,10 +317,6 @@ export default function StyleGallery() {
                 SPORE_VENT_PRIMING_COLOR,
                 "spore vent — about to blow",
               ],
-              // A lit wall bracket, and the cold iron you REMEMBER seeing once the
-              // tile leaves view. Missing here entirely until now, which is how it
-              // kept a glyph two exclamation marks wide while twelve potions use
-              // one: nothing in the gallery ever put the two side by side.
               // The two VISIBLE trap states, side by side because telling them
               // apart is the whole job: one bites, the other is spent. The armed
               // glyph is a renderer override on a "trap" tile; sprung is its own
@@ -277,8 +327,19 @@ export default function StyleGallery() {
                 SPRUNG_TRAP_COLOR,
                 "trap — sprung (harmless)",
               ],
+              // A lit wall bracket, and the cold iron you REMEMBER seeing once the
+              // tile leaves view. It once drew `‼` — two of the `!` twelve potions
+              // use — and only side-by-side comparison here caught it.
               ["Ω", SCONCE_LIT, "wall sconce — lit"],
               ["Ω", SCONCE_COLD, "wall sconce — remembered (cold iron)"],
+              // transient UI: only on screen while aiming
+              [RETICLE.center, RETICLE.centerColor, "aim reticle — target"],
+              [RETICLE.ring, RETICLE.ringColor, "aim reticle — blast ring"],
+              [
+                RETICLE.arrows.join(""),
+                RETICLE.centerColor,
+                "ability aim — directions",
+              ],
             ] as const
           ).map(([glyph, color, label, bg], i) => (
             <div
@@ -359,10 +420,10 @@ export default function StyleGallery() {
             if (cur.some((u) => u.label === label)) return; // dedupe across biomes
             uses.set(g, [...cur, { label, color }]);
           };
-          // Collisions that are DELIBERATE design, not defects — a hidden trap
-          // is supposed to be indistinguishable from floor until you sense it.
-          // Collisions that are CONVENTIONS, not bugs. Labelling them is what
-          // lets a real one stand out instead of drowning in a list of expected
+          // Collisions that are DELIBERATE — a convention (one glyph per item
+          // class), a disguise (a hidden trap IS supposed to look like floor), or
+          // chrome/FX that never sits on the map beside its twin. Labelling them
+          // is what lets a real one stand out instead of drowning in expected
           // pairs — the report is only useful if its output is short.
           const intentional: Record<string, string> = {
             "·": "by design — hidden traps must look like floor",
@@ -375,7 +436,10 @@ export default function StyleGallery() {
             "[": "by design — one glyph per item CLASS (armour)",
             "!": "by design — one glyph per item CLASS (potions)",
             "(": "by design — one glyph per item CLASS (light sources)",
-            "✷": "harmless — the class badge is HUD chrome, never drawn on the map",
+            "*": "by design — the quest items never coexist on a level; sparks are a few frames of FX",
+            "✷": "harmless — the class badge and the ember buff are HUD chrome, never drawn on the map",
+            "⚔": "harmless — both are HUD chrome (class badge, might buff)",
+            "+": "transient — the blast ring only shows while aiming",
           };
           // Use the RENDERED glyph, not the raw table: `terrainGlyph` overrides
           // several (a cracked wall draws as the biome's wall; forage uses
@@ -388,8 +452,8 @@ export default function StyleGallery() {
                 `tile: ${t}`,
                 terrainColor(t, LEVELS[0].palette, b),
               );
-          add("‡", "altar / shrine", "#d6a4ff");
-          add("¶", "lore prop", "#cbb488");
+          add(ALTAR_GLYPH, "altar / shrine", ALTAR_COLOR);
+          add(LORE_GLYPH, "lore prop", LORE_COLOR.inscription);
           add("@", "player", PLAYER_COLOR);
           for (const m of Object.values(MONSTERS))
             add(m.glyph, `monster: ${m.id}`, m.color);
@@ -397,7 +461,7 @@ export default function StyleGallery() {
           // read clean while `∴` meant both a healing arcane mote and a cloud of
           // poison (the mote is `❖` now), `‼` for a wall sconce was two of the `!`
           // twelve potions share (`Ω` now), and `*` was both a guttering fire and
-          // the quest shards a collect level sends you to pick up (fire guessed
+          // the quest shards a collect level sends you to pick up (fire is
           // `▵` now, the hollow twin of its own burning frame). All three were
           // hazard/boon or scenery/loot pairs invisible here, because the report
           // only ever compared terrain against monsters.
@@ -405,11 +469,21 @@ export default function StyleGallery() {
             add(it.glyph, `item: ${it.id}`, it.color);
           for (const c of CLASS_LIST)
             if (c.glyph) add(c.glyph, `class badge: ${c.id}`, "#ffd24d");
-          add("▴", "fire — burning", "#ff9d3c");
-          add("▵", "fire — guttering", "#ff5a3c");
-          add("∴", "poison haze", GAS_COLOR);
-          add("✷", "lich barrage telegraph", "#ff6a4a");
+          for (const g of FIRE_GLYPHS) add(g, "fire", FIRE_COLOR);
+          for (const g of GAS_GLYPHS) add(g, "poison haze", GAS_COLOR);
+          add(BARRAGE_GLYPH, "lich barrage telegraph", BARRAGE_COLOR);
           add("Ω", "wall sconce", SCONCE_LIT);
+          // HUD buff tokens: never on the map, but a glyph that already means
+          // something there should be a deliberate choice, not an accident
+          for (const b of BUFFS) add(b.glyph, `buff: ${b.label}`, b.color);
+          // Transient glyphs drawn over the map. Test [69] skips these on
+          // purpose (it covers what PERSISTS); here they're fed in so the
+          // report decides about them explicitly instead of never seeing them.
+          add(RETICLE.center, "aim reticle", RETICLE.centerColor);
+          add(RETICLE.ring, "aim reticle — blast ring", RETICLE.ringColor);
+          for (const a of RETICLE.arrows)
+            add(a, "ability aim arrow", RETICLE.centerColor);
+          add("*", "blast / hit sparks (FX)", "#ffb347");
           // a sensed, still-ARMED trap is a renderer override on a "trap" tile,
           // so it never appears in TILES (the sprung `_` does, as its own tile)
           add(KNOWN_TRAP_GLYPH, "trap — known & armed", ARMED_TRAP_COLOR);
@@ -470,10 +544,12 @@ export default function StyleGallery() {
         {BIOMES.map((b) => {
           const amb = ambientForBiome(b);
           const atm = BIOME_ATMOSPHERE[b];
-          const pal =
-            LEVELS.find((l) => l.biome === b)?.palette ??
-            LEVELS.flatMap((l) => l.subBiomes ?? []).find((s) => s.biome === b)
-              ?.palette;
+          const pals = palettesFor(b);
+          // levels whose own sky overrides what this biome implies — the
+          // Ramparts is `castle` but stands under an open (stormy) sky
+          const skyOverrides = LEVELS.filter(
+            (l) => l.biome === b && l.skylight != null,
+          );
           const rgb = (c: [number, number, number]) =>
             `rgb(${c.map(Math.round).join(",")})`;
           return (
@@ -482,27 +558,34 @@ export default function StyleGallery() {
               style={{ border: "1px solid #1c1c22", padding: 12, fontSize: 13 }}
             >
               <div style={{ color: "#ffb347", marginBottom: 6 }}>{b}</div>
-              {pal && (
-                <>
+              {pals.map(({ key, label, palette: pal }) => (
+                <div key={key} style={{ marginBottom: 8 }}>
+                  <div style={{ color: "#778", fontSize: 12 }}>{label}</div>
                   <Swatch hex={pal.wall} label="wall" />
                   <Swatch hex={pal.floor} label="floor" />
                   <Swatch hex={pal.accent} label="accent" />
-                  <div style={{ marginTop: 4, color: "#778" }}>
+                  <div style={{ marginTop: 2, color: "#778" }}>
                     wall↔floor <Dist a={pal.wall} b={pal.floor} />
                   </div>
-                </>
-              )}
+                </div>
+              ))}
               <Swatch hex={rgb(amb.center)} label="ambient center" />
               <Swatch hex={rgb(amb.edge)} label="ambient edge" />
               <div style={{ marginTop: 4, color: "#667" }}>
                 atmosphere:{" "}
-                {atm
-                  ? `${atm.kind} ×${atm.count} · ${
-                      ATMO_EMISSIVE.has(atm.kind)
-                        ? "emissive (keeps full strength in the dark)"
-                        : "reflective (dims with the ground)"
-                    }`
-                  : "—"}
+                {atm ? (
+                  <>
+                    <span style={{ color: withAlpha(atm.color, atm.alpha) }}>
+                      ■
+                    </span>{" "}
+                    {atm.kind} ×{atm.count} @{atm.alpha} ·{" "}
+                    {ATMO_EMISSIVE.has(atm.kind)
+                      ? "emissive (keeps full strength in the dark)"
+                      : "reflective (dims with the ground)"}
+                  </>
+                ) : (
+                  "—"
+                )}
               </div>
               {/* How far you see here with NO light of your own — the biome's own
                   daylight. Absent = the pitch-dark floor (`CONFIG.unlitSight`),
@@ -511,6 +594,12 @@ export default function StyleGallery() {
               <div style={{ marginTop: 2, color: "#667" }}>
                 unaided sight:{" "}
                 {SKYLIGHT[b] != null ? `${SKYLIGHT[b]} (open sky)` : "indoors"}
+                {skyOverrides.map((l) => (
+                  <div key={l.id}>
+                    · {l.title}: {l.skylight} (level&apos;s own sky — caps every
+                    region)
+                  </div>
+                ))}
               </div>
             </div>
           );
@@ -554,7 +643,7 @@ export default function StyleGallery() {
 
       {/* ── items + status tints ─────────────────────────────────────── */}
       <h2 style={{ fontSize: 17, color: "#ffb347", marginTop: 34 }}>
-        Items · status tints
+        Items · status chips · buff tokens
       </h2>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
         {Object.values(ITEMS).map((it) => (
@@ -594,6 +683,26 @@ export default function StyleGallery() {
               {s.hudGlyph}
             </span>
             <span style={{ color: "#9aa", fontSize: 13 }}>{s.key}</span>
+          </span>
+        ))}
+      </div>
+      {/* the buff tokens beside them in the HUD's level row */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 14,
+          marginTop: 12,
+        }}
+      >
+        {BUFFS.map((b) => (
+          <span
+            key={b.key}
+            title={`buff ${b.key} · ${b.color}`}
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <span style={{ color: b.color, fontSize: 28 }}>{b.glyph}</span>
+            <span style={{ color: "#9aa", fontSize: 13 }}>buff: {b.label}</span>
           </span>
         ))}
       </div>
@@ -693,14 +802,15 @@ export default function StyleGallery() {
         Activity log · message kinds
       </h2>
       <p style={{ fontSize: 13, color: "#778", maxWidth: 780, marginTop: 4 }}>
-        Lines are lifted from the REAL templates in{" "}
-        <code>actions/index.ts</code> and <code>status.ts</code> — the same
-        corpus test <code>[64]</code> asserts against — so this shows what the
-        rail actually paints, not a designer&apos;s idea of it. The left column
-        is the rail at its true width and background; the right names the kind
-        each line resolves to. Harm is keyed on YOU being the grammatical
-        object, which is what keeps &ldquo;You strike&nbsp;…&rdquo; out of the
-        injury colour.
+        Every line test <code>[64]</code> asserts (<code>hud/logCorpus.ts</code>
+        ), lifted from the REAL templates in <code>
+          actions/index.ts
+        </code> and <code>status.ts</code> — so this shows what the rail
+        actually paints, not a designer&apos;s idea of it. The left column is
+        the rail at its true width and background; the right names the kind each
+        line resolves to, flagged red if that isn&apos;t the kind it&apos;s
+        meant to be. Harm is keyed on YOU being the grammatical object, which is
+        what keeps &ldquo;You strike&nbsp;…&rdquo; out of the injury colour.
       </p>
       <div
         style={{ display: "flex", gap: 22, flexWrap: "wrap", marginTop: 12 }}
@@ -717,7 +827,7 @@ export default function StyleGallery() {
             background: `linear-gradient(180deg,${BG.panel},#0e0e12)`,
           }}
         >
-          {LOG_SAMPLES.map((line) => {
+          {LOG_CORPUS.map(([line]) => {
             const c = classifyLog(line);
             return (
               <span
@@ -741,7 +851,7 @@ export default function StyleGallery() {
 
         {/* what each resolves to, with the readings the tests pin */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {LOG_SAMPLES.map((line) => {
+          {LOG_CORPUS.map(([line, want]) => {
             const c = classifyLog(line);
             return (
               <div
@@ -763,6 +873,9 @@ export default function StyleGallery() {
                 >
                   {c.kind}
                 </span>
+                {c.kind !== want && (
+                  <span style={{ color: "#ff6a6a" }}>✗ meant {want}</span>
+                )}
                 <span style={{ color: c.glyphColor, width: 14 }}>
                   {c.glyph}
                 </span>
@@ -795,6 +908,11 @@ export default function StyleGallery() {
       <h3 style={{ fontSize: 14, color: "#9aa", marginTop: 18 }}>
         Status afflictions — you vs. a monster
       </h3>
+      <p style={{ fontSize: 12, color: "#667", marginTop: 2 }}>
+        Every template both ways, as the classifier sees it — though chill only
+        ever lands on monsters (the Frostbrand&apos;s on-hit), so &ldquo;You are
+        frozen stiff!&rdquo; never reaches the rail in play.
+      </p>
       <div
         style={{
           display: "flex",
@@ -836,6 +954,10 @@ export default function StyleGallery() {
             <span style={{ color: a!.color }}>■</span>{" "}
             <span style={{ color: "#667" }}>
               {ATMO_EMISSIVE.has(a!.kind) ? "emissive" : "reflective"}
+              {k === "storm" ? " · plus lightning flashes" : ""} ·{" "}
+              {LEVELS.filter((l) => l.weather === k)
+                .map((l) => l.title)
+                .join(", ") || "no level uses it"}
             </span>
           </div>
         ))}

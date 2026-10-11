@@ -12,6 +12,7 @@ import { useGameStore } from "@/store/gameStore";
 import { useEffect, useState } from "react";
 import { FramePanel } from "./Frame";
 import { BG, MARK, TEXT } from "./palette";
+import { BUFFS } from "./buffs";
 
 /**
  * Design 2a — "Grimoire · slate": persistent chrome as four framed panels.
@@ -27,16 +28,6 @@ import { BG, MARK, TEXT } from "./palette";
  * takes an arbitrary N — a dozen diamonds would be uncountable at a glance AND
  * push the objective row wide, so past this the count stands alone. */
 const MAX_PIPS = 8;
-
-/** The six terrain/combat buffs, with the app's existing glyphs and colours. */
-const BUFFS: { key: string; glyph: string; label: string; color: string }[] = [
-  { key: "ward", glyph: "⛨", label: "ward", color: "#7fdfff" },
-  { key: "might", glyph: "⚔", label: "might", color: "#ff9d3c" },
-  { key: "levitate", glyph: "☁", label: "float", color: "#a9d8ff" },
-  { key: "emberstep", glyph: "✷", label: "ember", color: "#ff7a3c" },
-  { key: "frostwalk", glyph: "❆", label: "rime", color: "#bfe8ff" },
-  { key: "shadow", glyph: "◐", label: "shadow", color: "#9a8cff" },
-];
 
 /**
  * Above this many active conditions, the chips drop their `−N/turn` detail so

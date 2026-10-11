@@ -4,7 +4,12 @@ import { BoxFrame } from "@/components/ui/BoxFrame";
 import { MenuButton } from "@/components/ui/MenuButton";
 import { gameStore } from "@/store/gameStore";
 import {
+  ALTAR_COLOR,
+  ALTAR_GLYPH,
   ARMED_TRAP_COLOR,
+  LORE_COLOR,
+  LORE_GLYPH,
+  SCONCE_LIT,
   KNOWN_TRAP_GLYPH,
   SPRUNG_TRAP_COLOR,
   TERRAIN_GLYPH,
@@ -38,12 +43,12 @@ const LEGEND: [string, string, string][] = [
   ["/", "#e0e0e0", "weapon"],
   ["[", "#cd7f32", "armour"],
   ["(", "#ff8c00", "torch"],
-  ["Ω", "#ffb347", "wall sconce"],
+  ["Ω", SCONCE_LIT, "wall sconce"],
   ["*", "#7fdfff", "quest"],
   [">", "#ffd700", "exit"],
   ["+", "#b07a3f", "door"],
-  ["‡", "#d6a4ff", "shrine"],
-  ["¶", "#cbb488", "lore"],
+  [ALTAR_GLYPH, ALTAR_COLOR, "shrine"],
+  [LORE_GLYPH, LORE_COLOR.inscription, "lore"],
   ["&", "#5f6f37", "bramble"],
   // the two trap states now differ in SHAPE, so say which is which
   [KNOWN_TRAP_GLYPH, ARMED_TRAP_COLOR, "trap (armed)"],

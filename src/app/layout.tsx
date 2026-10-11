@@ -1,37 +1,24 @@
-import { LEVELS } from "@/content/levels";
+import {
+  DESCRIPTION,
+  SEARCH_DESCRIPTION,
+  SITE_NAME,
+  SITE_URL,
+  TITLE,
+} from "@/lib/site";
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-
-const TITLE = "Ember of Dawn — an ASCII RPG";
-const DESCRIPTION =
-  `A single-player ASCII RPG that runs entirely in your browser. Wake a captive in the Lich-King's pit, ` +
-  `fight up through ${LEVELS.length} procedurally generated levels of cursed wood, flooding crypt and storm-lashed rampart, ` +
-  `recover the Sunblade, and rekindle the dawn. No install, no account, no backend.`;
-
-/**
- * Where relative metadata URLs resolve from. A static export doesn't know its
- * own host, so this comes from the environment at build time — and Next ERRORS
- * (not warns) on a relative OG image URL without it, so it can't just be
- * omitted.
- *
- * **Set `NEXT_PUBLIC_SITE_URL` when building for production.** The fallback is
- * localhost on purpose: a wrong-but-obvious URL announces itself the first time
- * anyone pastes a link, whereas defaulting to a plausible-looking domain would
- * silently point the OG tags at a host we don't control.
- */
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default: TITLE,
-    // sub-pages get "X · Ember of Dawn"; the dev-only /style gallery is the
+    // sub-pages get "X · Ember of Dawn"; the /style gallery is the
     // only one today, but the template means new routes can't forget the game
     template: "%s · Ember of Dawn",
   },
-  description: DESCRIPTION,
-  applicationName: "Ember of Dawn",
+  description: SEARCH_DESCRIPTION,
+  applicationName: SITE_NAME,
   keywords: [
     "roguelike",
     "ASCII",
@@ -45,7 +32,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    siteName: "Ember of Dawn",
+    siteName: SITE_NAME,
     title: TITLE,
     description: DESCRIPTION,
     url: "/",

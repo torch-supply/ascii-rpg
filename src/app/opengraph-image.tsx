@@ -1,7 +1,17 @@
 import { ImageResponse } from "next/og";
 import { LEVELS } from "@/content/levels";
+import { ITEMS } from "@/content/items";
+import { MONSTERS } from "@/content/monsters";
 import { SUBTITLE } from "@/content/ascii";
-import { EXIT_COLOR, PLAYER_COLOR } from "@/render/tiles";
+import type { LevelConfig, TileType } from "@/game/core/types";
+import {
+  ALTAR_COLOR,
+  ALTAR_GLYPH,
+  EXIT_COLOR,
+  PLAYER_COLOR,
+  terrainColor,
+  terrainGlyph,
+} from "@/render/tiles";
 import { BG, MARK, TEXT } from "@/components/hud/palette";
 
 /**
@@ -35,16 +45,27 @@ export const alt = "Ember of Dawn — an ASCII RPG";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-/** Glyphs the player actually meets, in their real in-game colours. */
+/** Biome-aware glyph as the game renders it — a forest's wall is a tree. */
+const terrain = (t: TileType, level: LevelConfig): [string, string] => [
+  terrainGlyph(t, level.biome),
+  terrainColor(t, level.palette, level.biome),
+];
+const FOREST = LEVELS.find((l) => l.biome === "forest") ?? LEVELS[0];
+
+/** Glyphs the player actually meets, in their real in-game colours. Every entry
+ * reads the game's own tables: this was a list of hand-typed literals once, and
+ * by the time anyone checked, six of nine had drifted — the altar a different
+ * purple, and a `†` captioned "the dead" that is really the Rogue's class badge
+ * and never appears on the map. */
 const LEGEND: [string, string][] = [
   ["@", PLAYER_COLOR], // you
-  ["#", "#6b6b78"], // wall
-  ["♣", "#3f8f4f"], // the Blackwood
-  ["~", "#3a6ea5"], // water
-  ["!", "#e05a8a"], // potion
-  ["*", "#9fdfff"], // a quest shard
-  ["†", "#cfd6e0"], // the dead
-  ["‡", "#c86bff"], // an altar
+  terrain("wall", LEVELS[0]), // a dungeon wall
+  terrain("wall", FOREST), // the Blackwood
+  terrain("water", LEVELS[0]),
+  [ITEMS.p_heal.glyph, ITEMS.p_heal.color], // a potion
+  [ITEMS.q_shard.glyph, ITEMS.q_shard.color], // a quest shard
+  [MONSTERS.skeleton.glyph, MONSTERS.skeleton.color], // the dead
+  [ALTAR_GLYPH, ALTAR_COLOR], // an altar
   [">", EXIT_COLOR], // the way onward
 ];
 

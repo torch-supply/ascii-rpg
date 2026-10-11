@@ -35,6 +35,21 @@ import {
   WEATHER_ATMOSPHERE,
   CHASM_BG,
   SCONCE_LIT,
+  ALTAR_COLOR,
+  ALTAR_GLYPH,
+  ALTAR_SPENT_COLOR,
+  BARRAGE_BG,
+  BARRAGE_COLOR,
+  BARRAGE_GLYPH,
+  BARRAGE_PULSE,
+  FIRE_COLOR,
+  FIRE_DYING_COLOR,
+  FIRE_GLYPHS,
+  GAS_BRIGHTNESS,
+  GAS_GLYPHS,
+  LORE_COLOR,
+  LORE_GLYPH,
+  RETICLE,
   SCONCE_COLD,
   CRACKED_WALL_CRACK_DIM,
   dim,
@@ -486,14 +501,15 @@ export class CanvasRenderer {
    * / ranged / blink): a reticle at the target tile + its 3x3 blast ring. */
   private drawTargeting(tx: number, ty: number) {
     if (this.targeting?.kind === "ability") {
+      const [up, down, left, right] = RETICLE.arrows;
       const arrows: [number, number, string][] = [
-        [0, -1, "↑"],
-        [0, 1, "↓"],
-        [-1, 0, "←"],
-        [1, 0, "→"],
+        [0, -1, up],
+        [0, 1, down],
+        [-1, 0, left],
+        [1, 0, right],
       ];
       for (const [dx, dy, glyph] of arrows) {
-        this.drawCell(tx + dx, ty + dy, glyph, "#ffdd55");
+        this.drawCell(tx + dx, ty + dy, glyph, RETICLE.centerColor);
       }
       return;
     }
@@ -503,8 +519,8 @@ export class CanvasRenderer {
         this.drawCell(
           tx + dx,
           ty + dy,
-          center ? "X" : "+",
-          center ? "#ffdd55" : "#ff7a3c",
+          center ? RETICLE.center : RETICLE.ring,
+          center ? RETICLE.centerColor : RETICLE.ringColor,
         );
       }
     }
@@ -977,8 +993,10 @@ export class CanvasRenderer {
         // ▵/▴ — the hollow twin of the burning frame, so the alternation reads
         // as ONE flame guttering. It was `*`, which the quest shards also use:
         // a fire that looks like the thing a collect level sends you to pick up.
-        !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? "▵" : "▴";
-      const base = f.life <= 1 ? "#ff5a3c" : "#ff9d3c";
+        FIRE_GLYPHS[
+          !this.reduceMotion && Math.sin(now * 0.03 + f.i) > 0 ? 1 : 0
+        ];
+      const base = f.life <= 1 ? FIRE_DYING_COLOR : FIRE_COLOR;
       this.display.draw(sx, sy, glyph, dim(base, flick), null);
     }
 
@@ -992,9 +1010,13 @@ export class CanvasRenderer {
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const swirl = this.reduceMotion
         ? 0.7
-        : 0.5 + 0.28 * Math.abs(Math.sin(now * 0.006 + g.i * 0.7));
+        : GAS_BRIGHTNESS.min +
+          (GAS_BRIGHTNESS.max - GAS_BRIGHTNESS.min) *
+            Math.abs(Math.sin(now * 0.006 + g.i * 0.7));
       const glyph =
-        !this.reduceMotion && Math.sin(now * 0.008 + g.i) > 0 ? "∴" : "°";
+        GAS_GLYPHS[
+          !this.reduceMotion && Math.sin(now * 0.008 + g.i) > 0 ? 0 : 1
+        ];
       this.display.draw(sx, sy, glyph, dim(GAS_COLOR, swirl), null);
     }
 
@@ -1009,9 +1031,17 @@ export class CanvasRenderer {
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
       const pulse = this.reduceMotion
         ? 0.7
-        : 0.45 + 0.4 * Math.abs(Math.sin(now * 0.012));
-      const bg = dim("#7a1512", pulse);
-      this.display.draw(sx, sy, "✷", dim("#ff6a4a", 0.6 + 0.4 * pulse), bg);
+        : BARRAGE_PULSE.min +
+          (BARRAGE_PULSE.max - BARRAGE_PULSE.min) *
+            Math.abs(Math.sin(now * 0.012));
+      const bg = dim(BARRAGE_BG, pulse);
+      this.display.draw(
+        sx,
+        sy,
+        BARRAGE_GLYPH,
+        dim(BARRAGE_COLOR, 0.6 + 0.4 * pulse),
+        bg,
+      );
     }
 
     // altars/shrines (drawn from memory too, so you can navigate back to one)
@@ -1022,11 +1052,11 @@ export class CanvasRenderer {
       const sx = a.x - camX;
       const sy = a.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
-      const base = a.used ? "#6a6a6a" : "#d6a4ff";
+      const base = a.used ? ALTAR_SPENT_COLOR : ALTAR_COLOR;
       const color = isVis
         ? this.litVis(base, i, effR, true)
         : dim(base, FOG_DIM);
-      this.display.draw(sx, sy, "‡", color, null);
+      this.display.draw(sx, sy, ALTAR_GLYPH, color, null);
     }
 
     // lore props (drawn from memory too — a curiosity you can return to). Gold
@@ -1038,15 +1068,11 @@ export class CanvasRenderer {
       const sx = l.x - camX;
       const sy = l.y - camY;
       if (sx < 0 || sy < 0 || sx >= cols || sy >= rows) continue;
-      const base = l.read
-        ? "#6a6a66"
-        : l.kind === "remains"
-          ? "#b0a890"
-          : "#cbb488";
+      const base = l.read ? LORE_COLOR.read : LORE_COLOR[l.kind];
       const color = isVis
         ? this.litVis(base, i, effR, true)
         : dim(base, FOG_DIM);
-      this.display.draw(sx, sy, "¶", color, null);
+      this.display.draw(sx, sy, LORE_GLYPH, color, null);
     }
 
     // items (only where currently visible)
@@ -1311,7 +1337,7 @@ export class CanvasRenderer {
    * and skipped under reduced-motion. Each biome present (the level's + any
    * sub-biome) draws its own weather, gated per-particle to the world tile under
    * it, so a sub-region's atmosphere only drifts over that region. */
-  /** Storm lightning (levels with `weather:"rain"`): a periodic white flash over
+  /** Storm lightning (levels with `weather:"storm"`): a periodic white flash over
    * the visible scene — a quick main strike + a smaller aftershock, then dark.
    * Driven purely by the clock; the caller clips it to the visible FOV. Off
    * under reduced-motion. */

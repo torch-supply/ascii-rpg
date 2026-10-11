@@ -9,6 +9,9 @@ Turn-based bump combat, procedurally-generated levels, fog-of-war with managed
 torchlight, an inventory and between-level shop, and a dark terminal aesthetic
 rendered on a canvas. Runs entirely in the browser — no backend, no accounts.
 
+**Play it at [emberofdawn.com](https://www.emberofdawn.com)** · browse every
+glyph and colour in the [style gallery](https://www.emberofdawn.com/style).
+
 ## Stack
 
 - **Next.js** (App Router) + **TypeScript**, exported as a static client-only site
@@ -91,8 +94,19 @@ The game is data-driven: the level list in `src/content/levels.ts` is the spine
 (two RNG streams, client-only canvas, pure core), and where everything lives.
 Backlog ideas live in [IDEAS.md](IDEAS.md).
 
+## Style gallery
+
+**[emberofdawn.com/style](https://www.emberofdawn.com/style)** (or
+`localhost:3000/style` under `npm run dev`) is the game's visual reference:
+every tile in every biome, the overlays drawn on top of the map (altars, lore,
+fire, gas, traps), every monster under each tint it can wear, items, class
+badges, decals, weather, and every kind of log message — each with a live
+contrast reading against what it sits on (red <110 likely invisible, amber
+<200 thin, green comfortable). It also prints a **glyph-collision report**, so
+one character meaning two things (a hazard drawn like a boon) is caught by
+eye. It exists because the visual bugs that shipped were only ever spotted
+late, eight levels into a playthrough; this makes that pass instant. It's built
+straight from the content tables, so it can't drift from the game.
+
 > **Dev tooling** (stripped from the production build): the splash has a level
-> picker, `>` in play skips to the next level, and **`/style`** is a visual
-> reference showing every tile, biome, glyph, tint and effect on one page with
-> live contrast readings — so a color that doesn't read is obvious at a glance
-> instead of being discovered eight levels into a playthrough.
+> picker, and `>` in play skips to the next level.

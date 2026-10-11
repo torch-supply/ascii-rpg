@@ -46,8 +46,14 @@ const STYLE: Record<LogKind, Omit<LogStyle, "kind">> = {
   neutral: { color: "#8b8d99", glyph: "·", glyphColor: "#4a4a58" },
 };
 
-// A monster dying. "succumbs" is the damage-over-time death path.
-const KILL = /(you slay|succumbs)/;
+// A monster dying — one clause per kill message, because every path that calls
+// `awardKill` words its own: a plain blow ("you slay"), a sneak or critical one
+// ("a silent kill", "fells the"), a shove into a chasm ("into the depths"), the
+// out-of-arrows bow bash ("you batter down"), a firebomb ("N slain") and the
+// damage-over-time death ("succumbs"). Only the first two were here once, so
+// the more dramatic kills printed in the dimmest colour in the rail.
+const KILL =
+  /(you slay|succumbs|a silent kill|fells the|into the depths|you batter down|\d+ slain)/;
 
 // Harm to the PLAYER. Every clause here names you as the target — that's what
 // separates it from your own attacks, which carry numbers but never "you" as the
@@ -67,7 +73,7 @@ const GAIN =
 
 // Your blow landing on something.
 const ATTACK =
-  /(you strike|you hit the|sneak attack|critical!|you jab|you batter down|you smash|you hack at|you hurl)/;
+  /(you strike|you hit the|sneak attack|critical!|you jab|you smash|you hack at)/;
 
 export function classifyLog(line: string): LogStyle {
   const s = line.toLowerCase();

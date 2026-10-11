@@ -77,6 +77,11 @@ import {
   ARMED_TRAP_COLOR,
   SPRUNG_TRAP_COLOR,
   KNOWN_TRAP_GLYPH,
+  ALTAR_GLYPH,
+  LORE_GLYPH,
+  FIRE_GLYPHS,
+  GAS_GLYPHS,
+  BARRAGE_GLYPH,
   luminance,
   WATER_COLOR,
   GLOWCAP_COLOR,
@@ -99,6 +104,7 @@ import {
 } from "@/game/core/light";
 import { cameraOrigin } from "@/render/CanvasRenderer";
 import { causeOfDeath, classifyLog } from "@/components/hud/logStyle";
+import { LOG_CORPUS } from "@/components/hud/logCorpus";
 import { BG, MARK, TEXT } from "@/components/hud/palette";
 import type {
   GameMap,
@@ -6277,54 +6283,9 @@ console.log("\n[63] The shop can't be farmed");
 // ─────────────────────────────────────────────────────────────────────────────
 console.log("\n[64] Log colour-coding");
 {
-  const CASES: [string, string][] = [
-    // your own blows — numbers, but you are the subject
-    ["You strike the Skeleton for 8 (4 left).", "attack"],
-    ["Critical! You strike the Goblin for 14 (2 left).", "attack"],
-    ["Sneak attack! You hit the Skeleton for 12 (0 left).", "attack"],
-    ["Out of arrows — you jab the Goblin for 1.", "attack"],
-    ["You batter down the Skeleton with your bow.", "attack"],
-    ["You smash the Goblin clean through a cracked wall!", "attack"],
-    ["You hack at the cracked wall. (2 more)", "attack"],
-    // deaths
-    ["You slay the Skeleton.", "kill"],
-    ["The Goblin succumbs.", "kill"],
-    // harm — you are the object
-    ["The Skeleton hits you for 2.", "harm"],
-    ["The Bog Imp hurls a bolt for 3.", "harm"],
-    ["Dark fire crashes down on you for 12!", "harm"],
-    ["A hidden spike trap! You take 4 damage.", "harm"],
-    ["The volatile creature bursts apart — the blast catches you!", "harm"],
-    ["You choke on a lungful of spores!", "harm"],
-    ["Thorns rake you — you're bleeding.", "harm"],
-    ["The Gargoyle Sentinel hurls you off the edge into the void!", "harm"],
-    ["The Gargoyle Sentinel throws you back.", "harm"],
-    ["The Gargoyle Sentinel looms — the void yawns at your back!", "harm"],
-    ["You are poisoned!", "harm"],
-    ["You catch fire!", "harm"],
-    // …but the SAME status template aimed at a monster is not harm to you
-    ["The Skeleton is poisoned!", "neutral"],
-    // healed / warded
-    ["You drink the Healing Potion. (+10 hp)", "good"],
-    ["You gather wild growth — +1 HP.", "good"],
-    ["A shimmer of warding wraps you. (6 turns)", "good"],
-    // loot
-    ["You pick up 6 gold.", "gain"],
-    ["You pick up a Healing Potion.", "gain"],
-    ["You recover a Sunblade.", "gain"],
-    ["You gather 12 Arrows.", "gain"],
-    // ordinary chatter
-    ["You take up the War Axe, setting down the Frostbrand.", "neutral"],
-    ["You shove the door open.", "neutral"],
-    // wildlife scattered by a blow is NOT a kill (`awardKill` refuses ambients),
-    // and a boss bracing at a brink is not harm — both must stay neutral
-    ["The Carrion Raven scatters.", "neutral"],
-    ["The Will-o'-Wisp gutters out at your touch.", "neutral"],
-    ["The Gate Warden braces at the brink and will not fall!", "neutral"],
-    ["The Skeleton drops a Healing Potion.", "neutral"],
-    ["Your torch gutters out. The dark closes back in.", "neutral"],
-    ["The water rises higher.", "neutral"],
-  ];
+  // The corpus lives beside the classifier so the `/style` gallery paints the
+  // exact lines this asserts — see `hud/logCorpus.ts`.
+  const CASES = [...LOG_CORPUS];
 
   checkOver(
     "every real message line lands in its intended category",
@@ -6888,14 +6849,14 @@ console.log("\n[69] Glyphs: one character, one meaning");
   for (const c of CLASS_LIST)
     if (c.glyph) add(c.glyph, "class", `class:${c.id}`);
   for (const [g, label] of [
-    ["‡", "altar"],
-    ["¶", "lore"],
+    [ALTAR_GLYPH, "altar"],
+    [LORE_GLYPH, "lore"],
     ["@", "player"],
-    ["▴", "fire"],
-    ["▵", "fire-guttering"],
-    ["∴", "gas"],
-    ["°", "gas-alt"],
-    ["✷", "barrage"],
+    [FIRE_GLYPHS[0], "fire"],
+    [FIRE_GLYPHS[1], "fire-flicker"],
+    [GAS_GLYPHS[0], "gas"],
+    [GAS_GLYPHS[1], "gas-alt"],
+    [BARRAGE_GLYPH, "barrage"],
     ["Ω", "sconce"],
     [SPORE_VENT_PRIMING_GLYPH, "vent-priming"],
     [KNOWN_TRAP_GLYPH, "trap-known-armed"],

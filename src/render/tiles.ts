@@ -153,6 +153,47 @@ export const FOG_DIM = 0.34;
 export const SCONCE_LIT = "#ffb347";
 export const SCONCE_COLD = "#6b5a44";
 
+// ── Overlay POIs ────────────────────────────────────────────────────────────
+// Drawn OVER the cell grid by CanvasRenderer, so they aren't `TileType`s and no
+// table enumerates them. They live here, not as literals at the draw call, so
+// the renderer, `/style`, the help sheet, the share card and test [69] read ONE
+// value — the share card's altar had already drifted to a different purple.
+export const ALTAR_GLYPH = "‡";
+export const ALTAR_COLOR = "#d6a4ff";
+export const ALTAR_SPENT_COLOR = "#6a6a6a";
+export const LORE_GLYPH = "¶";
+/** Unread props by kind, plus the one dimmed colour a READ prop of either kind takes. */
+export const LORE_COLOR = {
+  inscription: "#cbb488",
+  remains: "#b0a890",
+  read: "#6a6a66",
+} as const;
+/** Lingering fire alternates these two frames as it flickers (▵ is the hollow
+ * twin of ▴, so the pair reads as ONE flame). Independently of the frame, a fire
+ * on its last turn (`life <= 1`) burns red instead of orange. */
+export const FIRE_GLYPHS = ["▴", "▵"] as const;
+export const FIRE_COLOR = "#ff9d3c";
+export const FIRE_DYING_COLOR = "#ff5a3c";
+/** Poison haze drifts between these two frames, and is never drawn at full
+ * `GAS_COLOR`: its brightness swirls within this range. */
+export const GAS_GLYPHS = ["∴", "°"] as const;
+export const GAS_BRIGHTNESS = { min: 0.5, max: 0.78 } as const;
+/** The lich's barrage telegraph: a danger glyph over a dark-red cell, both
+ * pulsing — the cell at `pulse`, the glyph at `0.6 + 0.4 × pulse`. */
+export const BARRAGE_GLYPH = "✷";
+export const BARRAGE_COLOR = "#ff6a4a";
+export const BARRAGE_BG = "#7a1512";
+export const BARRAGE_PULSE = { min: 0.45, max: 0.85 } as const;
+/** The aiming cursor (firebomb / ranged / blink) and a directional ability's
+ * chevrons. Transient UI, drawn only while targeting. */
+export const RETICLE = {
+  center: "X",
+  ring: "+",
+  centerColor: "#ffdd55",
+  ringColor: "#ff7a3c",
+  arrows: ["↑", "↓", "←", "→"],
+} as const;
+
 // ── Atmosphere / weather ────────────────────────────────────────────────────
 // Per-biome ambient particles drawn on the overlay canvas (clipped to the
 // visible area, off under reduced-motion). "mist" is a few drifting soft blobs;
